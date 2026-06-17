@@ -672,14 +672,9 @@ private fun AbkMainScaffold(
                                     vm = vm,
                                     outerPadding = contentPadding,
                                     onChildPageVisibleChange = { settingsChildPageVisible = it },
-                                    onOpenInstalledModules = {
-                                        if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
-                                        selectedTab = if (state.rootGranted) {
-                                            AbkTab.InstalledModules
-                                        } else {
-                                            AbkTab.RuntimeHome
-                                        }
-                                    }
+                                    onAbout = { /* 暂时空实现 */ },
+                                    onOpenSourceLicenses = { /* 暂时空实现 */ },
+                                    onOpenExtensionManager = { /* 暂时空实现 */ }
                                 )
                             } else {
                                 SettingsScreen(
