@@ -27,9 +27,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedButton
@@ -217,11 +219,11 @@ fun SettingsScreenMiuix(
                                 )
                             }
                             // Logout button (MD3 IconButton + error tint)
-                            androidx.compose.material3.IconButton(onClick = { showLogoutDialog = true }) {
-                                androidx.compose.material3.Icon(
+                            IconButton(onClick = { showLogoutDialog = true }) {
+                                Icon(
                                     imageVector = Icons.Default.Logout,
                                     contentDescription = stringResource(R.string.settings_logout_desc),
-                                    tint = androidx.compose.material3.MaterialTheme.colorScheme.error
+                                    tint = MaterialTheme.colorScheme.error
                                 )
                             }
                         }
@@ -235,6 +237,7 @@ fun SettingsScreenMiuix(
                             title = stringResource(R.string.settings_fork_repo),
                             summary = state.forkRepo?.fullName
                                 ?: stringResource(R.string.settings_waiting_fork),
+                            startAction = { Icon(Icons.Default.ForkRight, contentDescription = null) },
                             onClick = forkUrl?.let { url -> { openUrl(context, url) } }
                         )
                     } ?: run {
@@ -245,7 +248,7 @@ fun SettingsScreenMiuix(
                                 .padding(16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            androidx.compose.material3.Icon(
+                            Icon(
                                 imageVector = Icons.Default.AccountCircle,
                                 contentDescription = null,
                                 modifier = Modifier.size(42.dp),
@@ -269,6 +272,7 @@ fun SettingsScreenMiuix(
                     SuperSwitch(
                         title = stringResource(R.string.settings_workflow_foreground_refresh),
                         summary = stringResource(R.string.settings_workflow_foreground_refresh_desc),
+                        startAction = { Icon(Icons.Default.Sync, contentDescription = null) },
                         checked = state.workflowForegroundRefreshEnabled,
                         onCheckedChange = { vm.setWorkflowForegroundRefreshEnabled(it) }
                     )
@@ -287,6 +291,7 @@ fun SettingsScreenMiuix(
                     SuperSwitch(
                         title = stringResource(R.string.settings_auto_download),
                         summary = stringResource(R.string.settings_auto_download_desc),
+                        startAction = { Icon(Icons.Default.Download, contentDescription = null) },
                         checked = state.autoDownload,
                         onCheckedChange = { vm.setAutoDownload(it) }
                     )
@@ -294,18 +299,21 @@ fun SettingsScreenMiuix(
                     SuperSwitch(
                         title = stringResource(R.string.settings_prebuilt_gki),
                         summary = stringResource(R.string.settings_prebuilt_gki_desc),
+                        startAction = { Icon(Icons.Default.CloudDownload, contentDescription = null) },
                         checked = state.prebuiltGkiEnabled,
                         onCheckedChange = { vm.setPrebuiltGkiEnabled(it) }
                     )
                     // Download directory
                     DownloadDirectoryItem(
                         value = state.downloadDirectory,
-                        onValueChange = { vm.setDownloadDirectory(it) }
+                        onValueChange = { vm.setDownloadDirectory(it) },
+                        leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) }
                     )
                     // Mirror URL
                     MirrorUrlItem(
                         value = state.downloadMirrorBaseUrl,
-                        onValueChange = { vm.setDownloadMirrorBaseUrl(it) }
+                        onValueChange = { vm.setDownloadMirrorBaseUrl(it) },
+                        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) }
                     )
                     // Clear artifacts
                     val hasArtifacts = state.downloadedArtifacts.isNotEmpty()
@@ -318,6 +326,7 @@ fun SettingsScreenMiuix(
                         } else {
                             stringResource(R.string.settings_clear_artifacts_empty)
                         },
+                        startAction = { Icon(Icons.Default.Delete, contentDescription = null) },
                         onClick = if (hasArtifacts) {
                             { showClearArtifactsDialog = true }
                         } else null
@@ -345,19 +354,15 @@ fun SettingsScreenMiuix(
                     SuperArrow(
                         title = stringResource(R.string.settings_check_app_update),
                         summary = appUpdateCheckSubtitle(state),
+                        endActions = {
+                            if (state.appUpdateChecking) {
+                                CircularProgressIndicator(modifier = Modifier.size(22.dp))
+                            } else {
+                                Icon(Icons.Default.Refresh, contentDescription = null)
+                            }
+                        },
                         onClick = { if (!state.appUpdateChecking) vm.checkAppUpdate() }
                     )
-                    // Loading indicator while checking
-                    if (state.appUpdateChecking) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(22.dp))
-                        }
-                    }
                     // Update info display
                     state.appUpdateInfo?.let { info ->
                         SuperArrow(
@@ -366,9 +371,19 @@ fun SettingsScreenMiuix(
                             } else {
                                 stringResource(R.string.settings_app_update_latest)
                             },
-                            summary = appUpdateResultSubtitle(info)
+                            summary = appUpdateResultSubtitle(info),
+                            startAction = {
+                                Icon(
+                                    imageVector = if (info.hasUpdate) Icons.Default.Download else Icons.Default.Verified,
+                                    contentDescription = null
+                                )
+                            }
                         )
-                        if (info.hasUpdate) {
+                        AnimatedVisibility(
+                            visible = info.hasUpdate,
+                            enter = fadeIn(),
+                            exit = fadeOut()
+                        ) {
                             val downloadUrl = info.remote.downloadUrl
                             SuperArrow(
                                 title = stringResource(R.string.settings_download_install_update),
@@ -380,6 +395,14 @@ fun SettingsScreenMiuix(
                                     downloadUrl.isBlank() -> stringResource(R.string.settings_app_update_link_missing)
                                     else -> downloadUrl
                                 },
+                                startAction = { Icon(Icons.Default.InstallMobile, contentDescription = null) },
+                                endActions = {
+                                    if (state.appUpdateDownloading) {
+                                        CircularProgressIndicator(modifier = Modifier.size(22.dp))
+                                    } else {
+                                        Icon(Icons.Default.Download, contentDescription = null)
+                                    }
+                                },
                                 onClick = downloadUrl.takeIf { it.isNotBlank() }
                                     ?.let { { vm.downloadAndInstallAppUpdate() } }
                             )
@@ -389,7 +412,8 @@ fun SettingsScreenMiuix(
                     state.appUpdateError?.takeIf { it.isNotBlank() }?.let { error ->
                         SuperArrow(
                             title = stringResource(R.string.settings_app_update_error),
-                            summary = error
+                            summary = error,
+                            startAction = { Icon(Icons.Default.Error, contentDescription = null) }
                         )
                     }
                 }
@@ -446,6 +470,8 @@ fun SettingsScreenMiuix(
                                     ManagerSettingKind.NAVIGATION -> SuperArrow(
                                         title = item.title,
                                         summary = item.subtitle,
+                                        startAction = { Icon(managerSettingIcon(item.id), contentDescription = null) },
+                                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
                                         onClick = if (item.enabled && !actionInFlight) {
                                             {
                                                 when (item.id) {
@@ -459,6 +485,7 @@ fun SettingsScreenMiuix(
                                     ManagerSettingKind.SWITCH -> SuperSwitch(
                                         title = item.title,
                                         summary = item.subtitle,
+                                        startAction = { Icon(managerSettingIcon(item.id), contentDescription = null) },
                                         checked = item.checked,
                                         onCheckedChange = { checked ->
                                             if (item.enabled && !actionInFlight) {
@@ -480,6 +507,7 @@ fun SettingsScreenMiuix(
                                             SuperArrow(
                                                 title = option,
                                                 summary = if (selected) "✓" else null,
+                                                startAction = { Icon(managerSettingIcon(item.id), contentDescription = null) },
                                                 onClick = if (item.enabled && !actionInFlight && index != selectedIndex) {
                                                     { vm.setManagerSettingMode(item.id, index) }
                                                 } else null
@@ -500,6 +528,7 @@ fun SettingsScreenMiuix(
                     SuperSwitch(
                         title = stringResource(R.string.settings_notify_build),
                         summary = stringResource(R.string.settings_notify_build_desc),
+                        startAction = { Icon(Icons.Default.Notifications, contentDescription = null) },
                         checked = state.notifyBuild,
                         onCheckedChange = { vm.setNotifyBuild(it) }
                     )
@@ -513,6 +542,7 @@ fun SettingsScreenMiuix(
                     SuperSwitch(
                         title = stringResource(R.string.settings_predictive_back),
                         summary = stringResource(R.string.settings_predictive_back_desc),
+                        startAction = { Icon(Icons.Default.ArrowBack, contentDescription = null) },
                         checked = state.predictiveBackEnabled,
                         onCheckedChange = { vm.setPredictiveBackEnabled(it) }
                     )
@@ -542,6 +572,8 @@ fun SettingsScreenMiuix(
                     SuperArrow(
                         title = stringResource(R.string.settings_color_appearance),
                         summary = "${themeModeLabel(state.themeMode)} · ${dynamicColorLabel(state.dynamicColorEnabled)}",
+                        startAction = { Icon(Icons.Default.Palette, contentDescription = null) },
+                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
                         onClick = { showThemeSettings = true }
                     )
                 }
@@ -554,6 +586,8 @@ fun SettingsScreenMiuix(
                     SuperArrow(
                         title = stringResource(R.string.settings_extensions_manage),
                         summary = stringResource(R.string.settings_extensions_manage_desc),
+                        startAction = { Icon(Icons.Default.Extension, contentDescription = null) },
+                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
                         onClick = onOpenExtensionManager
                     )
                 }
@@ -565,16 +599,21 @@ fun SettingsScreenMiuix(
                 Card(modifier = Modifier.fillMaxWidth()) {
                     SuperArrow(
                         title = stringResource(R.string.app_full_name),
-                        summary = "AnyBase Kernel v${BuildConfig.VERSION_NAME}"
+                        summary = "AnyBase Kernel v${BuildConfig.VERSION_NAME}",
+                        startAction = { Icon(Icons.Default.Info, contentDescription = null) }
                     )
                     SuperArrow(
                         title = stringResource(R.string.settings_about),
                         summary = stringResource(R.string.settings_about_desc),
+                        startAction = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
                         onClick = onAbout
                     )
                     SuperArrow(
                         title = stringResource(R.string.settings_open_source_licenses),
                         summary = stringResource(R.string.settings_open_source_licenses_desc),
+                        startAction = { Icon(Icons.Default.Article, contentDescription = null) },
+                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
                         onClick = onOpenSourceLicenses
                     )
                 }
@@ -694,7 +733,8 @@ private fun AppUpdateLinePicker(
 @Composable
 private fun DownloadDirectoryItem(
     value: String,
-    onValueChange: (String) -> Unit
+    onValueChange: (String) -> Unit,
+    leadingIcon: @Composable (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val defaultDirectory = remember { DownloadDirectoryUtils.defaultDirectoryPath() }
@@ -727,10 +767,16 @@ private fun DownloadDirectoryItem(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        top.yukonga.miuix.kmp.basic.Text(
-            text = stringResource(R.string.settings_download_directory),
-            style = MiuixTheme.textStyles.main
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            if (leadingIcon != null) leadingIcon()
+            top.yukonga.miuix.kmp.basic.Text(
+                text = stringResource(R.string.settings_download_directory),
+                style = MiuixTheme.textStyles.main
+            )
+        }
         top.yukonga.miuix.kmp.basic.Text(
             text = stringResource(R.string.settings_download_directory_desc),
             style = MiuixTheme.textStyles.body2,
@@ -779,7 +825,8 @@ private fun DownloadDirectoryItem(
 @Composable
 private fun MirrorUrlItem(
     value: String,
-    onValueChange: (String) -> Unit
+    onValueChange: (String) -> Unit,
+    leadingIcon: @Composable (() -> Unit)? = null
 ) {
     Column(
         modifier = Modifier
@@ -787,10 +834,16 @@ private fun MirrorUrlItem(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        top.yukonga.miuix.kmp.basic.Text(
-            text = stringResource(R.string.settings_download_mirror),
-            style = MiuixTheme.textStyles.main
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            if (leadingIcon != null) leadingIcon()
+            top.yukonga.miuix.kmp.basic.Text(
+                text = stringResource(R.string.settings_download_mirror),
+                style = MiuixTheme.textStyles.main
+            )
+        }
         top.yukonga.miuix.kmp.basic.Text(
             text = stringResource(R.string.settings_download_mirror_desc),
             style = MiuixTheme.textStyles.body2,
@@ -822,6 +875,7 @@ private fun LanguagePicker(
         SuperArrow(
             title = label,
             summary = if (selected) "✓" else null,
+            startAction = { Icon(Icons.Default.Language, contentDescription = null) },
             onClick = { onSelect(lang) }
         )
     }
@@ -897,6 +951,24 @@ private fun appUpdateLineLabel(value: String): String =
         APP_UPDATE_LINE_DEV -> stringResource(R.string.settings_app_update_line_dev)
         else -> stringResource(R.string.settings_app_update_line_normal)
     }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Manager setting icon mapping (mirrored from MD3 SettingsScreen.kt)
+// ─────────────────────────────────────────────────────────────────────────────
+
+private fun managerSettingIcon(id: String) = when (id) {
+    "app_profile_templates" -> Icons.Default.Apps
+    "manager_tools" -> Icons.Default.Build
+    "kpm" -> Icons.Default.Extension
+    "su_compat" -> Icons.Default.RemoveModerator
+    "kernel_umount" -> Icons.Default.RemoveCircle
+    "adb_root" -> Icons.Default.Adb
+    "sulog" -> Icons.Default.Article
+    "selinux_hide" -> Icons.Default.Shield
+    "default_umount_modules" -> Icons.Default.FolderDelete
+    "webview_debug" -> Icons.Default.Code
+    else -> Icons.Default.Settings
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Utility functions (mirrored from MD3 SettingsScreen.kt)
