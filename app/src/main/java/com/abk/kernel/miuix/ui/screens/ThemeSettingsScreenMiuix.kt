@@ -113,6 +113,29 @@ fun ThemeSettingsScreenMiuix(
                 )
             }
 
+            // Section 4: 视觉效果
+            SectionTitleMiuix("视觉效果")
+            Card {
+                SwitchPreference(
+                    title = "模糊效果",
+                    summary = "悬浮底栏的高斯模糊与液态玻璃 backdrop",
+                    checked = state.miuixBlurEnabled,
+                    onCheckedChange = { vm.setMiuixBlurEnabled(it) }
+                )
+                SwitchPreference(
+                    title = "悬浮底栏",
+                    summary = "使用悬浮药丸形状的底栏（关闭后使用 Material 3 默认底栏）",
+                    checked = state.miuixFloatingBottomBarEnabled,
+                    onCheckedChange = { vm.setMiuixFloatingBottomBarEnabled(it) }
+                )
+                SwitchPreference(
+                    title = "液态玻璃",
+                    summary = "Liquid Glass 折射与高光效果（实验性）",
+                    checked = state.miuixLiquidGlassEnabled,
+                    onCheckedChange = { vm.setMiuixLiquidGlassEnabled(it) }
+                )
+            }
+
             Spacer(Modifier.height(60.dp))
         }
     }

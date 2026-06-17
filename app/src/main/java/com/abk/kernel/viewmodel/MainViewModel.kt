@@ -176,6 +176,9 @@ data class MainUiState(
     val customThemeColorArgb: Int? = null,
     val customAccentColorArgb: Int? = null,
     val uiStyle: String = "material",
+    val miuixBlurEnabled: Boolean = true,
+    val miuixFloatingBottomBarEnabled: Boolean = true,
+    val miuixLiquidGlassEnabled: Boolean = true,
     val customBackgroundUri: String? = null,
     val backgroundImageEnabled: Boolean = false,
     val uiSurfaceAlpha: Float = 1f,
@@ -520,6 +523,23 @@ class MainViewModel @JvmOverloads constructor(
         viewModelScope.launch {
             prefs.uiStyle.collect { style ->
                 _uiState.update { it.copy(uiStyle = style) }
+            }
+        }
+        viewModelScope.launch {
+            combine(
+                prefs.miuixBlurEnabled,
+                prefs.miuixFloatingBottomBarEnabled,
+                prefs.miuixLiquidGlassEnabled
+            ) { blur, floating, liquid ->
+                Triple(blur, floating, liquid)
+            }.collect { (blur, floating, liquid) ->
+                _uiState.update {
+                    it.copy(
+                        miuixBlurEnabled = blur,
+                        miuixFloatingBottomBarEnabled = floating,
+                        miuixLiquidGlassEnabled = liquid
+                    )
+                }
             }
         }
         viewModelScope.launch {
@@ -2754,6 +2774,9 @@ class MainViewModel @JvmOverloads constructor(
         prefs.setWorkflowForegroundRefreshIntervalSec(seconds)
     }
     fun setUiStyle(style: String) = viewModelScope.launch { prefs.setUiStyle(style) }
+    fun setMiuixBlurEnabled(v: Boolean) = viewModelScope.launch { prefs.setMiuixBlurEnabled(v) }
+    fun setMiuixFloatingBottomBarEnabled(v: Boolean) = viewModelScope.launch { prefs.setMiuixFloatingBottomBarEnabled(v) }
+    fun setMiuixLiquidGlassEnabled(v: Boolean) = viewModelScope.launch { prefs.setMiuixLiquidGlassEnabled(v) }
     fun setThemeMode(mode: String) = viewModelScope.launch { prefs.setThemeMode(mode) }
     fun setDynamicColorEnabled(
         v: Boolean,

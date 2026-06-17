@@ -32,6 +32,7 @@ fun MiuixFloatingBottomBar(
     selectedIndex: Int,
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
+    isBlurEnabled: Boolean = true,
 ) {
     val selectedIndexState by rememberUpdatedState(selectedIndex)
     FloatingBottomBar(
@@ -46,7 +47,7 @@ fun MiuixFloatingBottomBar(
         onSelected = { items.getOrNull(it)?.onClick?.invoke() },
         backdrop = backdrop,
         tabsCount = items.size,
-        isBlurEnabled = true,
+        isBlurEnabled = isBlurEnabled,
     ) {
         items.forEachIndexed { index, item ->
             FloatingBottomBarItem(

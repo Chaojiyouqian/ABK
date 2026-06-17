@@ -71,6 +71,9 @@ class PreferencesRepository(private val context: Context) {
         val KEY_UI_STYLE = stringPreferencesKey("ui_style") // "material" | "miuix"
         val KEY_MIUIX_THEME_COLOR = intPreferencesKey("miuix_theme_color_argb")
         val KEY_MIUIX_ACCENT_COLOR = intPreferencesKey("miuix_accent_color_argb")
+        val KEY_MIUIX_BLUR_ENABLED = booleanPreferencesKey("miuix_blur_enabled")
+        val KEY_MIUIX_FLOATING_BOTTOM_BAR_ENABLED = booleanPreferencesKey("miuix_floating_bottom_bar_enabled")
+        val KEY_MIUIX_LIQUID_GLASS_ENABLED = booleanPreferencesKey("miuix_liquid_glass_enabled")
     }
 
     val accessToken: Flow<String?> = context.dataStore.data.map { it[KEY_ACCESS_TOKEN] }
@@ -151,6 +154,9 @@ class PreferencesRepository(private val context: Context) {
     val uiStyle: Flow<String> = context.dataStore.data.map { it[KEY_UI_STYLE] ?: "material" }
     val miuixThemeColorArgb: Flow<Int?> = context.dataStore.data.map { it[KEY_MIUIX_THEME_COLOR] }
     val miuixAccentColorArgb: Flow<Int?> = context.dataStore.data.map { it[KEY_MIUIX_ACCENT_COLOR] }
+    val miuixBlurEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_MIUIX_BLUR_ENABLED] ?: true }
+    val miuixFloatingBottomBarEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_MIUIX_FLOATING_BOTTOM_BAR_ENABLED] ?: true }
+    val miuixLiquidGlassEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_MIUIX_LIQUID_GLASS_ENABLED] ?: true }
 
     suspend fun saveToken(token: String) = context.dataStore.edit { it[KEY_ACCESS_TOKEN] = token }
     suspend fun saveUsername(name: String) = context.dataStore.edit { it[KEY_USERNAME] = name }
@@ -267,6 +273,9 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setUiStyle(style: String) = context.dataStore.edit { it[KEY_UI_STYLE] = style }
     suspend fun setMiuixThemeColor(argb: Int) = context.dataStore.edit { it[KEY_MIUIX_THEME_COLOR] = argb }
     suspend fun setMiuixAccentColor(argb: Int) = context.dataStore.edit { it[KEY_MIUIX_ACCENT_COLOR] = argb }
+    suspend fun setMiuixBlurEnabled(v: Boolean) = context.dataStore.edit { it[KEY_MIUIX_BLUR_ENABLED] = v }
+    suspend fun setMiuixFloatingBottomBarEnabled(v: Boolean) = context.dataStore.edit { it[KEY_MIUIX_FLOATING_BOTTOM_BAR_ENABLED] = v }
+    suspend fun setMiuixLiquidGlassEnabled(v: Boolean) = context.dataStore.edit { it[KEY_MIUIX_LIQUID_GLASS_ENABLED] = v }
     suspend fun clearPendingAutoDownloadRunId() = context.dataStore.edit { it.remove(KEY_PENDING_AUTO_DOWNLOAD_RUN_ID) }
 
     private fun workflowStepsVersionKey(lang: String) = intPreferencesKey("workflow_steps_version_$lang")

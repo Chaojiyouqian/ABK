@@ -574,6 +574,7 @@ private fun AbkMainScaffold(
                     },
                     selectedIndex = visibleTabs.indexOf(activeTab).coerceAtLeast(0),
                     backdrop = miuixBackdrop,
+                    isBlurEnabled = state.miuixBlurEnabled,
                 )
             } else {
                 NavigationBar(
