@@ -666,19 +666,37 @@ private fun AbkMainScaffold(
                             outerPadding = contentPadding,
                             onDetailPageVisibleChange = { rootAuthDetailPageVisible = it }
                         )
-                        AbkTab.Settings -> SettingsScreen(
-                            vm = vm,
-                            outerPadding = contentPadding,
-                            onChildPageVisibleChange = { settingsChildPageVisible = it },
-                            onOpenInstalledModules = {
-                                if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
-                                selectedTab = if (state.rootGranted) {
-                                    AbkTab.InstalledModules
-                                } else {
-                                    AbkTab.RuntimeHome
-                                }
+                        AbkTab.Settings -> {
+                            if (state.uiStyle == "miuix") {
+                                com.abk.kernel.miuix.ui.screens.SettingsScreenMiuix(
+                                    vm = vm,
+                                    outerPadding = contentPadding,
+                                    onChildPageVisibleChange = { settingsChildPageVisible = it },
+                                    onOpenInstalledModules = {
+                                        if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
+                                        selectedTab = if (state.rootGranted) {
+                                            AbkTab.InstalledModules
+                                        } else {
+                                            AbkTab.RuntimeHome
+                                        }
+                                    }
+                                )
+                            } else {
+                                SettingsScreen(
+                                    vm = vm,
+                                    outerPadding = contentPadding,
+                                    onChildPageVisibleChange = { settingsChildPageVisible = it },
+                                    onOpenInstalledModules = {
+                                        if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
+                                        selectedTab = if (state.rootGranted) {
+                                            AbkTab.InstalledModules
+                                        } else {
+                                            AbkTab.RuntimeHome
+                                        }
+                                    }
+                                )
                             }
-                        )
+                        }
                     }
                 }
             }
