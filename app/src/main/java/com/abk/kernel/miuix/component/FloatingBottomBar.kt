@@ -340,10 +340,22 @@ fun FloatingBottomBar(
                                 scaleX = s
                                 scaleY = s
                             },
-                            onDrawSurface = { drawRect(containerColor) },
+                            onDrawSurface = {
+                                drawRect(containerColor)
+                                drawRect(Color.White.copy(alpha = 0.03f))
+                            },
                         )
                     } else {
-                        Modifier.background(containerColor, pillShape)
+                        Modifier
+                            .dropShadow(
+                                shape = pillShape,
+                                shadow = Shadow(
+                                    radius = 6.dp,
+                                    color = Color.Black,
+                                    alpha = if (isInDark) 0.3f else 0.15f,
+                                ),
+                            )
+                            .background(containerColor, pillShape)
                     }
                 )
                 .then(if (isBlurEnabled) interactiveHighlight.modifier else Modifier)
@@ -378,7 +390,10 @@ fun FloatingBottomBar(
                                     )
                                 }
                             },
-                            onDrawSurface = { drawRect(containerColor) },
+                            onDrawSurface = {
+                                drawRect(containerColor)
+                                drawRect(Color.White.copy(alpha = 0.03f))
+                            },
                         )
                         .then(interactiveHighlight.modifier)
                         .height(56.dp)
