@@ -92,7 +92,11 @@ import com.abk.kernel.ui.screens.RuntimeHomeScreen
 import com.abk.kernel.ui.screens.SettingsScreen
 import com.abk.kernel.ui.screens.StatusScreen
 import com.abk.kernel.miuix.theme.AbkMiuixTheme
+import com.abk.kernel.miuix.component.FloatingTabItem
+import com.abk.kernel.miuix.component.MiuixFloatingBottomBar
 import com.abk.kernel.ui.theme.AbkTheme
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import com.abk.kernel.ui.theme.LocalUiSurfaceAlpha
 import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
@@ -532,10 +536,16 @@ private fun AbkMainScaffold(
     }
     val navProgress = navProgressAnim.value
 
+    val miuixBackdrop = if (state.uiStyle == "miuix") rememberLayerBackdrop() else null
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)))
+            .then(
+                if (miuixBackdrop != null) Modifier.layerBackdrop(miuixBackdrop)
+                else Modifier
+            )
     ) {
         Box(
             modifier = Modifier
@@ -549,49 +559,72 @@ private fun AbkMainScaffold(
                     alpha = 1f - (hidden * 0.15f)
                 }
         ) {
-            NavigationBar(
-                containerColor = uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainer),
-                tonalElevation = 0.dp
-            ) {
-                visibleTabs.forEach { tab ->
-                    NavigationBarItem(
-                        selected = activeTab == tab,
-                        onClick = { selectedTab = tab },
-                        enabled = !childPageVisible,
-                        alwaysShowLabel = false,
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        ),
-                        icon = {
-                            Icon(
-                                imageVector = when (tab) {
-                                    AbkTab.Status -> Icons.Default.Home
-                                    AbkTab.Build -> Icons.Default.RocketLaunch
-                                    AbkTab.Modules -> Icons.Default.LibraryBooks
-                                    AbkTab.Flash -> if (state.rootGranted) Icons.Default.FlashOn else Icons.Default.FolderOpen
-                                    AbkTab.RuntimeHome -> Icons.Default.Memory
-                                    AbkTab.InstalledModules -> Icons.Default.Extension
-                                    AbkTab.RootAuth -> Icons.Default.AdminPanelSettings
-                                    AbkTab.Settings -> Icons.Default.Settings
-                                },
-                                contentDescription = tab.displayLabel(state.rootGranted)
-                            )
-                        },
-                        label = {
-                            Text(
-                                text = tab.displayLabel(state.rootGranted),
-                                maxLines = 2,
-                                softWrap = true,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center,
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        }
-                    )
+            if (state.uiStyle == "miuix" && miuixBackdrop != null) {
+                MiuixFloatingBottomBar(
+                    items = visibleTabs.map { tab ->
+                        FloatingTabItem(
+                            label = tab.displayLabel(state.rootGranted),
+                            icon = when (tab) {
+                                AbkTab.Status -> Icons.Default.Home
+                                AbkTab.Build -> Icons.Default.RocketLaunch
+                                AbkTab.Modules -> Icons.Default.LibraryBooks
+                                AbkTab.Flash -> if (state.rootGranted) Icons.Default.FlashOn else Icons.Default.FolderOpen
+                                AbkTab.RuntimeHome -> Icons.Default.Memory
+                                AbkTab.InstalledModules -> Icons.Default.Extension
+                                AbkTab.RootAuth -> Icons.Default.AdminPanelSettings
+                                AbkTab.Settings -> Icons.Default.Settings
+                            },
+                            onClick = { if (!childPageVisible) selectedTab = tab },
+                        )
+                    },
+                    selectedIndex = visibleTabs.indexOf(activeTab).coerceAtLeast(0),
+                    backdrop = miuixBackdrop,
+                )
+            } else {
+                NavigationBar(
+                    containerColor = uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainer),
+                    tonalElevation = 0.dp
+                ) {
+                    visibleTabs.forEach { tab ->
+                        NavigationBarItem(
+                            selected = activeTab == tab,
+                            onClick = { selectedTab = tab },
+                            enabled = !childPageVisible,
+                            alwaysShowLabel = false,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            icon = {
+                                Icon(
+                                    imageVector = when (tab) {
+                                        AbkTab.Status -> Icons.Default.Home
+                                        AbkTab.Build -> Icons.Default.RocketLaunch
+                                        AbkTab.Modules -> Icons.Default.LibraryBooks
+                                        AbkTab.Flash -> if (state.rootGranted) Icons.Default.FlashOn else Icons.Default.FolderOpen
+                                        AbkTab.RuntimeHome -> Icons.Default.Memory
+                                        AbkTab.InstalledModules -> Icons.Default.Extension
+                                        AbkTab.RootAuth -> Icons.Default.AdminPanelSettings
+                                        AbkTab.Settings -> Icons.Default.Settings
+                                    },
+                                    contentDescription = tab.displayLabel(state.rootGranted)
+                                )
+                            },
+                            label = {
+                                Text(
+                                    text = tab.displayLabel(state.rootGranted),
+                                    maxLines = 2,
+                                    softWrap = true,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        )
+                    }
                 }
             }
         }
