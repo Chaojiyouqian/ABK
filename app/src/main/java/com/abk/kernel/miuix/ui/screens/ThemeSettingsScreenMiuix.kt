@@ -23,8 +23,8 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.extra.SuperArrow
-import top.yukonga.miuix.kmp.extra.SuperSwitch
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -66,7 +66,7 @@ fun ThemeSettingsScreenMiuix(
             // Section 1: UI 风格
             SectionTitleMiuix("UI 风格")
             Card {
-                SuperSwitch(
+                SwitchPreference(
                     title = "MIUIX HyperOS 风格",
                     summary = "使用小米 HyperOS 设计语言（试点）",
                     checked = state.uiStyle == "miuix",
@@ -79,17 +79,17 @@ fun ThemeSettingsScreenMiuix(
             // Section 2: 外观模式
             SectionTitleMiuix(stringResource(R.string.settings_appearance_mode))
             Card {
-                SuperArrow(
+                ArrowPreference(
                     title = stringResource(R.string.settings_theme_system),
                     summary = "跟随系统",
                     onClick = { vm.setThemeMode("system") }
                 )
-                SuperArrow(
+                ArrowPreference(
                     title = stringResource(R.string.settings_theme_light),
                     summary = "浅色",
                     onClick = { vm.setThemeMode("light") }
                 )
-                SuperArrow(
+                ArrowPreference(
                     title = stringResource(R.string.settings_theme_dark),
                     summary = "深色",
                     onClick = { vm.setThemeMode("dark") }
@@ -99,7 +99,7 @@ fun ThemeSettingsScreenMiuix(
             // Section 3: 颜色来源
             SectionTitleMiuix(stringResource(R.string.settings_color_source))
             Card {
-                SuperSwitch(
+                SwitchPreference(
                     title = stringResource(R.string.settings_monet),
                     summary = if (dynamicColorAvailable) {
                         stringResource(R.string.settings_monet_desc)

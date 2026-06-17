@@ -76,7 +76,7 @@ android {
 
     defaultConfig {
         applicationId = "com.abk.kernel"
-        minSdk = 26
+        minSdk = 33
         targetSdk = 35
         versionCode = 10023
         versionName = "1.2.3-dev"
@@ -203,6 +203,8 @@ dependencies {
     // MIUIX HyperOS theme
     implementation(libs.miuix.core)
     implementation(libs.miuix.icons)
+    implementation(libs.miuix.preference)
+    implementation(libs.miuix.blur)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -86,8 +86,8 @@ import com.abk.kernel.viewmodel.MainViewModel
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.extra.SuperArrow
-import top.yukonga.miuix.kmp.extra.SuperSwitch
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -290,7 +290,7 @@ fun SettingsScreenMiuix(
                             repo.htmlUrl.takeIf { it.isNotBlank() }
                                 ?: "https://github.com/${repo.fullName}"
                         }
-                        SuperArrow(
+                        ArrowPreference(
                             title = stringResource(R.string.settings_fork_repo),
                             summary = state.forkRepo?.fullName
                                 ?: stringResource(R.string.settings_waiting_fork),
@@ -326,7 +326,7 @@ fun SettingsScreenMiuix(
                 SectionTitle(stringResource(R.string.settings_build))
                 Card(modifier = Modifier.fillMaxWidth()) {
                     // Foreground refresh switch
-                    SuperSwitch(
+                    SwitchPreference(
                         title = stringResource(R.string.settings_workflow_foreground_refresh),
                         summary = stringResource(R.string.settings_workflow_foreground_refresh_desc),
                         startAction = { Icon(Icons.Default.Sync, contentDescription = null, tint = iconTint) },
@@ -345,7 +345,7 @@ fun SettingsScreenMiuix(
                         )
                     }
                     // Auto download
-                    SuperSwitch(
+                    SwitchPreference(
                         title = stringResource(R.string.settings_auto_download),
                         summary = stringResource(R.string.settings_auto_download_desc),
                         startAction = { Icon(Icons.Default.Download, contentDescription = null, tint = iconTint) },
@@ -353,7 +353,7 @@ fun SettingsScreenMiuix(
                         onCheckedChange = { vm.setAutoDownload(it) }
                     )
                     // Prebuilt GKI
-                    SuperSwitch(
+                    SwitchPreference(
                         title = stringResource(R.string.settings_prebuilt_gki),
                         summary = stringResource(R.string.settings_prebuilt_gki_desc),
                         startAction = { Icon(Icons.Default.CloudDownload, contentDescription = null, tint = iconTint) },
@@ -374,7 +374,7 @@ fun SettingsScreenMiuix(
                     )
                     // Clear artifacts
                     val hasArtifacts = state.downloadedArtifacts.isNotEmpty()
-                    SuperArrow(
+                    ArrowPreference(
                         title = stringResource(R.string.settings_clear_artifacts),
                         summary = if (hasArtifacts) {
                             val count = state.downloadedArtifacts.size
@@ -408,7 +408,7 @@ fun SettingsScreenMiuix(
                         onSelect = vm::setAppUpdateLine
                     )
                     // Check for update
-                    SuperArrow(
+                    ArrowPreference(
                         title = stringResource(R.string.settings_check_app_update),
                         summary = appUpdateCheckSubtitle(state),
                         endActions = {
@@ -422,7 +422,7 @@ fun SettingsScreenMiuix(
                     )
                     // Update info display
                     state.appUpdateInfo?.let { info ->
-                        SuperArrow(
+                        ArrowPreference(
                             title = if (info.hasUpdate) {
                                 stringResource(R.string.settings_app_update_available)
                             } else {
@@ -443,7 +443,7 @@ fun SettingsScreenMiuix(
                             exit = fadeOut()
                         ) {
                             val downloadUrl = info.remote.downloadUrl
-                            SuperArrow(
+                            ArrowPreference(
                                 title = stringResource(R.string.settings_download_install_update),
                                 summary = when {
                                     state.appUpdateDownloading -> stringResource(
@@ -468,7 +468,7 @@ fun SettingsScreenMiuix(
                     }
                     // Error display
                     state.appUpdateError?.takeIf { it.isNotBlank() }?.let { error ->
-                        SuperArrow(
+                        ArrowPreference(
                             title = stringResource(R.string.settings_app_update_error),
                             summary = error,
                             startAction = { Icon(Icons.Default.Error, contentDescription = null, tint = iconTint) }
@@ -515,7 +515,7 @@ fun SettingsScreenMiuix(
                             }
                             // Error state
                             state.managerSettingsError?.let { error ->
-                                SuperArrow(
+                                ArrowPreference(
                                     title = stringResource(R.string.settings_manager_load_failed),
                                     summary = error,
                                     onClick = { vm.refreshManagerSettings(force = true) }
@@ -525,7 +525,7 @@ fun SettingsScreenMiuix(
                             state.managerSettingsItems.forEach { item ->
                                 val actionInFlight = state.managerSettingActionId == item.id
                                 when (item.kind) {
-                                    ManagerSettingKind.NAVIGATION -> SuperArrow(
+                                    ManagerSettingKind.NAVIGATION -> ArrowPreference(
                                         title = item.title,
                                         summary = item.subtitle,
                                         startAction = { Icon(managerSettingIcon(item.id), contentDescription = null, tint = iconTint) },
@@ -540,7 +540,7 @@ fun SettingsScreenMiuix(
                                             }
                                         } else null
                                     )
-                                    ManagerSettingKind.SWITCH -> SuperSwitch(
+                                    ManagerSettingKind.SWITCH -> SwitchPreference(
                                         title = item.title,
                                         summary = item.subtitle,
                                         startAction = { Icon(managerSettingIcon(item.id), contentDescription = null, tint = iconTint) },
@@ -562,7 +562,7 @@ fun SettingsScreenMiuix(
                                         SectionSubLabel(item.title)
                                         options.forEachIndexed { index, option ->
                                             val selected = index == selectedIndex
-                                            SuperArrow(
+                                            ArrowPreference(
                                                 title = option,
                                                 summary = if (selected) "✓" else null,
                                                 startAction = { Icon(managerSettingIcon(item.id), contentDescription = null, tint = iconTint) },
@@ -583,7 +583,7 @@ fun SettingsScreenMiuix(
                 // ═══════════════════════════════════════════════════════════
                 SectionTitle(stringResource(R.string.settings_notification))
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    SuperSwitch(
+                    SwitchPreference(
                         title = stringResource(R.string.settings_notify_build),
                         summary = stringResource(R.string.settings_notify_build_desc),
                         startAction = { Icon(Icons.Default.Notifications, contentDescription = null, tint = iconTint) },
@@ -597,7 +597,7 @@ fun SettingsScreenMiuix(
                 // ═══════════════════════════════════════════════════════════
                 SectionTitle(stringResource(R.string.settings_navigation))
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    SuperSwitch(
+                    SwitchPreference(
                         title = stringResource(R.string.settings_predictive_back),
                         summary = stringResource(R.string.settings_predictive_back_desc),
                         startAction = { Icon(Icons.Default.ArrowBack, contentDescription = null, tint = iconTint) },
@@ -627,7 +627,7 @@ fun SettingsScreenMiuix(
                 // ═══════════════════════════════════════════════════════════
                 SectionTitle(stringResource(R.string.settings_theme))
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    SuperArrow(
+                    ArrowPreference(
                         title = stringResource(R.string.settings_color_appearance),
                         summary = "${themeModeLabel(state.themeMode)} · ${dynamicColorLabel(state.dynamicColorEnabled)}",
                         startAction = { Icon(Icons.Default.Palette, contentDescription = null, tint = iconTint) },
@@ -641,7 +641,7 @@ fun SettingsScreenMiuix(
                 // ═══════════════════════════════════════════════════════════
                 SectionTitle(stringResource(R.string.settings_extensions_title))
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    SuperArrow(
+                    ArrowPreference(
                         title = stringResource(R.string.settings_extensions_manage),
                         summary = stringResource(R.string.settings_extensions_manage_desc),
                         startAction = { Icon(Icons.Default.Extension, contentDescription = null, tint = iconTint) },
@@ -655,19 +655,19 @@ fun SettingsScreenMiuix(
                 // ═══════════════════════════════════════════════════════════
                 SectionTitle(stringResource(R.string.settings_about))
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    SuperArrow(
+                    ArrowPreference(
                         title = stringResource(R.string.app_full_name),
                         summary = "AnyBase Kernel v${BuildConfig.VERSION_NAME}",
                         startAction = { Icon(Icons.Default.Info, contentDescription = null, tint = iconTint) }
                     )
-                    SuperArrow(
+                    ArrowPreference(
                         title = stringResource(R.string.settings_about),
                         summary = stringResource(R.string.settings_about_desc),
                         startAction = { Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = iconTint) },
                         endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = iconTint) },
                         onClick = onAbout
                     )
-                    SuperArrow(
+                    ArrowPreference(
                         title = stringResource(R.string.settings_open_source_licenses),
                         summary = stringResource(R.string.settings_open_source_licenses_desc),
                         startAction = { Icon(Icons.Default.Article, contentDescription = null, tint = iconTint) },
@@ -755,7 +755,7 @@ private fun ForegroundRefreshIntervalPicker(
     ) {
         PreferencesRepository.WORKFLOW_FOREGROUND_REFRESH_INTERVALS_SEC.sorted().forEach { sec ->
             val selected = selectedSec == sec
-            SuperArrow(
+            ArrowPreference(
                 title = stringResource(
                     R.string.settings_workflow_foreground_refresh_interval_sec,
                     sec
@@ -784,7 +784,7 @@ private fun AppUpdateStabilityPicker(
     ) {
         options.forEach { (value, label) ->
             val isSelected = normalizeAppUpdateStability(selected) == value
-            SuperArrow(
+            ArrowPreference(
                 title = label,
                 summary = if (isSelected) "✓" else null,
                 onClick = { onSelect(value) }
@@ -810,7 +810,7 @@ private fun AppUpdateLinePicker(
     ) {
         options.forEach { (value, label) ->
             val isSelected = normalizeAppUpdateLine(selected) == value
-            SuperArrow(
+            ArrowPreference(
                 title = label,
                 summary = if (isSelected) "✓" else null,
                 onClick = { onSelect(value) }
@@ -962,7 +962,7 @@ private fun LanguagePicker(
     )
     options.forEach { (lang, label) ->
         val selected = currentLanguage == lang
-        SuperArrow(
+        ArrowPreference(
             title = label,
             summary = if (selected) "✓" else null,
             startAction = { Icon(Icons.Default.Language, contentDescription = null, tint = MiuixTheme.colorScheme.onSurfaceSecondary) },
