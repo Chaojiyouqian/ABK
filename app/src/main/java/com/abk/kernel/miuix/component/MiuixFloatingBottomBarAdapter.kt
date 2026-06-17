@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -31,6 +33,7 @@ fun MiuixFloatingBottomBar(
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
 ) {
+    val selectedIndexState by rememberUpdatedState(selectedIndex)
     FloatingBottomBar(
         modifier = modifier
             .clickable(
@@ -39,7 +42,7 @@ fun MiuixFloatingBottomBar(
                 onClick = {},
             )
             .padding(bottom = 12.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
-        selectedIndex = { selectedIndex },
+        selectedIndex = { selectedIndexState },
         onSelected = { items.getOrNull(it)?.onClick?.invoke() },
         backdrop = backdrop,
         tabsCount = items.size,
