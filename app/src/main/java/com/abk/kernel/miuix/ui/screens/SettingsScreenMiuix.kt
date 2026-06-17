@@ -22,8 +22,8 @@ import com.abk.kernel.viewmodel.MainViewModel
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.preference.SwitchPreference
-import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.extra.SuperSwitch
+import top.yukonga.miuix.kmp.extra.SuperArrow
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -71,12 +71,12 @@ fun SettingsScreenMiuix(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 state.user?.let { user ->
-                    ArrowPreference(
+                    SuperArrow(
                         title = user.login,
                         summary = user.name ?: user.htmlUrl
                     )
                 } ?: run {
-                    ArrowPreference(
+                    SuperArrow(
                         title = stringResource(R.string.settings_not_logged_in)
                     )
                 }
@@ -87,13 +87,13 @@ fun SettingsScreenMiuix(
             Card(
                 modifier = Modifier.fillMaxWidth()
             ) {
-                SwitchPreference(
+                SuperSwitch(
                     title = stringResource(R.string.settings_auto_download),
                     summary = stringResource(R.string.settings_auto_download_desc),
                     checked = state.autoDownload,
                     onCheckedChange = { vm.setAutoDownload(it) }
                 )
-                SwitchPreference(
+                SuperSwitch(
                     title = stringResource(R.string.settings_prebuilt_gki),
                     summary = stringResource(R.string.settings_prebuilt_gki_desc),
                     checked = state.prebuiltGkiEnabled,
@@ -106,17 +106,17 @@ fun SettingsScreenMiuix(
             Card(
                 modifier = Modifier.fillMaxWidth()
             ) {
-                ArrowPreference(
+                SuperArrow(
                     title = stringResource(R.string.settings_theme),
                     summary = "${themeModeLabel(state.themeMode)} · ${if (state.dynamicColorEnabled) "动态色" else "自定义"}"
                 )
-                SwitchPreference(
+                SuperSwitch(
                     title = "Material You 动态色",
                     summary = "跟随系统壁纸配色",
                     checked = state.dynamicColorEnabled,
                     onCheckedChange = { vm.setDynamicColorEnabled(it) }
                 )
-                ArrowPreference(
+                SuperArrow(
                     title = "切换到 Material 3 风格",
                     summary = "返回 Material 3 Expressive 主题",
                     onClick = { vm.setUiStyle("material") }
@@ -128,11 +128,11 @@ fun SettingsScreenMiuix(
             Card(
                 modifier = Modifier.fillMaxWidth()
             ) {
-                ArrowPreference(
+                SuperArrow(
                     title = stringResource(R.string.settings_version),
                     summary = "${BuildConfig.APP_VERSION_NAME} (${BuildConfig.APP_VERSION_CODE})"
                 )
-                ArrowPreference(
+                SuperArrow(
                     title = stringResource(R.string.settings_about_title),
                     summary = stringResource(R.string.settings_about_desc),
                     onClick = onOpenInstalledModules
@@ -148,8 +148,8 @@ fun SettingsScreenMiuix(
 private fun SettingsSectionTitle(title: String) {
     Text(
         text = title,
-        style = MiuixTheme.textStyles.titleSmall,
-        color = MiuixTheme.colorScheme.onSurfaceVariant,
+        style = MiuixTheme.textStyles.subtitle,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         modifier = Modifier.padding(start = 4.dp, top = 8.dp)
     )
 }
