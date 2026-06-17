@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.abk.kernel.BuildConfig
@@ -84,6 +85,7 @@ import com.abk.kernel.utils.LocaleHelper
 import com.abk.kernel.viewmodel.MainUiState
 import com.abk.kernel.viewmodel.MainViewModel
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -117,6 +119,7 @@ fun SettingsScreenMiuix(
     onOpenExtensionManager: () -> Unit = {}
 ) {
     val state by vm.uiState.collectAsState()
+    val scrollBehavior = MiuixScrollBehavior()
     val iconTint = MiuixTheme.colorScheme.onSurfaceSecondary
 
     // ── Child page state (extensible for future pages) ────────────────────
@@ -225,7 +228,8 @@ fun SettingsScreenMiuix(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = stringResource(R.string.settings_title)
+                    title = stringResource(R.string.settings_title),
+                    scrollBehavior = scrollBehavior
                 )
             }
         ) { padding ->
@@ -234,6 +238,7 @@ fun SettingsScreenMiuix(
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
                     .verticalScroll(listState)
                     .overScrollVertical()
                     .scrollEndHaptic()
