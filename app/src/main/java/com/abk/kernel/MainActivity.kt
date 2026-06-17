@@ -96,7 +96,6 @@ import com.abk.kernel.miuix.component.FloatingTabItem
 import com.abk.kernel.miuix.component.MiuixFloatingBottomBar
 import com.abk.kernel.ui.theme.AbkTheme
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
-import top.yukonga.miuix.kmp.blur.layerBackdrop
 import com.abk.kernel.ui.theme.LocalUiSurfaceAlpha
 import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
@@ -542,10 +541,6 @@ private fun AbkMainScaffold(
         modifier = Modifier
             .fillMaxSize()
             .background(appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)))
-            .then(
-                if (miuixBackdrop != null) Modifier.layerBackdrop(miuixBackdrop)
-                else Modifier
-            )
     ) {
         Box(
             modifier = Modifier
