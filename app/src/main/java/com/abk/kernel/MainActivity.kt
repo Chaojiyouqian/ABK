@@ -672,6 +672,18 @@ private fun AbkMainScaffold(
                                     vm = vm,
                                     outerPadding = contentPadding,
                                     onChildPageVisibleChange = { settingsChildPageVisible = it },
+                                    onLogout = { /* 内部已弹出 AlertDialog 确认后调用 vm.logout() */ },
+                                    onOpenThemeSettings = { /* 由 SettingsScreenMiuix 内部管理 */ },
+                                    onOpenAppProfileTemplates = { /* 暂时空 */ },
+                                    onOpenManagerTools = { /* 暂时空 */ },
+                                    onOpenInstalledModules = {
+                                        if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
+                                        selectedTab = if (state.rootGranted) {
+                                            AbkTab.InstalledModules
+                                        } else {
+                                            AbkTab.RuntimeHome
+                                        }
+                                    },
                                     onAbout = { /* 暂时空实现 */ },
                                     onOpenSourceLicenses = { /* 暂时空实现 */ },
                                     onOpenExtensionManager = { /* 暂时空实现 */ }
