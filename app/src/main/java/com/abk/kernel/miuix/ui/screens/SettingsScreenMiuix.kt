@@ -13,6 +13,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -44,7 +47,11 @@ fun SettingsScreenMiuix(
     onOpenInstalledModules: () -> Unit = {}
 ) {
     val state by vm.uiState.collectAsState()
+    var showThemeSettings by rememberSaveable { mutableStateOf(false) }
 
+    if (showThemeSettings) {
+        ThemeSettingsScreenMiuix(vm = vm, onBack = { showThemeSettings = false })
+    } else {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -108,7 +115,8 @@ fun SettingsScreenMiuix(
             ) {
                 SuperArrow(
                     title = stringResource(R.string.settings_theme),
-                    summary = "${themeModeLabel(state.themeMode)} · ${if (state.dynamicColorEnabled) "动态色" else "自定义"}"
+                    summary = "${themeModeLabel(state.themeMode)} · ${if (state.dynamicColorEnabled) "动态色" else "自定义"}",
+                    onClick = { showThemeSettings = true }
                 )
                 SuperSwitch(
                     title = "Material You 动态色",
@@ -142,6 +150,7 @@ fun SettingsScreenMiuix(
             Spacer(Modifier.height(60.dp))
         }
     }
+    } // end else
 }
 
 @Composable

@@ -321,7 +321,9 @@ fun SettingsScreen(
                         },
                         onBackgroundImageChange = { uri -> vm.setBackgroundImageUri(uri) },
                         onBackgroundImageEnabledChange = { enabled -> vm.setBackgroundImageEnabled(enabled) },
-                        onUiSurfaceAlphaChange = { alpha -> vm.setUiSurfaceAlpha(alpha) }
+                        onUiSurfaceAlphaChange = { alpha -> vm.setUiSurfaceAlpha(alpha) },
+                        uiStyle = state.uiStyle,
+                        onUiStyleChange = { style -> vm.setUiStyle(style) }
                     )
                 }
             }
@@ -797,15 +799,6 @@ private fun SettingsMainContent(
                 },
                 onClick = onOpenThemeSettings
             )
-            ExpressiveSwitchItem(
-                title = "MIUIX HyperOS 风格",
-                subtitle = "使用小米 HyperOS 设计语言（试点）",
-                icon = Icons.Default.Style,
-                checked = state.uiStyle == "miuix",
-                onCheckedChange = { enabled ->
-                    vm.setUiStyle(if (enabled) "miuix" else "material")
-                }
-            )
         }
 
         SettingsGroup(title = stringResource(R.string.settings_extensions_title)) {
@@ -1267,7 +1260,9 @@ private fun ThemeSettingsScreen(
     onCustomThemeColorsChange: (Int, Int) -> Unit,
     onBackgroundImageChange: (String?) -> Unit,
     onBackgroundImageEnabledChange: (Boolean) -> Unit,
-    onUiSurfaceAlphaChange: (Float) -> Unit
+    onUiSurfaceAlphaChange: (Float) -> Unit,
+    uiStyle: String = "material",
+    onUiStyleChange: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val dynamicColorAvailable = isDynamicColorAvailable()
@@ -1302,6 +1297,18 @@ private fun ThemeSettingsScreen(
             .padding(horizontal = AbkScreenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        SettingsGroup(title = "UI 风格") {
+            ExpressiveSwitchItem(
+                title = "MIUIX HyperOS 风格",
+                subtitle = "使用小米 HyperOS 设计语言（试点）",
+                icon = Icons.Default.Style,
+                checked = uiStyle == "miuix",
+                onCheckedChange = { enabled ->
+                    onUiStyleChange(if (enabled) "miuix" else "material")
+                }
+            )
+        }
+
         SettingsGroup(title = stringResource(R.string.settings_appearance_mode)) {
             themes.forEach { (key, label, icon) ->
                 val selected = themeMode == key
