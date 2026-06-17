@@ -554,7 +554,7 @@ private fun AbkMainScaffold(
                     alpha = 1f - (hidden * 0.15f)
                 }
         ) {
-            if (state.uiStyle == "miuix" && miuixBackdrop != null) {
+            if (state.uiStyle == "miuix" && state.miuixFloatingBottomBarEnabled && miuixBackdrop != null) {
                 MiuixFloatingBottomBar(
                     items = visibleTabs.map { tab ->
                         FloatingTabItem(
