@@ -5,7 +5,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
@@ -15,7 +14,6 @@ fun AbkMiuixTheme(
     themeMode: String = "system",
     dynamicColorEnabled: Boolean = true,
     customThemeColorArgb: Int? = null,
-    customAccentColorArgb: Int? = null,
     content: @Composable () -> Unit
 ) {
     val darkTheme = when (themeMode) {

@@ -1,7 +1,6 @@
 package com.abk.kernel
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
 import com.abk.kernel.utils.LocaleHelper
 import com.abk.kernel.utils.findActivity
@@ -197,7 +196,6 @@ class MainActivity : ComponentActivity() {
                     themeMode = state.themeMode,
                     dynamicColorEnabled = state.dynamicColorEnabled,
                     customThemeColorArgb = state.customThemeColorArgb,
-                    customAccentColorArgb = state.customAccentColorArgb,
                     content = themeContent
                 )
                 else -> AbkTheme(
