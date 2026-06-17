@@ -92,6 +92,7 @@ import com.abk.kernel.ui.screens.RootAuthorizationScreen
 import com.abk.kernel.ui.screens.RuntimeHomeScreen
 import com.abk.kernel.ui.screens.SettingsScreen
 import com.abk.kernel.ui.screens.StatusScreen
+import com.abk.kernel.miuix.theme.AbkMiuixTheme
 import com.abk.kernel.ui.theme.AbkTheme
 import com.abk.kernel.ui.theme.LocalUiSurfaceAlpha
 import com.abk.kernel.ui.theme.appPageBackgroundColor
@@ -146,12 +147,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            AbkTheme(
-                themeMode = state.themeMode,
-                dynamicColorEnabled = state.dynamicColorEnabled,
-                customThemeColorArgb = state.customThemeColorArgb,
-                customAccentColorArgb = state.customAccentColorArgb
-            ) {
+            val themeContent: @Composable () -> Unit = {
                 AppBackgroundHost(
                     backgroundUri = state.customBackgroundUri,
                     backgroundEnabled = state.backgroundImageEnabled,
@@ -160,7 +156,7 @@ class MainActivity : ComponentActivity() {
                     when {
                         !state.termsLoaded -> Surface(
                             modifier = Modifier.fillMaxSize(),
-                            color = MaterialTheme.colorScheme.surface
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.surface
                         ) {}
                         !state.termsAccepted -> TermsAgreementDialog(
                             onAccept = vm::acceptTerms,
@@ -184,7 +180,7 @@ class MainActivity : ComponentActivity() {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .background(MaterialTheme.colorScheme.surface)
+                                            .background(androidx.compose.material3.MaterialTheme.colorScheme.surface)
                                             .zIndex(4f)
                                     ) {
                                         OobeScreen(vm)
@@ -194,6 +190,23 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+            }
+
+            when (state.uiStyle) {
+                "miuix" -> AbkMiuixTheme(
+                    themeMode = state.themeMode,
+                    dynamicColorEnabled = state.dynamicColorEnabled,
+                    customThemeColorArgb = state.customThemeColorArgb,
+                    customAccentColorArgb = state.customAccentColorArgb,
+                    content = themeContent
+                )
+                else -> AbkTheme(
+                    themeMode = state.themeMode,
+                    dynamicColorEnabled = state.dynamicColorEnabled,
+                    customThemeColorArgb = state.customThemeColorArgb,
+                    customAccentColorArgb = state.customAccentColorArgb,
+                    content = themeContent
+                )
             }
         }
     }

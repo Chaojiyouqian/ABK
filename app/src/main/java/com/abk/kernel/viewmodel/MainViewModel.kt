@@ -175,6 +175,7 @@ data class MainUiState(
     val dynamicColorEnabled: Boolean = true,
     val customThemeColorArgb: Int? = null,
     val customAccentColorArgb: Int? = null,
+    val uiStyle: String = "material",
     val customBackgroundUri: String? = null,
     val backgroundImageEnabled: Boolean = false,
     val uiSurfaceAlpha: Float = 1f,
@@ -514,6 +515,11 @@ class MainViewModel @JvmOverloads constructor(
                         customAccentColorArgb = themePrefs.customAccentColorArgb
                     )
                 }
+            }
+        }
+        viewModelScope.launch {
+            prefs.uiStyle.collect { style ->
+                _uiState.update { it.copy(uiStyle = style) }
             }
         }
         viewModelScope.launch {
@@ -2747,6 +2753,7 @@ class MainViewModel @JvmOverloads constructor(
     fun setWorkflowForegroundRefreshIntervalSec(seconds: Int) = viewModelScope.launch {
         prefs.setWorkflowForegroundRefreshIntervalSec(seconds)
     }
+    fun setUiStyle(style: String) = viewModelScope.launch { prefs.setUiStyle(style) }
     fun setThemeMode(mode: String) = viewModelScope.launch { prefs.setThemeMode(mode) }
     fun setDynamicColorEnabled(
         v: Boolean,
