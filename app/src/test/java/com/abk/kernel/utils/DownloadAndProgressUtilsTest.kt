@@ -1,6 +1,7 @@
 package com.abk.kernel.utils
 
 import com.abk.kernel.data.model.ArtifactType
+import com.abk.kernel.data.model.toArtifactCategory
 import com.abk.kernel.data.model.Artifact
 import com.abk.kernel.data.model.APP_UPDATE_LINE_DEV
 import com.abk.kernel.data.model.APP_UPDATE_LINE_NORMAL
@@ -107,7 +108,7 @@ class DownloadAndProgressUtilsTest {
 
     @Test
     fun selectsExpectedApkForAppUpdateChannel() {
-        val root = createTempDir("app-update-select")
+        val root = kotlin.io.path.createTempDirectory("app-update-select").toFile()
         val release = File(root, "app-release.apk").apply { writeText("release") }
         val debug = File(root, "app-debug.apk").apply { writeText("debug") }
         val devRelease = File(root, "app-release-dev.apk").apply { writeText("dev-release") }
@@ -127,7 +128,7 @@ class DownloadAndProgressUtilsTest {
 
     @Test
     fun collectArtifactPayloadFilesSkipsNoticeFilesEvenAsFallback() {
-        val root = createTempDir("download-utils-test").apply {
+        val root = kotlin.io.path.createTempDirectory("download-utils-test").toFile().apply {
             deleteOnExit()
         }
         File(root, "LICENSE").writeText("license text")
