@@ -200,6 +200,10 @@ dependencies {
     // Preferences
     implementation(libs.datastore.preferences)
 
+    // MIUIX HyperOS theme
+    implementation(libs.miuix.core)
+    implementation(libs.miuix.icons)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

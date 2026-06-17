@@ -68,6 +68,9 @@ class PreferencesRepository(private val context: Context) {
         val KEY_GHOST_FAILED_RUNS = stringPreferencesKey("ghost_failed_runs_json")
         val KEY_DISMISSED_GHOST_RUN_IDS = stringPreferencesKey("dismissed_ghost_run_ids_json")
         val KEY_OOBE_COMPLETED = booleanPreferencesKey("oobe_completed")
+        val KEY_UI_STYLE = stringPreferencesKey("ui_style") // "material" | "miuix"
+        val KEY_MIUIX_THEME_COLOR = intPreferencesKey("miuix_theme_color_argb")
+        val KEY_MIUIX_ACCENT_COLOR = intPreferencesKey("miuix_accent_color_argb")
     }
 
     val accessToken: Flow<String?> = context.dataStore.data.map { it[KEY_ACCESS_TOKEN] }
@@ -145,6 +148,9 @@ class PreferencesRepository(private val context: Context) {
     val ghostFailedRunsJson: Flow<String?> = context.dataStore.data.map { it[KEY_GHOST_FAILED_RUNS] }
     val dismissedGhostRunIdsJson: Flow<String?> = context.dataStore.data.map { it[KEY_DISMISSED_GHOST_RUN_IDS] }
     val oobeCompleted: Flow<Boolean> = context.dataStore.data.map { it[KEY_OOBE_COMPLETED] ?: false }
+    val uiStyle: Flow<String> = context.dataStore.data.map { it[KEY_UI_STYLE] ?: "material" }
+    val miuixThemeColorArgb: Flow<Int?> = context.dataStore.data.map { it[KEY_MIUIX_THEME_COLOR] }
+    val miuixAccentColorArgb: Flow<Int?> = context.dataStore.data.map { it[KEY_MIUIX_ACCENT_COLOR] }
 
     suspend fun saveToken(token: String) = context.dataStore.edit { it[KEY_ACCESS_TOKEN] = token }
     suspend fun saveUsername(name: String) = context.dataStore.edit { it[KEY_USERNAME] = name }
@@ -258,6 +264,9 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setOobeCompleted(v: Boolean) = context.dataStore.edit {
         it[KEY_OOBE_COMPLETED] = v
     }
+    suspend fun setUiStyle(style: String) = context.dataStore.edit { it[KEY_UI_STYLE] = style }
+    suspend fun setMiuixThemeColor(argb: Int) = context.dataStore.edit { it[KEY_MIUIX_THEME_COLOR] = argb }
+    suspend fun setMiuixAccentColor(argb: Int) = context.dataStore.edit { it[KEY_MIUIX_ACCENT_COLOR] = argb }
     suspend fun clearPendingAutoDownloadRunId() = context.dataStore.edit { it.remove(KEY_PENDING_AUTO_DOWNLOAD_RUN_ID) }
 
     private fun workflowStepsVersionKey(lang: String) = intPreferencesKey("workflow_steps_version_$lang")
