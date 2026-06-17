@@ -101,6 +101,7 @@ fun SettingsScreenMiuix(
     onOpenExtensionManager: () -> Unit = {}
 ) {
     val state by vm.uiState.collectAsState()
+    val iconTint = MiuixTheme.colorScheme.onSurfaceSecondary
     var showThemeSettings by rememberSaveable { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showClearArtifactsDialog by remember { mutableStateOf(false) }
@@ -237,7 +238,7 @@ fun SettingsScreenMiuix(
                             title = stringResource(R.string.settings_fork_repo),
                             summary = state.forkRepo?.fullName
                                 ?: stringResource(R.string.settings_waiting_fork),
-                            startAction = { Icon(Icons.Default.ForkRight, contentDescription = null) },
+                            startAction = { Icon(Icons.Default.ForkRight, contentDescription = null, tint = iconTint) },
                             onClick = forkUrl?.let { url -> { openUrl(context, url) } }
                         )
                     } ?: run {
@@ -272,7 +273,7 @@ fun SettingsScreenMiuix(
                     SuperSwitch(
                         title = stringResource(R.string.settings_workflow_foreground_refresh),
                         summary = stringResource(R.string.settings_workflow_foreground_refresh_desc),
-                        startAction = { Icon(Icons.Default.Sync, contentDescription = null) },
+                        startAction = { Icon(Icons.Default.Sync, contentDescription = null, tint = iconTint) },
                         checked = state.workflowForegroundRefreshEnabled,
                         onCheckedChange = { vm.setWorkflowForegroundRefreshEnabled(it) }
                     )
@@ -291,7 +292,7 @@ fun SettingsScreenMiuix(
                     SuperSwitch(
                         title = stringResource(R.string.settings_auto_download),
                         summary = stringResource(R.string.settings_auto_download_desc),
-                        startAction = { Icon(Icons.Default.Download, contentDescription = null) },
+                        startAction = { Icon(Icons.Default.Download, contentDescription = null, tint = iconTint) },
                         checked = state.autoDownload,
                         onCheckedChange = { vm.setAutoDownload(it) }
                     )
@@ -299,7 +300,7 @@ fun SettingsScreenMiuix(
                     SuperSwitch(
                         title = stringResource(R.string.settings_prebuilt_gki),
                         summary = stringResource(R.string.settings_prebuilt_gki_desc),
-                        startAction = { Icon(Icons.Default.CloudDownload, contentDescription = null) },
+                        startAction = { Icon(Icons.Default.CloudDownload, contentDescription = null, tint = iconTint) },
                         checked = state.prebuiltGkiEnabled,
                         onCheckedChange = { vm.setPrebuiltGkiEnabled(it) }
                     )
@@ -307,13 +308,13 @@ fun SettingsScreenMiuix(
                     DownloadDirectoryItem(
                         value = state.downloadDirectory,
                         onValueChange = { vm.setDownloadDirectory(it) },
-                        leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) }
+                        leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null, tint = iconTint) }
                     )
                     // Mirror URL
                     MirrorUrlItem(
                         value = state.downloadMirrorBaseUrl,
                         onValueChange = { vm.setDownloadMirrorBaseUrl(it) },
-                        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) }
+                        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null, tint = iconTint) }
                     )
                     // Clear artifacts
                     val hasArtifacts = state.downloadedArtifacts.isNotEmpty()
@@ -326,7 +327,7 @@ fun SettingsScreenMiuix(
                         } else {
                             stringResource(R.string.settings_clear_artifacts_empty)
                         },
-                        startAction = { Icon(Icons.Default.Delete, contentDescription = null) },
+                        startAction = { Icon(Icons.Default.Delete, contentDescription = null, tint = iconTint) },
                         onClick = if (hasArtifacts) {
                             { showClearArtifactsDialog = true }
                         } else null
@@ -356,9 +357,9 @@ fun SettingsScreenMiuix(
                         summary = appUpdateCheckSubtitle(state),
                         endActions = {
                             if (state.appUpdateChecking) {
-                                CircularProgressIndicator(modifier = Modifier.size(22.dp))
+                                CircularProgressIndicator(modifier = Modifier.size(22.dp), color = MiuixTheme.colorScheme.primary)
                             } else {
-                                Icon(Icons.Default.Refresh, contentDescription = null)
+                                Icon(Icons.Default.Refresh, contentDescription = null, tint = iconTint)
                             }
                         },
                         onClick = { if (!state.appUpdateChecking) vm.checkAppUpdate() }
@@ -375,7 +376,8 @@ fun SettingsScreenMiuix(
                             startAction = {
                                 Icon(
                                     imageVector = if (info.hasUpdate) Icons.Default.Download else Icons.Default.Verified,
-                                    contentDescription = null
+                                    contentDescription = null,
+                                    tint = iconTint
                                 )
                             }
                         )
@@ -395,12 +397,12 @@ fun SettingsScreenMiuix(
                                     downloadUrl.isBlank() -> stringResource(R.string.settings_app_update_link_missing)
                                     else -> downloadUrl
                                 },
-                                startAction = { Icon(Icons.Default.InstallMobile, contentDescription = null) },
+                                startAction = { Icon(Icons.Default.InstallMobile, contentDescription = null, tint = iconTint) },
                                 endActions = {
                                     if (state.appUpdateDownloading) {
-                                        CircularProgressIndicator(modifier = Modifier.size(22.dp))
+                                        CircularProgressIndicator(modifier = Modifier.size(22.dp), color = MiuixTheme.colorScheme.primary)
                                     } else {
-                                        Icon(Icons.Default.Download, contentDescription = null)
+                                        Icon(Icons.Default.Download, contentDescription = null, tint = iconTint)
                                     }
                                 },
                                 onClick = downloadUrl.takeIf { it.isNotBlank() }
@@ -413,7 +415,7 @@ fun SettingsScreenMiuix(
                         SuperArrow(
                             title = stringResource(R.string.settings_app_update_error),
                             summary = error,
-                            startAction = { Icon(Icons.Default.Error, contentDescription = null) }
+                            startAction = { Icon(Icons.Default.Error, contentDescription = null, tint = iconTint) }
                         )
                     }
                 }
@@ -441,7 +443,7 @@ fun SettingsScreenMiuix(
                                         .padding(16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MiuixTheme.colorScheme.primary)
                                     Column {
                                         top.yukonga.miuix.kmp.basic.Text(
                                             text = stringResource(R.string.settings_manager_loading_title),
@@ -470,8 +472,8 @@ fun SettingsScreenMiuix(
                                     ManagerSettingKind.NAVIGATION -> SuperArrow(
                                         title = item.title,
                                         summary = item.subtitle,
-                                        startAction = { Icon(managerSettingIcon(item.id), contentDescription = null) },
-                                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
+                                        startAction = { Icon(managerSettingIcon(item.id), contentDescription = null, tint = iconTint) },
+                                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = iconTint) },
                                         onClick = if (item.enabled && !actionInFlight) {
                                             {
                                                 when (item.id) {
@@ -485,7 +487,7 @@ fun SettingsScreenMiuix(
                                     ManagerSettingKind.SWITCH -> SuperSwitch(
                                         title = item.title,
                                         summary = item.subtitle,
-                                        startAction = { Icon(managerSettingIcon(item.id), contentDescription = null) },
+                                        startAction = { Icon(managerSettingIcon(item.id), contentDescription = null, tint = iconTint) },
                                         checked = item.checked,
                                         onCheckedChange = { checked ->
                                             if (item.enabled && !actionInFlight) {
@@ -507,7 +509,7 @@ fun SettingsScreenMiuix(
                                             SuperArrow(
                                                 title = option,
                                                 summary = if (selected) "✓" else null,
-                                                startAction = { Icon(managerSettingIcon(item.id), contentDescription = null) },
+                                                startAction = { Icon(managerSettingIcon(item.id), contentDescription = null, tint = iconTint) },
                                                 onClick = if (item.enabled && !actionInFlight && index != selectedIndex) {
                                                     { vm.setManagerSettingMode(item.id, index) }
                                                 } else null
@@ -528,7 +530,7 @@ fun SettingsScreenMiuix(
                     SuperSwitch(
                         title = stringResource(R.string.settings_notify_build),
                         summary = stringResource(R.string.settings_notify_build_desc),
-                        startAction = { Icon(Icons.Default.Notifications, contentDescription = null) },
+                        startAction = { Icon(Icons.Default.Notifications, contentDescription = null, tint = iconTint) },
                         checked = state.notifyBuild,
                         onCheckedChange = { vm.setNotifyBuild(it) }
                     )
@@ -542,7 +544,7 @@ fun SettingsScreenMiuix(
                     SuperSwitch(
                         title = stringResource(R.string.settings_predictive_back),
                         summary = stringResource(R.string.settings_predictive_back_desc),
-                        startAction = { Icon(Icons.Default.ArrowBack, contentDescription = null) },
+                        startAction = { Icon(Icons.Default.ArrowBack, contentDescription = null, tint = iconTint) },
                         checked = state.predictiveBackEnabled,
                         onCheckedChange = { vm.setPredictiveBackEnabled(it) }
                     )
@@ -572,8 +574,8 @@ fun SettingsScreenMiuix(
                     SuperArrow(
                         title = stringResource(R.string.settings_color_appearance),
                         summary = "${themeModeLabel(state.themeMode)} · ${dynamicColorLabel(state.dynamicColorEnabled)}",
-                        startAction = { Icon(Icons.Default.Palette, contentDescription = null) },
-                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
+                        startAction = { Icon(Icons.Default.Palette, contentDescription = null, tint = iconTint) },
+                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = iconTint) },
                         onClick = { showThemeSettings = true }
                     )
                 }
@@ -586,8 +588,8 @@ fun SettingsScreenMiuix(
                     SuperArrow(
                         title = stringResource(R.string.settings_extensions_manage),
                         summary = stringResource(R.string.settings_extensions_manage_desc),
-                        startAction = { Icon(Icons.Default.Extension, contentDescription = null) },
-                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
+                        startAction = { Icon(Icons.Default.Extension, contentDescription = null, tint = iconTint) },
+                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = iconTint) },
                         onClick = onOpenExtensionManager
                     )
                 }
@@ -600,20 +602,20 @@ fun SettingsScreenMiuix(
                     SuperArrow(
                         title = stringResource(R.string.app_full_name),
                         summary = "AnyBase Kernel v${BuildConfig.VERSION_NAME}",
-                        startAction = { Icon(Icons.Default.Info, contentDescription = null) }
+                        startAction = { Icon(Icons.Default.Info, contentDescription = null, tint = iconTint) }
                     )
                     SuperArrow(
                         title = stringResource(R.string.settings_about),
                         summary = stringResource(R.string.settings_about_desc),
-                        startAction = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
-                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
+                        startAction = { Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = iconTint) },
+                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = iconTint) },
                         onClick = onAbout
                     )
                     SuperArrow(
                         title = stringResource(R.string.settings_open_source_licenses),
                         summary = stringResource(R.string.settings_open_source_licenses_desc),
-                        startAction = { Icon(Icons.Default.Article, contentDescription = null) },
-                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
+                        startAction = { Icon(Icons.Default.Article, contentDescription = null, tint = iconTint) },
+                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = iconTint) },
                         onClick = onOpenSourceLicenses
                     )
                 }
@@ -875,7 +877,7 @@ private fun LanguagePicker(
         SuperArrow(
             title = label,
             summary = if (selected) "✓" else null,
-            startAction = { Icon(Icons.Default.Language, contentDescription = null) },
+            startAction = { Icon(Icons.Default.Language, contentDescription = null, tint = MiuixTheme.colorScheme.onSurfaceSecondary) },
             onClick = { onSelect(lang) }
         )
     }
