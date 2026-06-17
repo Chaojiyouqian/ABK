@@ -182,6 +182,7 @@ fun FloatingBottomBar(
     backdrop: Backdrop,
     tabsCount: Int,
     isBlurEnabled: Boolean = true,
+    isLiquidGlassEnabled: Boolean = true,
     content: @Composable RowScope.() -> Unit
 ) {
     val isInDark = isMiuixDarkTheme()
@@ -323,12 +324,14 @@ fun FloatingBottomBar(
                             backdrop = backdrop,
                             shape = { pillShape },
                             effects = {
-                                vibrancy()
+                                if (isLiquidGlassEnabled) vibrancy()
                                 blur(4.dp.toPx(), 4.dp.toPx())
-                                lens(
-                                    refractionHeight = 24.dp.toPx(),
-                                    refractionAmount = 24.dp.toPx(),
-                                )
+                                if (isLiquidGlassEnabled) {
+                                    lens(
+                                        refractionHeight = 24.dp.toPx(),
+                                        refractionAmount = 24.dp.toPx(),
+                                    )
+                                }
                             },
                             highlight = { baseHighlight.copy(alpha = 0.75f) },
                             layerBlock = {
@@ -366,12 +369,14 @@ fun FloatingBottomBar(
                             backdrop = backdrop,
                             shape = { pillShape },
                             effects = {
-                                vibrancy()
+                                if (isLiquidGlassEnabled) vibrancy()
                                 blur(4.dp.toPx(), 4.dp.toPx())
-                                lens(
-                                    refractionHeight = 24.dp.toPx(),
-                                    refractionAmount = 24.dp.toPx(),
-                                )
+                                if (isLiquidGlassEnabled) {
+                                    lens(
+                                        refractionHeight = 24.dp.toPx(),
+                                        refractionAmount = 24.dp.toPx(),
+                                    )
+                                }
                             },
                             onDrawSurface = { drawRect(containerColor) },
                         )
@@ -401,13 +406,15 @@ fun FloatingBottomBar(
                             backdrop = combinedBackdrop,
                             shape = { pillShape },
                             effects = {
-                                val progress = dampedDragAnimation.pressProgress
-                                lens(
-                                    refractionHeight = 10.dp.toPx() * progress,
-                                    refractionAmount = 14.dp.toPx() * progress,
-                                    depthEffect = true,
-                                    chromaticAberration = 0.5f,
-                                )
+                                if (isLiquidGlassEnabled) {
+                                    val progress = dampedDragAnimation.pressProgress
+                                    lens(
+                                        refractionHeight = 10.dp.toPx() * progress,
+                                        refractionAmount = 14.dp.toPx() * progress,
+                                        depthEffect = true,
+                                        chromaticAberration = 0.5f,
+                                    )
+                                }
                             },
                             highlight = { pillHighlight.copy(alpha = dampedDragAnimation.pressProgress) },
                             layerBlock = {
@@ -426,13 +433,17 @@ fun FloatingBottomBar(
                                 drawRect(Color.Black.copy(alpha = 0.03f * progress))
                             },
                         )
-                        .innerShadow(shape = pillShape) {
-                            InnerShadow(
-                                radius = 8.dp * dampedDragAnimation.pressProgress,
-                                color = Color.Black.copy(alpha = 0.15f),
-                                alpha = dampedDragAnimation.pressProgress,
-                            )
-                        }
+                        .then(
+                            if (isLiquidGlassEnabled) {
+                                Modifier.innerShadow(shape = pillShape) {
+                                    InnerShadow(
+                                        radius = 8.dp * dampedDragAnimation.pressProgress,
+                                        color = Color.Black.copy(alpha = 0.15f),
+                                        alpha = dampedDragAnimation.pressProgress,
+                                    )
+                                }
+                            } else Modifier
+                        )
                         .height(56.dp)
                         .width(tabWidthDp)
                 )

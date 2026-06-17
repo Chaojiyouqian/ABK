@@ -33,6 +33,7 @@ fun MiuixFloatingBottomBar(
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
     isBlurEnabled: Boolean = true,
+    isLiquidGlassEnabled: Boolean = true,
 ) {
     val selectedIndexState by rememberUpdatedState(selectedIndex)
     FloatingBottomBar(
@@ -48,6 +49,7 @@ fun MiuixFloatingBottomBar(
         backdrop = backdrop,
         tabsCount = items.size,
         isBlurEnabled = isBlurEnabled,
+        isLiquidGlassEnabled = isLiquidGlassEnabled,
     ) {
         items.forEachIndexed { index, item ->
             FloatingBottomBarItem(
