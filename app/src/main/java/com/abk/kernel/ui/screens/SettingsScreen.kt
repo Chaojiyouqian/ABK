@@ -797,6 +797,15 @@ private fun SettingsMainContent(
                 },
                 onClick = onOpenThemeSettings
             )
+            ExpressiveSwitchItem(
+                title = "MIUIX HyperOS 风格",
+                subtitle = "使用小米 HyperOS 设计语言（试点）",
+                icon = Icons.Default.Style,
+                checked = state.uiStyle == "miuix",
+                onCheckedChange = { enabled ->
+                    vm.setUiStyle(if (enabled) "miuix" else "material")
+                }
+            )
         }
 
         SettingsGroup(title = stringResource(R.string.settings_extensions_title)) {
