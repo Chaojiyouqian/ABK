@@ -8,17 +8,13 @@ import android.os.Build
 import android.os.Environment
 import android.provider.Settings
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -26,7 +22,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -45,17 +40,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -75,13 +67,9 @@ import com.abk.kernel.data.model.normalizeAppUpdateStability
 import com.abk.kernel.data.repository.PreferencesRepository
 import com.abk.kernel.utils.DownloadDirectoryUtils
 import com.abk.kernel.utils.DownloadUtils
-import com.abk.kernel.ui.components.ObserveChildPageVisibility
-import com.abk.kernel.ui.components.childPageOverlayEnterTransition
-import com.abk.kernel.ui.components.childPageOverlayExitTransition
-import com.abk.kernel.ui.components.childPageScrimExitTransition
-import com.abk.kernel.ui.components.rememberChildPageBackController
-import com.abk.kernel.ui.components.rememberChildPageOverlayTransition
 import com.abk.kernel.utils.LocaleHelper
+import com.abk.kernel.ui.navigation3.LocalNavigator
+import com.abk.kernel.ui.navigation3.Route
 import com.abk.kernel.viewmodel.MainUiState
 import com.abk.kernel.viewmodel.MainViewModel
 import top.yukonga.miuix.kmp.basic.Card
@@ -94,8 +82,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
-private enum class MiuixSettingsChildPage { None, ThemeSettings }
-
 /**
  * MIUIX-styled settings screen for ABK.
  *
@@ -103,57 +89,26 @@ private enum class MiuixSettingsChildPage { None, ThemeSettings }
  * callback signatures as [com.abk.kernel.ui.screens.SettingsScreen]:
  * Account, Build, App Update, Manager Injected, Notification, Navigation,
  * Language, Theme, Extensions, About.
+ *
+ * Navigation to sub-pages (ThemeSettings, AppProfileTemplates, etc.) is
+ * handled via [LocalNavigator] + [Route] (Navigation3 NavDisplay).
+ * [onOpenInstalledModules] is kept because it performs cross-tab navigation
+ * that lives outside the NavDisplay scope.
  */
 @Composable
 fun SettingsScreenMiuix(
     vm: MainViewModel,
     outerPadding: PaddingValues = PaddingValues(0.dp),
-    onChildPageVisibleChange: (Boolean) -> Unit = {},
     onLogout: () -> Unit = {},
-    onOpenThemeSettings: () -> Unit = {},
-    onOpenAppProfileTemplates: () -> Unit = {},
-    onOpenManagerTools: () -> Unit = {},
     onOpenInstalledModules: () -> Unit = {},
-    onAbout: () -> Unit = {},
-    onOpenSourceLicenses: () -> Unit = {},
-    onOpenExtensionManager: () -> Unit = {}
 ) {
     val state by vm.uiState.collectAsState()
     val scrollBehavior = MiuixScrollBehavior()
     val iconTint = MiuixTheme.colorScheme.onSurfaceSecondary
+    val navigator = LocalNavigator.current
 
-    // ── Child page state (extensible for future pages) ────────────────────
-    var currentChildPage by rememberSaveable { mutableStateOf(MiuixSettingsChildPage.None) }
-    val showChildPage = currentChildPage != MiuixSettingsChildPage.None
-    val showThemeSettings = currentChildPage == MiuixSettingsChildPage.ThemeSettings
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showClearArtifactsDialog by remember { mutableStateOf(false) }
-
-    // ── Child page animation wiring (reuses MD3 components) ────────────────
-    val childPageTransition = rememberChildPageOverlayTransition(
-        visible = showChildPage,
-        label = "miuix-settings-child-page"
-    )
-    val childPageBack = rememberChildPageBackController(
-        enabled = showChildPage,
-        predictiveBackEnabled = state.predictiveBackEnabled,
-        onBack = { currentChildPage = MiuixSettingsChildPage.None },
-    )
-
-    ObserveChildPageVisibility(
-        transition = childPageTransition,
-        onVisibleChange = onChildPageVisibleChange,
-        onAfterExitAnimation = { childPageBack.resetProgress() }
-    )
-
-    DisposableEffect(Unit) {
-        onDispose { onChildPageVisibleChange(false) }
-    }
-
-    fun openThemeSettings() {
-        childPageBack.resetProgress()
-        currentChildPage = MiuixSettingsChildPage.ThemeSettings
-    }
 
     // Refresh manager settings on first composition (mirrors MD3 LaunchedEffect).
     LaunchedEffect(Unit) {
@@ -166,20 +121,8 @@ fun SettingsScreenMiuix(
         vm.consumeAppUpdatePendingInstallPath()
     }
 
-    // ── Back button to close child page ────────────────────────────────────
-    BackHandler(enabled = showChildPage) {
-        currentChildPage = MiuixSettingsChildPage.None
-    }
-
     // ── Main layout ────────────────────────────────────────────────────────
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val childPageTopInset = outerPadding.calculateTopPadding()
-        val childPageBottomInset = outerPadding.calculateBottomPadding()
-        val childPageModifier = Modifier
-            .fillMaxWidth()
-            .height(maxHeight + childPageTopInset + childPageBottomInset)
-            .offset(y = -childPageTopInset)
-
+    Box(Modifier.fillMaxSize()) {
         // ── Logout confirmation dialog ──────────────────────────────────────
         if (showLogoutDialog) {
             AlertDialog(
@@ -538,8 +481,8 @@ fun SettingsScreenMiuix(
                                         onClick = if (item.enabled && !actionInFlight) {
                                             {
                                                 when (item.id) {
-                                                    "app_profile_templates" -> onOpenAppProfileTemplates()
-                                                    "manager_tools" -> onOpenManagerTools()
+                                                    "app_profile_templates" -> navigator.push(Route.AppProfileTemplates)
+                                                    "manager_tools" -> navigator.push(Route.ManagerTools)
                                                     "kpm" -> onOpenInstalledModules()
                                                 }
                                             }
@@ -637,7 +580,7 @@ fun SettingsScreenMiuix(
                         summary = "${themeModeLabel(state.themeMode)} · ${dynamicColorLabel(state.dynamicColorEnabled)}",
                         startAction = { Icon(Icons.Default.Palette, contentDescription = null, tint = iconTint) },
                         endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = iconTint) },
-                        onClick = ::openThemeSettings
+                        onClick = { navigator.push(Route.ThemeSettings) }
                     )
                 }
 
@@ -651,7 +594,7 @@ fun SettingsScreenMiuix(
                         summary = stringResource(R.string.settings_extensions_manage_desc),
                         startAction = { Icon(Icons.Default.Extension, contentDescription = null, tint = iconTint) },
                         endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = iconTint) },
-                        onClick = onOpenExtensionManager
+                        onClick = { navigator.push(Route.ExtensionManager) }
                     )
                 }
 
@@ -670,50 +613,18 @@ fun SettingsScreenMiuix(
                         summary = stringResource(R.string.settings_about_desc),
                         startAction = { Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = iconTint) },
                         endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = iconTint) },
-                        onClick = onAbout
+                        onClick = { navigator.push(Route.About) }
                     )
                     ArrowPreference(
                         title = stringResource(R.string.settings_open_source_licenses),
                         summary = stringResource(R.string.settings_open_source_licenses_desc),
                         startAction = { Icon(Icons.Default.Article, contentDescription = null, tint = iconTint) },
                         endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = iconTint) },
-                        onClick = onOpenSourceLicenses
+                        onClick = { navigator.push(Route.OpenSourceLicenses) }
                     )
                 }
 
                 Spacer(Modifier.height(60.dp + outerPadding.calculateBottomPadding()))
-            }
-        }
-
-        childPageTransition.AnimatedVisibility(
-            visible = { it },
-            enter = fadeIn(),
-            exit = childPageScrimExitTransition(state.predictiveBackEnabled),
-            modifier = childPageModifier
-        ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = childPageBack.scrimAlpha))
-                    .clickable { currentChildPage = MiuixSettingsChildPage.None }
-            )
-        }
-
-        childPageTransition.AnimatedVisibility(
-            visible = { it && showThemeSettings },
-            enter = childPageOverlayEnterTransition(state.predictiveBackEnabled),
-            exit = childPageOverlayExitTransition(state.predictiveBackEnabled),
-            modifier = childPageModifier
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(childPageBack.backTransformModifier())
-            ) {
-                ThemeSettingsScreenMiuix(
-                    vm = vm,
-                    onBack = { currentChildPage = MiuixSettingsChildPage.None }
-                )
             }
         }
     }
