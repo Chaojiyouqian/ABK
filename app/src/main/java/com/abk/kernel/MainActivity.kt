@@ -45,7 +45,11 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.NavigationBar as MiuixNavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem as MiuixNavigationBarItem
@@ -74,6 +78,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -565,55 +571,107 @@ private fun AbkMainScaffold(
                     alpha = 1f - (hidden * 0.15f)
                 }
         ) {
-            if (miuixMode && state.miuixFloatingBottomBarEnabled) {
-                MiuixFloatingBottomBar(
-                    modifier = Modifier.align(Alignment.Center),
-                    items = visibleTabs.map { tab ->
-                        FloatingTabItem(
-                            label = tab.displayLabel(state.rootGranted),
-                            icon = when (tab) {
-                                AbkTab.Status -> Icons.Default.Home
-                                AbkTab.Build -> Icons.Default.RocketLaunch
-                                AbkTab.Modules -> Icons.Default.LibraryBooks
-                                AbkTab.Flash -> if (state.rootGranted) Icons.Default.FlashOn else Icons.Default.FolderOpen
-                                AbkTab.RuntimeHome -> Icons.Default.Memory
-                                AbkTab.InstalledModules -> Icons.Default.Extension
-                                AbkTab.RootAuth -> Icons.Default.AdminPanelSettings
-                                AbkTab.Settings -> Icons.Default.Settings
-                            },
-                            onClick = { if (!childPageVisible) selectedTab = tab },
-                        )
-                    },
-                    selectedIndex = visibleTabs.indexOf(activeTab).coerceAtLeast(0),
-                    backdrop = floatingGlassBackdrop,
-                    isBlurEnabled = state.miuixLiquidGlassEnabled,
-                    isLiquidGlassEnabled = state.miuixLiquidGlassEnabled,
-                )
-            } else {
-                BlurredBar(blurBackdrop) {
-                    MiuixNavigationBar(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = if (blurBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface
-                    ) {
-                        visibleTabs.forEach { tab ->
-                            val tabIcon = when (tab) {
-                                AbkTab.Status -> Icons.Default.Home
-                                AbkTab.Build -> Icons.Default.RocketLaunch
-                                AbkTab.Modules -> Icons.Default.LibraryBooks
-                                AbkTab.Flash -> if (state.rootGranted) Icons.Default.FlashOn else Icons.Default.FolderOpen
-                                AbkTab.RuntimeHome -> Icons.Default.Memory
-                                AbkTab.InstalledModules -> Icons.Default.Extension
-                                AbkTab.RootAuth -> Icons.Default.AdminPanelSettings
-                                AbkTab.Settings -> Icons.Default.Settings
-                            }
-                            MiuixNavigationBarItem(
-                                modifier = Modifier.weight(1f),
-                                selected = activeTab == tab,
+            when {
+                miuixMode && state.miuixFloatingBottomBarEnabled -> {
+                    MiuixFloatingBottomBar(
+                        modifier = Modifier.align(Alignment.Center),
+                        items = visibleTabs.map { tab ->
+                            FloatingTabItem(
+                                label = tab.displayLabel(state.rootGranted),
+                                icon = when (tab) {
+                                    AbkTab.Status -> Icons.Default.Home
+                                    AbkTab.Build -> Icons.Default.RocketLaunch
+                                    AbkTab.Modules -> Icons.Default.LibraryBooks
+                                    AbkTab.Flash -> if (state.rootGranted) Icons.Default.FlashOn else Icons.Default.FolderOpen
+                                    AbkTab.RuntimeHome -> Icons.Default.Memory
+                                    AbkTab.InstalledModules -> Icons.Default.Extension
+                                    AbkTab.RootAuth -> Icons.Default.AdminPanelSettings
+                                    AbkTab.Settings -> Icons.Default.Settings
+                                },
                                 onClick = { if (!childPageVisible) selectedTab = tab },
-                                enabled = !childPageVisible,
-                                icon = tabIcon,
-                                label = tab.displayLabel(state.rootGranted)
                             )
+                        },
+                        selectedIndex = visibleTabs.indexOf(activeTab).coerceAtLeast(0),
+                        backdrop = floatingGlassBackdrop,
+                        isBlurEnabled = state.miuixLiquidGlassEnabled,
+                        isLiquidGlassEnabled = state.miuixLiquidGlassEnabled,
+                    )
+                }
+                miuixMode -> {
+                    BlurredBar(blurBackdrop) {
+                        MiuixNavigationBar(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = if (blurBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface
+                        ) {
+                            visibleTabs.forEach { tab ->
+                                val tabIcon = when (tab) {
+                                    AbkTab.Status -> Icons.Default.Home
+                                    AbkTab.Build -> Icons.Default.RocketLaunch
+                                    AbkTab.Modules -> Icons.Default.LibraryBooks
+                                    AbkTab.Flash -> if (state.rootGranted) Icons.Default.FlashOn else Icons.Default.FolderOpen
+                                    AbkTab.RuntimeHome -> Icons.Default.Memory
+                                    AbkTab.InstalledModules -> Icons.Default.Extension
+                                    AbkTab.RootAuth -> Icons.Default.AdminPanelSettings
+                                    AbkTab.Settings -> Icons.Default.Settings
+                                }
+                                MiuixNavigationBarItem(
+                                    modifier = Modifier.weight(1f),
+                                    selected = activeTab == tab,
+                                    onClick = { if (!childPageVisible) selectedTab = tab },
+                                    enabled = !childPageVisible,
+                                    icon = tabIcon,
+                                    label = tab.displayLabel(state.rootGranted)
+                                )
+                            }
+                        }
+                    }
+                }
+                else -> {
+                    BlurredBar(blurBackdrop) {
+                        NavigationBar(
+                            containerColor = if (blurBackdrop != null) Color.Transparent else uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainer),
+                            tonalElevation = 0.dp
+                        ) {
+                            visibleTabs.forEach { tab ->
+                                NavigationBarItem(
+                                    selected = activeTab == tab,
+                                    onClick = { if (!childPageVisible) selectedTab = tab },
+                                    enabled = !childPageVisible,
+                                    alwaysShowLabel = false,
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    ),
+                                    icon = {
+                                        Icon(
+                                            imageVector = when (tab) {
+                                                AbkTab.Status -> Icons.Default.Home
+                                                AbkTab.Build -> Icons.Default.RocketLaunch
+                                                AbkTab.Modules -> Icons.Default.LibraryBooks
+                                                AbkTab.Flash -> if (state.rootGranted) Icons.Default.FlashOn else Icons.Default.FolderOpen
+                                                AbkTab.RuntimeHome -> Icons.Default.Memory
+                                                AbkTab.InstalledModules -> Icons.Default.Extension
+                                                AbkTab.RootAuth -> Icons.Default.AdminPanelSettings
+                                                AbkTab.Settings -> Icons.Default.Settings
+                                            },
+                                            contentDescription = tab.displayLabel(state.rootGranted)
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            text = tab.displayLabel(state.rootGranted),
+                                            maxLines = 2,
+                                            softWrap = true,
+                                            overflow = TextOverflow.Ellipsis,
+                                            textAlign = TextAlign.Center,
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
                 }
