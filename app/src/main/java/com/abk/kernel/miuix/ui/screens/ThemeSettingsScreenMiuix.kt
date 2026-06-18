@@ -1,6 +1,7 @@
 package com.abk.kernel.miuix.ui.screens
 
 import android.os.Build
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +13,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BlurOn
+import androidx.compose.material.icons.rounded.CallToAction
+import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -119,23 +124,49 @@ fun ThemeSettingsScreenMiuix(
             SectionTitleMiuix("视觉效果")
             Card {
                 SwitchPreference(
-                    title = "模糊效果",
-                    summary = "悬浮底栏的高斯模糊与液态玻璃 backdrop",
+                    title = "模糊",
+                    summary = "启用顶栏和底栏的模糊效果",
+                    startAction = {
+                        Icon(
+                            Icons.Rounded.BlurOn,
+                            modifier = Modifier.padding(end = 6.dp),
+                            contentDescription = "模糊",
+                            tint = MiuixTheme.colorScheme.onSurfaceSecondary
+                        )
+                    },
                     checked = state.miuixBlurEnabled,
                     onCheckedChange = { vm.setMiuixBlurEnabled(it) }
                 )
                 SwitchPreference(
                     title = "悬浮底栏",
-                    summary = "使用悬浮药丸形状的底栏（关闭后使用 Material 3 默认底栏）",
+                    summary = "使用 Apple 风格的悬浮底栏",
+                    startAction = {
+                        Icon(
+                            Icons.Rounded.CallToAction,
+                            modifier = Modifier.padding(end = 6.dp),
+                            contentDescription = "悬浮底栏",
+                            tint = MiuixTheme.colorScheme.onSurfaceSecondary
+                        )
+                    },
                     checked = state.miuixFloatingBottomBarEnabled,
                     onCheckedChange = { vm.setMiuixFloatingBottomBarEnabled(it) }
                 )
-                SwitchPreference(
-                    title = "液态玻璃",
-                    summary = "Liquid Glass 折射与高光效果（实验性）",
-                    checked = state.miuixLiquidGlassEnabled,
-                    onCheckedChange = { vm.setMiuixLiquidGlassEnabled(it) }
-                )
+                AnimatedVisibility(visible = state.miuixFloatingBottomBarEnabled) {
+                    SwitchPreference(
+                        title = "液态玻璃",
+                        summary = "启用悬浮底栏的液态玻璃效果",
+                        startAction = {
+                            Icon(
+                                Icons.Rounded.WaterDrop,
+                                modifier = Modifier.padding(end = 6.dp),
+                                contentDescription = "液态玻璃",
+                                tint = MiuixTheme.colorScheme.onSurfaceSecondary
+                            )
+                        },
+                        checked = state.miuixLiquidGlassEnabled,
+                        onCheckedChange = { vm.setMiuixLiquidGlassEnabled(it) }
+                    )
+                }
             }
 
             Spacer(Modifier.height(60.dp))
