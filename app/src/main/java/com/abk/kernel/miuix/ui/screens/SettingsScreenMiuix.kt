@@ -13,6 +13,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +28,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -35,8 +39,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -700,7 +702,7 @@ private fun SectionSubLabel(label: String) {
 
 
 
-/** Download directory selector — uses OpenDocumentTree + text field. */
+/** Download directory selector — uses OpenDocumentTree + MIUIX display. */
 @Composable
 private fun DownloadDirectoryItem(
     value: String,
@@ -713,6 +715,7 @@ private fun DownloadDirectoryItem(
         !Environment.isExternalStorageManager()
     val unsupportedTreeMessage = stringResource(R.string.settings_download_directory_tree_unsupported)
     val restoredMessage = stringResource(R.string.settings_download_directory_default_restored)
+    val permissionNeededMessage = stringResource(R.string.settings_download_directory_storage_permission)
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
@@ -753,41 +756,51 @@ private fun DownloadDirectoryItem(
             style = MiuixTheme.textStyles.body2,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary
         )
-        // MD3 OutlinedTextField used as placeholder since MIUIX has no text field
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            placeholder = { Text(defaultDirectory) },
-            modifier = Modifier.fillMaxWidth()
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    color = MiuixTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(17.dp)
+                )
+                .border(
+                    width = 1.dp,
+                    color = MiuixTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(17.dp)
+                )
+                .padding(horizontal = 20.dp, vertical = 14.dp)
+        ) {
+            top.yukonga.miuix.kmp.basic.Text(
+                text = value.ifEmpty { defaultDirectory },
+                style = MiuixTheme.textStyles.body1,
+                color = MiuixTheme.colorScheme.onSurface,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedButton(
-                onClick = { folderPicker.launch(null) },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(stringResource(R.string.settings_download_directory_choose))
-            }
-            TextButton(
+            top.yukonga.miuix.kmp.basic.TextButton(
+                text = stringResource(R.string.settings_download_directory_choose),
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    if (needsAllFilesAccess) {
+                        Toast.makeText(context, permissionNeededMessage, Toast.LENGTH_LONG).show()
+                        openAllFilesAccessSettings(context)
+                    } else {
+                        folderPicker.launch(null)
+                    }
+                }
+            )
+            top.yukonga.miuix.kmp.basic.TextButton(
+                text = stringResource(R.string.settings_download_directory_reset),
+                modifier = Modifier.weight(1f),
                 onClick = {
                     onValueChange(defaultDirectory)
                     Toast.makeText(context, restoredMessage, Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(stringResource(R.string.settings_download_directory_reset))
-            }
-        }
-        AnimatedVisibility(visible = needsAllFilesAccess) {
-            OutlinedButton(
-                onClick = { openAllFilesAccessSettings(context) },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(stringResource(R.string.settings_download_directory_storage_permission))
-            }
+                }
+            )
         }
     }
 }
@@ -820,13 +833,42 @@ private fun MirrorUrlItem(
             style = MiuixTheme.textStyles.body2,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary
         )
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            placeholder = { Text("https://hk.gh-proxy.org/") },
-            modifier = Modifier.fillMaxWidth()
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    color = MiuixTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(17.dp)
+                )
+                .border(
+                    width = 1.dp,
+                    color = MiuixTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(17.dp)
+                )
+                .padding(horizontal = 20.dp, vertical = 14.dp)
+        ) {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                textStyle = MiuixTheme.textStyles.body1.copy(
+                    color = MiuixTheme.colorScheme.onSurface
+                ),
+                decorationBox = { innerTextField ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (value.isEmpty()) {
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = "https://hk.gh-proxy.org/",
+                                style = MiuixTheme.textStyles.body1,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                            )
+                        }
+                        innerTextField()
+                    }
+                }
+            )
+        }
     }
 }
 
