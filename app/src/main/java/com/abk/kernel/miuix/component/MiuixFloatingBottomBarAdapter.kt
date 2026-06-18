@@ -51,7 +51,7 @@ fun MiuixFloatingBottomBar(
         isBlurEnabled = isBlurEnabled,
         isLiquidGlassEnabled = isLiquidGlassEnabled,
     ) {
-        items.forEachIndexed { index, item ->
+        items.forEachIndexed { _, item ->
             FloatingBottomBarItem(
                 onClick = item.onClick,
                 modifier = Modifier.defaultMinSize(minWidth = 64.dp)

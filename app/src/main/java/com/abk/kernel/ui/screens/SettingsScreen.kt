@@ -1299,7 +1299,7 @@ private fun ThemeSettingsScreen(
     ) {
         SettingsGroup(title = "UI 风格") {
             ExpressiveSwitchItem(
-                title = "MIUIX HyperOS 风格",
+                title = "MIUIX",
                 subtitle = "使用小米 HyperOS 设计语言（试点）",
                 icon = Icons.Default.Style,
                 checked = uiStyle == "miuix",

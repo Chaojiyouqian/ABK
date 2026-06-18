@@ -70,6 +70,7 @@ node_modules/
 AGENTS.md
 web/serve.sh
 .omc/
+.omo/
 web/dist/
 wild_kernel_comparison.md
 action_build_comparison.md
