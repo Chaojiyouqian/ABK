@@ -44,13 +44,15 @@ import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.NavigationBar as MiuixNavigationBar
+import top.yukonga.miuix.kmp.basic.NavigationBarItem as MiuixNavigationBarItem
+import top.yukonga.miuix.kmp.blur.Backdrop
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.blur
+import top.yukonga.miuix.kmp.blur.drawBackdrop
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -72,8 +74,6 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -96,6 +96,10 @@ import com.abk.kernel.miuix.component.FloatingTabItem
 import com.abk.kernel.miuix.component.MiuixFloatingBottomBar
 import com.abk.kernel.ui.theme.AbkTheme
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import com.abk.kernel.ui.theme.LocalUiSurfaceAlpha
 import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
@@ -535,7 +539,14 @@ private fun AbkMainScaffold(
     }
     val navProgress = navProgressAnim.value
 
-    val miuixBackdrop = if (state.uiStyle == "miuix") rememberLayerBackdrop() else null
+    val miuixMode = state.uiStyle == "miuix"
+    val surfaceColor = if (miuixMode) MiuixTheme.colorScheme.surface else MaterialTheme.colorScheme.surface
+    val floatingGlassBackdrop = rememberLayerBackdrop {
+        drawRect(surfaceColor)
+        drawContent()
+    }
+    val blurEnabledForGlass = miuixMode && state.miuixFloatingBottomBarEnabled && state.miuixLiquidGlassEnabled
+    val blurBackdrop = rememberBlurBackdrop(state.miuixBlurEnabled)
 
     Box(
         modifier = Modifier
@@ -554,8 +565,9 @@ private fun AbkMainScaffold(
                     alpha = 1f - (hidden * 0.15f)
                 }
         ) {
-            if (state.uiStyle == "miuix" && state.miuixFloatingBottomBarEnabled && miuixBackdrop != null) {
+            if (miuixMode && state.miuixFloatingBottomBarEnabled) {
                 MiuixFloatingBottomBar(
+                    modifier = Modifier.align(Alignment.Center),
                     items = visibleTabs.map { tab ->
                         FloatingTabItem(
                             label = tab.displayLabel(state.rootGranted),
@@ -573,54 +585,36 @@ private fun AbkMainScaffold(
                         )
                     },
                     selectedIndex = visibleTabs.indexOf(activeTab).coerceAtLeast(0),
-                    backdrop = miuixBackdrop,
-                    isBlurEnabled = state.miuixBlurEnabled,
+                    backdrop = floatingGlassBackdrop,
+                    isBlurEnabled = state.miuixLiquidGlassEnabled,
                     isLiquidGlassEnabled = state.miuixLiquidGlassEnabled,
                 )
             } else {
-                NavigationBar(
-                    containerColor = uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainer),
-                    tonalElevation = 0.dp
-                ) {
-                    visibleTabs.forEach { tab ->
-                        NavigationBarItem(
-                            selected = activeTab == tab,
-                            onClick = { selectedTab = tab },
-                            enabled = !childPageVisible,
-                            alwaysShowLabel = false,
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            ),
-                            icon = {
-                                Icon(
-                                    imageVector = when (tab) {
-                                        AbkTab.Status -> Icons.Default.Home
-                                        AbkTab.Build -> Icons.Default.RocketLaunch
-                                        AbkTab.Modules -> Icons.Default.LibraryBooks
-                                        AbkTab.Flash -> if (state.rootGranted) Icons.Default.FlashOn else Icons.Default.FolderOpen
-                                        AbkTab.RuntimeHome -> Icons.Default.Memory
-                                        AbkTab.InstalledModules -> Icons.Default.Extension
-                                        AbkTab.RootAuth -> Icons.Default.AdminPanelSettings
-                                        AbkTab.Settings -> Icons.Default.Settings
-                                    },
-                                    contentDescription = tab.displayLabel(state.rootGranted)
-                                )
-                            },
-                            label = {
-                                Text(
-                                    text = tab.displayLabel(state.rootGranted),
-                                    maxLines = 2,
-                                    softWrap = true,
-                                    overflow = TextOverflow.Ellipsis,
-                                    textAlign = TextAlign.Center,
-                                    style = MaterialTheme.typography.labelSmall
-                                )
+                BlurredBar(blurBackdrop) {
+                    MiuixNavigationBar(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = if (blurBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface
+                    ) {
+                        visibleTabs.forEach { tab ->
+                            val tabIcon = when (tab) {
+                                AbkTab.Status -> Icons.Default.Home
+                                AbkTab.Build -> Icons.Default.RocketLaunch
+                                AbkTab.Modules -> Icons.Default.LibraryBooks
+                                AbkTab.Flash -> if (state.rootGranted) Icons.Default.FlashOn else Icons.Default.FolderOpen
+                                AbkTab.RuntimeHome -> Icons.Default.Memory
+                                AbkTab.InstalledModules -> Icons.Default.Extension
+                                AbkTab.RootAuth -> Icons.Default.AdminPanelSettings
+                                AbkTab.Settings -> Icons.Default.Settings
                             }
-                        )
+                            MiuixNavigationBarItem(
+                                modifier = Modifier.weight(1f),
+                                selected = activeTab == tab,
+                                onClick = { if (!childPageVisible) selectedTab = tab },
+                                enabled = !childPageVisible,
+                                icon = tabIcon,
+                                label = tab.displayLabel(state.rootGranted)
+                            )
+                        }
                     }
                 }
             }
@@ -630,7 +624,17 @@ private fun AbkMainScaffold(
                 .fillMaxSize()
                 .zIndex(1f)
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        when {
+                            blurEnabledForGlass -> Modifier.layerBackdrop(floatingGlassBackdrop)
+                            blurBackdrop != null -> Modifier.layerBackdrop(blurBackdrop)
+                            else -> Modifier
+                        }
+                    )
+            ) {
                 AnimatedContent(
                     targetState = activeTab,
                     transitionSpec = {
@@ -797,3 +801,30 @@ private val MODULE_ZIP_MIME_TYPES = setOf(
     "application/x-zip-compressed",
     "application/octet-stream"
 )
+
+@Composable
+private fun rememberBlurBackdrop(blurEnabled: Boolean): LayerBackdrop? {
+    return if (blurEnabled) {
+        rememberLayerBackdrop { drawContent() }
+    } else null
+}
+
+@Composable
+private fun BlurredBar(
+    backdrop: LayerBackdrop?,
+    content: @Composable () -> Unit,
+) {
+    if (backdrop != null) {
+        Box(
+            modifier = Modifier.drawBackdrop(
+                backdrop = backdrop,
+                shape = { RectangleShape },
+                effects = { blur(25.dp.toPx(), 25.dp.toPx()) },
+            )
+        ) {
+            content()
+        }
+    } else {
+        content()
+    }
+}

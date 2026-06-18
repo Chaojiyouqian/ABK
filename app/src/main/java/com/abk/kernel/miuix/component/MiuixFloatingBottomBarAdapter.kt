@@ -43,7 +43,7 @@ fun MiuixFloatingBottomBar(
                 indication = null,
                 onClick = {},
             )
-            .padding(bottom = 12.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
+            .padding(bottom = 17.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
         selectedIndex = { selectedIndexState },
         onSelected = { items.getOrNull(it)?.onClick?.invoke() },
         backdrop = backdrop,
@@ -54,7 +54,7 @@ fun MiuixFloatingBottomBar(
         items.forEachIndexed { index, item ->
             FloatingBottomBarItem(
                 onClick = item.onClick,
-                modifier = Modifier.defaultMinSize(minWidth = 76.dp)
+                modifier = Modifier.defaultMinSize(minWidth = 64.dp)
             ) {
                 Icon(
                     imageVector = item.icon,
