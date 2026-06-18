@@ -3,6 +3,8 @@ import java.util.zip.ZipFile
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.parcelize)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 val githubClientId = providers.gradleProperty("ABK_GITHUB_CLIENT_ID")
@@ -214,6 +216,9 @@ dependencies {
     implementation(libs.miuix.icons)
     implementation(libs.miuix.preference)
     implementation(libs.miuix.blur)
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+    implementation(libs.miuix.navigation3.ui)
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
