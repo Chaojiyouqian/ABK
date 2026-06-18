@@ -24,6 +24,7 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -64,35 +65,36 @@ fun ThemeSettingsScreenMiuix(
             Spacer(Modifier.height(8.dp))
 
             // Section 1: UI 风格
-            SectionTitleMiuix("UI 风格")
             Card {
-                SwitchPreference(
-                    title = "MIUIX HyperOS 风格",
-                    summary = "使用小米 HyperOS 设计语言（试点）",
-                    checked = state.uiStyle == "miuix",
-                    onCheckedChange = { enabled ->
-                        vm.setUiStyle(if (enabled) "miuix" else "material")
+                val uiStyleOptions = listOf("material" to "Material 3", "miuix" to "MIUIX HyperOS")
+                val uiStyleIndex = if (state.uiStyle == "miuix") 1 else 0
+                OverlayDropdownPreference(
+                    title = "UI 风格",
+                    items = uiStyleOptions.map { it.second },
+                    selectedIndex = uiStyleIndex,
+                    onSelectedIndexChange = { index ->
+                        vm.setUiStyle(uiStyleOptions[index].first)
                     }
                 )
             }
 
             // Section 2: 外观模式
-            SectionTitleMiuix(stringResource(R.string.settings_appearance_mode))
             Card {
-                ArrowPreference(
-                    title = stringResource(R.string.settings_theme_system),
-                    summary = "跟随系统",
-                    onClick = { vm.setThemeMode("system") }
+                val themeModeOptions = listOf(
+                    "system" to stringResource(R.string.settings_theme_system),
+                    "light" to stringResource(R.string.settings_theme_light),
+                    "dark" to stringResource(R.string.settings_theme_dark)
                 )
-                ArrowPreference(
-                    title = stringResource(R.string.settings_theme_light),
-                    summary = "浅色",
-                    onClick = { vm.setThemeMode("light") }
-                )
-                ArrowPreference(
-                    title = stringResource(R.string.settings_theme_dark),
-                    summary = "深色",
-                    onClick = { vm.setThemeMode("dark") }
+                val themeModeIndex = themeModeOptions.indexOfFirst {
+                    it.first == state.themeMode
+                }.takeIf { it >= 0 } ?: 0
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.settings_appearance_mode),
+                    items = themeModeOptions.map { it.second },
+                    selectedIndex = themeModeIndex,
+                    onSelectedIndexChange = { index ->
+                        vm.setThemeMode(themeModeOptions[index].first)
+                    }
                 )
             }
 

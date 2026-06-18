@@ -77,6 +77,7 @@ import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -287,9 +288,16 @@ fun SettingsScreenMiuix(
                         enter = fadeIn(),
                         exit = fadeOut()
                     ) {
-                        ForegroundRefreshIntervalPicker(
-                            selectedSec = state.workflowForegroundRefreshIntervalSec,
-                            onSelect = { vm.setWorkflowForegroundRefreshIntervalSec(it) }
+                        val intervalOptions = PreferencesRepository.WORKFLOW_FOREGROUND_REFRESH_INTERVALS_SEC.sorted()
+                        val selectedIndex = intervalOptions.indexOf(state.workflowForegroundRefreshIntervalSec)
+                            .takeIf { it >= 0 } ?: 1 // default to 20s (index 1)
+                        OverlayDropdownPreference(
+                            title = stringResource(R.string.settings_workflow_foreground_refresh_interval),
+                            items = intervalOptions.map { stringResource(R.string.settings_workflow_foreground_refresh_interval_sec, it) },
+                            selectedIndex = selectedIndex,
+                            onSelectedIndexChange = { index ->
+                                vm.setWorkflowForegroundRefreshIntervalSec(intervalOptions[index])
+                            }
                         )
                     }
                     // Auto download
@@ -343,17 +351,37 @@ fun SettingsScreenMiuix(
                 // ═══════════════════════════════════════════════════════════
                 SectionTitle(stringResource(R.string.settings_app_update))
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    // Stability picker (stable / unstable as two SuperArrow rows)
-                    SectionSubLabel(stringResource(R.string.settings_app_update_stability))
-                    AppUpdateStabilityPicker(
-                        selected = state.appUpdateStability,
-                        onSelect = vm::setAppUpdateStability
+                    // Stability picker — OverlayDropdown
+                    val stabilityOptions = listOf(
+                        APP_UPDATE_STABILITY_STABLE to stringResource(R.string.settings_app_update_stable),
+                        APP_UPDATE_STABILITY_UNSTABLE to stringResource(R.string.settings_app_update_unstable)
                     )
-                    // Line picker (normal / dev as two SuperArrow rows)
-                    SectionSubLabel(stringResource(R.string.settings_app_update_line))
-                    AppUpdateLinePicker(
-                        selected = state.appUpdateLine,
-                        onSelect = vm::setAppUpdateLine
+                    val stabilityIndex = stabilityOptions.indexOfFirst {
+                        it.first == normalizeAppUpdateStability(state.appUpdateStability)
+                    }.takeIf { it >= 0 } ?: 0
+                    OverlayDropdownPreference(
+                        title = stringResource(R.string.settings_app_update_stability),
+                        items = stabilityOptions.map { it.second },
+                        selectedIndex = stabilityIndex,
+                        onSelectedIndexChange = { index ->
+                            vm.setAppUpdateStability(stabilityOptions[index].first)
+                        }
+                    )
+                    // Line picker — OverlayDropdown
+                    val lineOptions = listOf(
+                        APP_UPDATE_LINE_NORMAL to stringResource(R.string.settings_app_update_line_normal),
+                        APP_UPDATE_LINE_DEV to stringResource(R.string.settings_app_update_line_dev)
+                    )
+                    val lineIndex = lineOptions.indexOfFirst {
+                        it.first == normalizeAppUpdateLine(state.appUpdateLine)
+                    }.takeIf { it >= 0 } ?: 0
+                    OverlayDropdownPreference(
+                        title = stringResource(R.string.settings_app_update_line),
+                        items = lineOptions.map { it.second },
+                        selectedIndex = lineIndex,
+                        onSelectedIndexChange = { index ->
+                            vm.setAppUpdateLine(lineOptions[index].first)
+                        }
                     )
                     // Check for update
                     ArrowPreference(
@@ -560,9 +588,21 @@ fun SettingsScreenMiuix(
                 SectionTitle(stringResource(R.string.settings_language))
                 Card(modifier = Modifier.fillMaxWidth()) {
                     val langCtx = LocalContext.current
-                    LanguagePicker(
-                        currentLanguage = LocaleHelper.getLanguage(langCtx),
-                        onSelect = { lang ->
+                    val languageOptions = listOf(
+                        LocaleHelper.LANG_ZH to stringResource(R.string.settings_language_zh),
+                        LocaleHelper.LANG_EN to stringResource(R.string.settings_language_en),
+                        LocaleHelper.LANG_RU to stringResource(R.string.settings_language_ru)
+                    )
+                    val currentLang = LocaleHelper.getLanguage(langCtx)
+                    val languageIndex = languageOptions.indexOfFirst {
+                        it.first == currentLang
+                    }.takeIf { it >= 0 } ?: 0
+                    OverlayDropdownPreference(
+                        title = stringResource(R.string.settings_language),
+                        items = languageOptions.map { it.second },
+                        selectedIndex = languageIndex,
+                        onSelectedIndexChange = { index ->
+                            val lang = languageOptions[index].first
                             LocaleHelper.setLanguage(langCtx, lang)
                             vm.onUiLanguageChanged()
                             (langCtx as? Activity)?.recreate()
@@ -657,83 +697,8 @@ private fun SectionSubLabel(label: String) {
     )
 }
 
-/** Foreground refresh interval picker — three SuperArrow rows (10 / 20 / 30 s). */
-@Composable
-private fun ForegroundRefreshIntervalPicker(
-    selectedSec: Int,
-    onSelect: (Int) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        PreferencesRepository.WORKFLOW_FOREGROUND_REFRESH_INTERVALS_SEC.sorted().forEach { sec ->
-            val selected = selectedSec == sec
-            ArrowPreference(
-                title = stringResource(
-                    R.string.settings_workflow_foreground_refresh_interval_sec,
-                    sec
-                ),
-                summary = if (selected) "✓" else null,
-                onClick = { onSelect(sec) }
-            )
-        }
-    }
-}
 
-/** App update stability picker — two SuperArrow rows (stable / unstable). */
-@Composable
-private fun AppUpdateStabilityPicker(
-    selected: String,
-    onSelect: (String) -> Unit
-) {
-    val options = listOf(
-        APP_UPDATE_STABILITY_STABLE to stringResource(R.string.settings_app_update_stable),
-        APP_UPDATE_STABILITY_UNSTABLE to stringResource(R.string.settings_app_update_unstable)
-    )
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp)
-    ) {
-        options.forEach { (value, label) ->
-            val isSelected = normalizeAppUpdateStability(selected) == value
-            ArrowPreference(
-                title = label,
-                summary = if (isSelected) "✓" else null,
-                onClick = { onSelect(value) }
-            )
-        }
-    }
-}
 
-/** App update line picker — two SuperArrow rows (normal / dev). */
-@Composable
-private fun AppUpdateLinePicker(
-    selected: String,
-    onSelect: (String) -> Unit
-) {
-    val options = listOf(
-        APP_UPDATE_LINE_NORMAL to stringResource(R.string.settings_app_update_line_normal),
-        APP_UPDATE_LINE_DEV to stringResource(R.string.settings_app_update_line_dev)
-    )
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp)
-    ) {
-        options.forEach { (value, label) ->
-            val isSelected = normalizeAppUpdateLine(selected) == value
-            ArrowPreference(
-                title = label,
-                summary = if (isSelected) "✓" else null,
-                onClick = { onSelect(value) }
-            )
-        }
-    }
-}
 
 /** Download directory selector — uses OpenDocumentTree + text field. */
 @Composable
@@ -865,27 +830,6 @@ private fun MirrorUrlItem(
     }
 }
 
-/** Language picker — three SuperArrow rows (zh / en / ru). */
-@Composable
-private fun LanguagePicker(
-    currentLanguage: String,
-    onSelect: (String) -> Unit
-) {
-    val options = listOf(
-        LocaleHelper.LANG_ZH to stringResource(R.string.settings_language_zh),
-        LocaleHelper.LANG_EN to stringResource(R.string.settings_language_en),
-        LocaleHelper.LANG_RU to stringResource(R.string.settings_language_ru)
-    )
-    options.forEach { (lang, label) ->
-        val selected = currentLanguage == lang
-        ArrowPreference(
-            title = label,
-            summary = if (selected) "✓" else null,
-            startAction = { Icon(Icons.Default.Language, contentDescription = null, tint = MiuixTheme.colorScheme.onSurfaceSecondary) },
-            onClick = { onSelect(lang) }
-        )
-    }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Private label helpers
