@@ -575,21 +575,7 @@ fun SettingsScreenMiuix(
                 }
 
                 // ═══════════════════════════════════════════════════════════
-                // 6. NAVIGATION
-                // ═══════════════════════════════════════════════════════════
-                SectionTitle(stringResource(R.string.settings_navigation))
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    SwitchPreference(
-                        title = stringResource(R.string.settings_predictive_back),
-                        summary = stringResource(R.string.settings_predictive_back_desc),
-                        startAction = { Icon(Icons.Default.ArrowBack, contentDescription = null, tint = iconTint) },
-                        checked = state.predictiveBackEnabled,
-                        onCheckedChange = { vm.setPredictiveBackEnabled(it) }
-                    )
-                }
-
-                // ═══════════════════════════════════════════════════════════
-                // 7. LANGUAGE
+                // 6. LANGUAGE
                 // ═══════════════════════════════════════════════════════════
                 SectionTitle(stringResource(R.string.settings_language))
                 Card(modifier = Modifier.fillMaxWidth()) {
@@ -617,7 +603,7 @@ fun SettingsScreenMiuix(
                 }
 
                 // ═══════════════════════════════════════════════════════════
-                // 8. THEME
+                // 7. THEME
                 // ═══════════════════════════════════════════════════════════
                 SectionTitle(stringResource(R.string.settings_theme))
                 Card(modifier = Modifier.fillMaxWidth()) {
@@ -631,7 +617,7 @@ fun SettingsScreenMiuix(
                 }
 
                 // ═══════════════════════════════════════════════════════════
-                // 9. EXTENSIONS
+                // 8. EXTENSIONS
                 // ═══════════════════════════════════════════════════════════
                 SectionTitle(stringResource(R.string.settings_extensions_title))
                 Card(modifier = Modifier.fillMaxWidth()) {
@@ -645,7 +631,7 @@ fun SettingsScreenMiuix(
                 }
 
                 // ═══════════════════════════════════════════════════════════
-                // 10. ABOUT
+                // 9. ABOUT
                 // ═══════════════════════════════════════════════════════════
                 SectionTitle(stringResource(R.string.settings_about))
                 Card(modifier = Modifier.fillMaxWidth()) {
