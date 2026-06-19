@@ -467,6 +467,12 @@ private fun AbkMainScaffold(
         AbkTab.RuntimeHome -> managerPatchPageVisible
         else -> false
     }
+    // Mutable state captured by closures; reassigned inside NavDisplay setup so any
+    // downstream composable (e.g., bottom bar graphicsLayer) can read the latest
+    // gesture state and recompose when it changes.
+    var gestureState: NavigationEventState<SceneInfo<NavKey>>? by remember {
+        mutableStateOf<NavigationEventState<SceneInfo<NavKey>>?>(null)
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     val miuixSnackbarHostState = remember {
         top.yukonga.miuix.kmp.basic.SnackbarHostState()
@@ -586,15 +592,6 @@ private fun AbkMainScaffold(
         BackHandler(onBack = ::handleTopLevelBack)
     }
 
-    val navProgressAnim = remember { Animatable(1f) }
-    LaunchedEffect(childPageVisible) {
-        navProgressAnim.animateBottomNavForChildPage(
-            childPageVisible = childPageVisible,
-            motionScheme = motionScheme,
-        )
-    }
-    val navProgress = navProgressAnim.value
-
     val miuixMode = state.uiStyle == "miuix"
     val surfaceColor = if (miuixMode) MiuixTheme.colorScheme.surface else MaterialTheme.colorScheme.surface
     val floatingGlassBackdrop = rememberLayerBackdrop {
@@ -603,6 +600,39 @@ private fun AbkMainScaffold(
     }
     val blurEnabledForGlass = miuixMode && state.miuixFloatingBottomBarEnabled && state.miuixLiquidGlassEnabled
     val blurBackdrop = rememberBlurBackdrop(state.miuixBlurEnabled)
+
+    // Bar slide offset (0f = visible, -1f = hidden left). Single LaunchedEffect drives it:
+    //   gesture in progress   → snapTo(-[1–progress]) to follow finger
+    //   gesture ends       → 200ms animate to final state (smooth finish)
+    //   regular push/pop  → 300ms slide animation
+    val barSlideOffset = remember { androidx.compose.animation.core.Animatable(0f) }
+    val lastGestureProgress = remember { mutableStateOf(0f) }
+    val predictiveBackProgress by remember {
+        androidx.compose.runtime.derivedStateOf {
+            val inProgress = gestureState?.transitionState
+                as? androidx.navigationevent.NavigationEventTransitionState.InProgress
+            if (inProgress?.direction == androidx.navigationevent.NavigationEventTransitionState.TRANSITIONING_BACK) {
+                inProgress.latestEvent.progress
+            } else 0f
+        }
+    }
+    LaunchedEffect(childPageVisible, predictiveBackProgress) {
+        if (predictiveBackProgress > 0f) {
+            barSlideOffset.snapTo(-(1f - predictiveBackProgress))
+            lastGestureProgress.value = predictiveBackProgress
+        } else {
+            val target = if (childPageVisible) -1f else 0f
+            val fromGesture = lastGestureProgress.value > 0f
+            barSlideOffset.animateTo(
+                targetValue = target,
+                animationSpec = androidx.compose.animation.core.tween(
+                    durationMillis = if (fromGesture) 200 else 300,
+                    easing = androidx.compose.animation.core.FastOutSlowInEasing
+                )
+            )
+            if (fromGesture) lastGestureProgress.value = 0f
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -613,14 +643,16 @@ private fun AbkMainScaffold(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
-                .onSizeChanged { bottomBarHeightPx = it.height }
-                .zIndex(if (childPageVisible) 0f else 2f)
+                .zIndex(2f)
                 .graphicsLayer {
-                    val hidden = 1f - navProgress
-                    translationY = hidden * bottomBarHeightPx
-                    alpha = 1f - (hidden * 0.15f)
+                    translationX = size.width * barSlideOffset.value
                 }
         ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged { bottomBarHeightPx = it.height }
+            ) {
             when {
                 miuixMode && state.miuixFloatingBottomBarEnabled -> {
                     MiuixFloatingBottomBar(
@@ -727,6 +759,7 @@ private fun AbkMainScaffold(
                 }
             }
         }
+        }
         CompositionLocalProvider(LocalNavigator provides navigator) {
             Box(
                 modifier = Modifier
@@ -751,11 +784,6 @@ private fun AbkMainScaffold(
                         if (state.miuixPredictiveBackEnabled) MiuixDefaultPredictiveBackHandler()
                         else NonePredictiveBackHandler()
                     }
-                    // Mutable var captured by closure in entries' decorator. Its value is
-                    // reassigned on every recomposition so the decorator sees the latest
-                    // NavigationEventState. The var-capture trick is what lets gesture progress
-                    // flow into the predictiveBackAnnotation even though entries are remembered.
-                    var gestureState: NavigationEventState<SceneInfo<NavKey>>? = null
                     val navigationScope = rememberCoroutineScope()
                     val sceneBackgroundColor = if (state.uiStyle == "miuix") {
                         MiuixTheme.colorScheme.surface
@@ -923,7 +951,7 @@ private fun AbkMainScaffold(
 
                     NavigationBackHandler(
                         sceneState = sceneState,
-                        state = gestureState,
+                        state = gestureState!!,
                         onBack = { navigator.pop() }
                     )
 
@@ -950,7 +978,7 @@ private fun AbkMainScaffold(
         val snackbarModifier = Modifier
             .align(Alignment.BottomCenter)
             .padding(
-                bottom = with(density) { (bottomBarHeightPx * navProgress).toDp() } + 10.dp
+                bottom = with(density) { if (childPageVisible) 0.dp else bottomBarHeightPx.toDp() } + 10.dp
             )
             .zIndex(4f)
         if (state.uiStyle == "miuix") {
