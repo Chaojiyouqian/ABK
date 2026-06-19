@@ -691,13 +691,7 @@ private fun SettingsMainContent(
                 title = stringResource(R.string.settings_check_app_update),
                 subtitle = appUpdateCheckSubtitle(state),
                 leadingIcon = Icons.Default.Download,
-                trailingContent = {
-                    if (state.appUpdateChecking) {
-                        LoadingIndicator(Modifier.size(22.dp))
-                    } else {
-                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.settings_check_app_update))
-                    }
-                },
+                trailingContent = null,
                 onClick = vm::checkAppUpdate
             )
             state.appUpdateInfo?.let { info ->

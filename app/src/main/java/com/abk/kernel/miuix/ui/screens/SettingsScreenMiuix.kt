@@ -393,13 +393,6 @@ fun SettingsScreenMiuix(
                     ArrowPreference(
                         title = stringResource(R.string.settings_check_app_update),
                         summary = appUpdateCheckSubtitle(state),
-                        endActions = {
-                            if (state.appUpdateChecking) {
-                                CircularProgressIndicator(modifier = Modifier.size(22.dp), color = MiuixTheme.colorScheme.primary)
-                            } else {
-                                Icon(Icons.Default.Refresh, contentDescription = null, tint = iconTint)
-                            }
-                        },
                         onClick = { if (!state.appUpdateChecking) vm.checkAppUpdate() }
                     )
                     // Update info display
@@ -742,24 +735,26 @@ private fun DownloadDirectoryItem(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            verticalAlignment = androidx.compose.ui.Alignment.Top
         ) {
             if (leadingIcon != null) leadingIcon()
-            top.yukonga.miuix.kmp.basic.Text(
-                text = stringResource(R.string.settings_download_directory),
-                style = MiuixTheme.textStyles.main
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                top.yukonga.miuix.kmp.basic.Text(
+                    text = stringResource(R.string.settings_download_directory),
+                    style = MiuixTheme.textStyles.main
+                )
+                top.yukonga.miuix.kmp.basic.Text(
+                    text = stringResource(R.string.settings_download_directory_desc),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                )
+            }
         }
-        top.yukonga.miuix.kmp.basic.Text(
-            text = stringResource(R.string.settings_download_directory_desc),
-            style = MiuixTheme.textStyles.body2,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-        )
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -819,24 +814,26 @@ private fun MirrorUrlItem(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            verticalAlignment = androidx.compose.ui.Alignment.Top
         ) {
             if (leadingIcon != null) leadingIcon()
-            top.yukonga.miuix.kmp.basic.Text(
-                text = stringResource(R.string.settings_download_mirror),
-                style = MiuixTheme.textStyles.main
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                top.yukonga.miuix.kmp.basic.Text(
+                    text = stringResource(R.string.settings_download_mirror),
+                    style = MiuixTheme.textStyles.main
+                )
+                top.yukonga.miuix.kmp.basic.Text(
+                    text = stringResource(R.string.settings_download_mirror_desc),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                )
+            }
         }
-        top.yukonga.miuix.kmp.basic.Text(
-            text = stringResource(R.string.settings_download_mirror_desc),
-            style = MiuixTheme.textStyles.body2,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-        )
         Box(
             modifier = Modifier
                 .fillMaxWidth()

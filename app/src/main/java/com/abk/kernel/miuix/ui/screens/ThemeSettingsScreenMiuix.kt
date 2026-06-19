@@ -14,7 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.MenuOpen
 import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.CallToAction
 import androidx.compose.material.icons.rounded.WaterDrop
@@ -72,7 +72,7 @@ fun ThemeSettingsScreenMiuix(
 
             // Section 1: UI 风格
             Card {
-                val uiStyleOptions = listOf("material" to "Material 3", "miuix" to "MIUIX HyperOS")
+                val uiStyleOptions = listOf("material" to "Material 3", "miuix" to "MIUIX")
                 val uiStyleIndex = if (state.uiStyle == "miuix") 1 else 0
                 OverlayDropdownPreference(
                     title = "UI 风格",
@@ -175,13 +175,13 @@ fun ThemeSettingsScreenMiuix(
             Card {
                 SwitchPreference(
                     title = "预测性返回手势",
-                    summary = "启用边缘滑动返回预览和自定义页面关闭动画",
+                    summary = "启用对预测性返回手势的支持",
                     startAction = {
                         Icon(
-                            Icons.Default.ArrowBack,
+                            Icons.AutoMirrored.Rounded.MenuOpen,
                             modifier = Modifier.padding(end = 6.dp),
                             contentDescription = "预测性返回手势",
-                            tint = MiuixTheme.colorScheme.onSurfaceSecondary
+                            tint = MiuixTheme.colorScheme.onBackground
                         )
                     },
                     checked = state.miuixPredictiveBackEnabled,
