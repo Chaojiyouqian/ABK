@@ -78,6 +78,7 @@ import com.abk.kernel.ui.navigation3.LocalNavigator
 import com.abk.kernel.ui.navigation3.Route
 import com.abk.kernel.viewmodel.MainUiState
 import com.abk.kernel.viewmodel.MainViewModel
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -779,6 +780,7 @@ private fun DownloadDirectoryItem(
             top.yukonga.miuix.kmp.basic.TextButton(
                 text = stringResource(R.string.settings_download_directory_choose),
                 modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.textButtonColorsPrimary(),
                 onClick = {
                     if (needsAllFilesAccess) {
                         Toast.makeText(context, permissionNeededMessage, Toast.LENGTH_LONG).show()
