@@ -903,7 +903,7 @@ private fun AbkMainScaffold(
                                 // TODO(Phase A.2): Implement About screen
                             }
                             entry<Route.OpenSourceLicenses> {
-                                // TODO(Phase A.2): Implement OpenSourceLicenses screen
+                                com.abk.kernel.miuix.ui.screens.OpenSourceLicensesScreenMiuix()
                             }
                             entry<Route.ExtensionManager> {
                                 // TODO(Phase A.2): Implement ExtensionManager screen
