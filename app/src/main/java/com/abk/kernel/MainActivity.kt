@@ -928,7 +928,7 @@ private fun AbkMainScaffold(
                                 // TODO(Phase A.2): Implement ManagerTools screen
                             }
                             entry<Route.About> {
-                                // TODO(Phase A.2): Implement About screen
+                                com.abk.kernel.miuix.ui.screens.AboutScreenMiuix()
                             }
                             entry<Route.OpenSourceLicenses> {
                                 com.abk.kernel.miuix.ui.screens.OpenSourceLicensesScreenMiuix()
