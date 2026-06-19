@@ -511,7 +511,6 @@ fun SettingsScreenMiuix(
                                         title = item.title,
                                         summary = item.subtitle,
                                         startAction = { Icon(managerSettingIcon(item.id), contentDescription = null, tint = iconTint) },
-                                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = iconTint) },
                                         onClick = if (item.enabled && !actionInFlight) {
                                             {
                                                 when (item.id) {
@@ -611,7 +610,6 @@ fun SettingsScreenMiuix(
                         title = stringResource(R.string.settings_color_appearance),
                         summary = "${themeModeLabel(state.themeMode)} · ${dynamicColorLabel(state.dynamicColorEnabled)}",
                         startAction = { Icon(Icons.Default.Palette, contentDescription = null, tint = iconTint) },
-                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = iconTint) },
                         onClick = { navigator.push(Route.ThemeSettings) }
                     )
                 }
@@ -625,7 +623,6 @@ fun SettingsScreenMiuix(
                         title = stringResource(R.string.settings_extensions_manage),
                         summary = stringResource(R.string.settings_extensions_manage_desc),
                         startAction = { Icon(Icons.Default.Extension, contentDescription = null, tint = iconTint) },
-                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = iconTint) },
                         onClick = { navigator.push(Route.ExtensionManager) }
                     )
                 }
@@ -652,14 +649,12 @@ fun SettingsScreenMiuix(
                         title = stringResource(R.string.settings_about),
                         summary = stringResource(R.string.settings_about_desc),
                         startAction = { Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = iconTint) },
-                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = iconTint) },
                         onClick = { navigator.push(Route.About) }
                     )
                     ArrowPreference(
                         title = stringResource(R.string.settings_open_source_licenses),
                         summary = stringResource(R.string.settings_open_source_licenses_desc),
                         startAction = { Icon(Icons.Default.Article, contentDescription = null, tint = iconTint) },
-                        endActions = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = iconTint) },
                         onClick = { navigator.push(Route.OpenSourceLicenses) }
                     )
                 }
