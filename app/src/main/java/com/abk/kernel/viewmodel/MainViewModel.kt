@@ -194,6 +194,7 @@ data class MainUiState(
     val appUpdateError: String? = null,
     val appUpdatePendingInstallPath: String? = null,
     val predictiveBackEnabled: Boolean = true,
+    val miuixPredictiveBackEnabled: Boolean = true,
     val runtimeNavigationEnabled: Boolean = false,
     val webViewDebugEnabled: Boolean = false,
     val managerAccessState: ManagerAccessState = ManagerAccessState.UNKNOWN,
@@ -607,6 +608,11 @@ class MainViewModel @JvmOverloads constructor(
         viewModelScope.launch {
             prefs.predictiveBackEnabled.collect { enabled ->
                 _uiState.update { it.copy(predictiveBackEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            prefs.miuixPredictiveBackEnabled.collect { enabled ->
+                _uiState.update { it.copy(miuixPredictiveBackEnabled = enabled) }
             }
         }
         viewModelScope.launch {
@@ -2801,6 +2807,7 @@ class MainViewModel @JvmOverloads constructor(
         prefs.setDownloadMirrorBaseUrl(url.trim())
     }
     fun setPredictiveBackEnabled(v: Boolean) = viewModelScope.launch { prefs.setPredictiveBackEnabled(v) }
+    fun setMiuixPredictiveBackEnabled(v: Boolean) = viewModelScope.launch { prefs.setMiuixPredictiveBackEnabled(v) }
     fun setPrebuiltGkiEnabled(v: Boolean) = viewModelScope.launch {
         if (!v) {
             artifactDownloadJobs.keys.filter { it < 0L }.forEach { key ->
