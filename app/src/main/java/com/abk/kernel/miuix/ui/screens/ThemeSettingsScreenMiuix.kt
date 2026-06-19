@@ -170,8 +170,9 @@ fun ThemeSettingsScreenMiuix(
                 }
             }
 
-            // Section 5: 导航（MIUIX-only，仅控制 NavDisplay 的预测返回手势；MD3 的 PredictiveChildPageBack 由 SettingsScreen 的独立开关控制）
-            SectionTitleMiuix("导航")
+            // Section 5: predictive back switch (MIUIX-only; controls NavDisplay predictive back;
+            // MD3 PredictiveChildPageBack is independently toggled from SettingsScreen).
+            // No SectionTitleMiuix label — switch lives directly after the "视觉效果" Card.
             Card {
                 SwitchPreference(
                     title = "预测性返回手势",
