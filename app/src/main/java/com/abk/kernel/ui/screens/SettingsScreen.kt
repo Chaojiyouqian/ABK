@@ -691,7 +691,11 @@ private fun SettingsMainContent(
                 title = stringResource(R.string.settings_check_app_update),
                 subtitle = appUpdateCheckSubtitle(state),
                 leadingIcon = Icons.Default.Download,
-                trailingContent = null,
+                trailingContent = {
+                    if (state.appUpdateChecking) {
+                        LoadingIndicator(Modifier.size(22.dp))
+                    }
+                },
                 onClick = vm::checkAppUpdate
             )
             // Update info display (merged: available-status row + download-install action)

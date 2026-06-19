@@ -393,6 +393,14 @@ fun SettingsScreenMiuix(
                     ArrowPreference(
                         title = stringResource(R.string.settings_check_app_update),
                         summary = appUpdateCheckSubtitle(state),
+                        endActions = {
+                            if (state.appUpdateChecking) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(22.dp),
+                                    color = MiuixTheme.colorScheme.primary
+                                )
+                            }
+                        },
                         onClick = { if (!state.appUpdateChecking) vm.checkAppUpdate() }
                     )
                     // Update info display (merged: available-status + download-install action)
