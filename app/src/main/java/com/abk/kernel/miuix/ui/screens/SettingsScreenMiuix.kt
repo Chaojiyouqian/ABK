@@ -395,49 +395,48 @@ fun SettingsScreenMiuix(
                         summary = appUpdateCheckSubtitle(state),
                         onClick = { if (!state.appUpdateChecking) vm.checkAppUpdate() }
                     )
-                    // Update info display
-                    state.appUpdateInfo?.let { info ->
-                        ArrowPreference(
-                            title = if (info.hasUpdate) {
-                                stringResource(R.string.settings_app_update_available)
-                            } else {
-                                stringResource(R.string.settings_app_update_latest)
-                            },
-                            summary = appUpdateResultSubtitle(info),
-                            startAction = {
-                                Icon(
-                                    imageVector = if (info.hasUpdate) Icons.Default.Download else Icons.Default.Verified,
-                                    contentDescription = null,
-                                    tint = iconTint
-                                )
-                            }
-                        )
-                        AnimatedVisibility(
-                            visible = info.hasUpdate,
-                            enter = fadeIn(),
-                            exit = fadeOut()
-                        ) {
+                    // Update info display (merged: available-status + download-install action)
+                    AnimatedVisibility(visible = state.appUpdateInfo != null) {
+                        state.appUpdateInfo?.let { info ->
                             val downloadUrl = info.remote.downloadUrl
                             ArrowPreference(
-                                title = stringResource(R.string.settings_download_install_update),
+                                title = if (info.hasUpdate) {
+                                    stringResource(R.string.settings_app_update_available)
+                                } else {
+                                    stringResource(R.string.settings_app_update_latest)
+                                },
                                 summary = when {
                                     state.appUpdateDownloading -> stringResource(
                                         R.string.settings_app_update_downloading_progress,
                                         state.appUpdateDownloadProgress
                                     )
-                                    downloadUrl.isBlank() -> stringResource(R.string.settings_app_update_link_missing)
-                                    else -> downloadUrl
+                                    info.hasUpdate -> {
+                                        if (downloadUrl.isBlank()) stringResource(R.string.settings_app_update_link_missing) else downloadUrl
+                                    }
+                                    else -> appUpdateResultSubtitle(info)
                                 },
-                                startAction = { Icon(Icons.Default.InstallMobile, contentDescription = null, tint = iconTint) },
+                                startAction = {
+                                    Icon(
+                                        imageVector = if (info.hasUpdate) Icons.Default.Download else Icons.Default.Verified,
+                                        contentDescription = null,
+                                        tint = iconTint
+                                    )
+                                },
                                 endActions = {
-                                    if (state.appUpdateDownloading) {
-                                        CircularProgressIndicator(modifier = Modifier.size(22.dp), color = MiuixTheme.colorScheme.primary)
-                                    } else {
-                                        Icon(Icons.Default.Download, contentDescription = null, tint = iconTint)
+                                    if (info.hasUpdate) {
+                                        if (state.appUpdateDownloading) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(22.dp),
+                                                color = MiuixTheme.colorScheme.primary
+                                            )
+                                        } else {
+                                            Icon(Icons.Default.Download, contentDescription = null, tint = iconTint)
+                                        }
                                     }
                                 },
-                                onClick = downloadUrl.takeIf { it.isNotBlank() }
-                                    ?.let { { vm.downloadAndInstallAppUpdate() } }
+                                onClick = if (info.hasUpdate && downloadUrl.isNotBlank()) {
+                                    { vm.downloadAndInstallAppUpdate() }
+                                } else null
                             )
                         }
                     }
@@ -897,10 +896,6 @@ private fun dynamicColorLabel(enabled: Boolean): String = when {
 
 @Composable
 private fun appUpdateCheckSubtitle(state: MainUiState): String = when {
-    state.appUpdateDownloading -> stringResource(
-        R.string.settings_app_update_downloading_progress,
-        state.appUpdateDownloadProgress
-    )
     state.appUpdateChecking -> stringResource(R.string.settings_app_update_checking)
     state.appUpdateInfo != null -> appUpdateResultSubtitle(state.appUpdateInfo)
     state.appUpdateError?.isNotBlank() == true -> state.appUpdateError

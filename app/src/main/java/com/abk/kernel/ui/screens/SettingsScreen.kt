@@ -694,38 +694,39 @@ private fun SettingsMainContent(
                 trailingContent = null,
                 onClick = vm::checkAppUpdate
             )
-            state.appUpdateInfo?.let { info ->
-                ExpressiveListItem(
-                    title = if (info.hasUpdate) {
-                        stringResource(R.string.settings_app_update_available)
-                    } else {
-                        stringResource(R.string.settings_app_update_latest)
-                    },
-                    subtitle = appUpdateResultSubtitle(info),
-                    leadingIcon = if (info.hasUpdate) Icons.Default.Download else Icons.Default.Verified
-                )
-                if (info.hasUpdate) {
+            // Update info display (merged: available-status row + download-install action)
+            AnimatedVisibility(visible = state.appUpdateInfo != null) {
+                state.appUpdateInfo?.let { info ->
                     val downloadUrl = info.remote.downloadUrl
                     ExpressiveListItem(
-                        title = stringResource(R.string.settings_download_install_update),
+                        title = if (info.hasUpdate) {
+                            stringResource(R.string.settings_app_update_available)
+                        } else {
+                            stringResource(R.string.settings_app_update_latest)
+                        },
                         subtitle = when {
                             state.appUpdateDownloading -> stringResource(
                                 R.string.settings_app_update_downloading_progress,
                                 state.appUpdateDownloadProgress
                             )
-                            downloadUrl.isBlank() -> stringResource(R.string.settings_app_update_link_missing)
-                            else -> downloadUrl
+                            info.hasUpdate -> {
+                                if (downloadUrl.isBlank()) stringResource(R.string.settings_app_update_link_missing) else downloadUrl
+                            }
+                            else -> appUpdateResultSubtitle(info)
                         },
-                        leadingIcon = Icons.Default.InstallMobile,
-                        enabled = downloadUrl.isNotBlank(),
+                        leadingIcon = if (info.hasUpdate) Icons.Default.Download else Icons.Default.Verified,
+                        enabled = info.hasUpdate && downloadUrl.isNotBlank(),
                         trailingContent = {
-                            if (state.appUpdateDownloading) {
-                                LoadingIndicator(Modifier.size(22.dp))
-                            } else if (downloadUrl.isNotBlank()) {
-                                Icon(Icons.Default.Download, contentDescription = stringResource(R.string.settings_download_install_update))
+                            if (info.hasUpdate) {
+                                if (state.appUpdateDownloading) {
+                                    LoadingIndicator(Modifier.size(22.dp))
+                                } else if (downloadUrl.isNotBlank()) {
+                                    Icon(Icons.Default.Download, contentDescription = stringResource(R.string.settings_download_install_update))
+                                }
                             }
                         },
-                        onClick = downloadUrl.takeIf { it.isNotBlank() }?.let { { vm.downloadAndInstallAppUpdate() } }
+                        onClick = downloadUrl.takeIf { it.isNotBlank() && info.hasUpdate }
+                            ?.let { { vm.downloadAndInstallAppUpdate() } }
                     )
                 }
             }
@@ -2192,10 +2193,6 @@ private fun AppUpdateLinePicker(
 
 @Composable
 private fun appUpdateCheckSubtitle(state: MainUiState): String = when {
-    state.appUpdateDownloading -> stringResource(
-        R.string.settings_app_update_downloading_progress,
-        state.appUpdateDownloadProgress
-    )
     state.appUpdateChecking -> stringResource(R.string.settings_app_update_checking)
     state.appUpdateInfo != null -> appUpdateResultSubtitle(state.appUpdateInfo)
     state.appUpdateError?.isNotBlank() == true -> state.appUpdateError
