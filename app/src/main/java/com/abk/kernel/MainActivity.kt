@@ -99,6 +99,8 @@ import com.abk.kernel.ui.screens.RootAuthorizationScreen
 import com.abk.kernel.ui.screens.RuntimeHomeScreen
 import com.abk.kernel.ui.screens.SettingsScreen
 import com.abk.kernel.ui.screens.StatusScreen
+import com.abk.kernel.miuix.component.AbkMiuixSnackbarHost
+import com.abk.kernel.miuix.component.showAbkMiuixSnackbar
 import com.abk.kernel.miuix.theme.AbkMiuixTheme
 import com.abk.kernel.miuix.component.FloatingTabItem
 import com.abk.kernel.miuix.component.MiuixFloatingBottomBar
@@ -459,19 +461,33 @@ private fun AbkMainScaffold(
         else -> false
     }
     val snackbarHostState = remember { SnackbarHostState() }
+    val miuixSnackbarHostState = remember {
+        top.yukonga.miuix.kmp.basic.SnackbarHostState()
+    }
 
     LaunchedEffect(state.snackbarMessage, state.snackbarLongDuration, state.error) {
         when (val snackbar = state.snackbarMessage) {
             null -> {
                 val error = state.error ?: return@LaunchedEffect
-                snackbarHostState.showAbkSnackbar(message = error, longDuration = true)
+                if (state.uiStyle == "miuix") {
+                    miuixSnackbarHostState.showAbkMiuixSnackbar(message = error, longDuration = true)
+                } else {
+                    snackbarHostState.showAbkSnackbar(message = error, longDuration = true)
+                }
                 vm.clearError()
             }
             else -> {
-                snackbarHostState.showAbkSnackbar(
-                    message = snackbar,
-                    longDuration = state.snackbarLongDuration,
-                )
+                if (state.uiStyle == "miuix") {
+                    miuixSnackbarHostState.showAbkMiuixSnackbar(
+                        message = snackbar,
+                        longDuration = state.snackbarLongDuration,
+                    )
+                } else {
+                    snackbarHostState.showAbkSnackbar(
+                        message = snackbar,
+                        longDuration = state.snackbarLongDuration,
+                    )
+                }
                 vm.clearSnackbar()
                 if (state.error != null) vm.clearError()
             }
@@ -923,15 +939,23 @@ private fun AbkMainScaffold(
                 }
             }
         }
-        AbkSnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(
-                    bottom = with(density) { (bottomBarHeightPx * navProgress).toDp() } + 10.dp
-                )
-                .zIndex(4f)
-        )
+        val snackbarModifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(
+                bottom = with(density) { (bottomBarHeightPx * navProgress).toDp() } + 10.dp
+            )
+            .zIndex(4f)
+        if (state.uiStyle == "miuix") {
+            AbkMiuixSnackbarHost(
+                hostState = miuixSnackbarHostState,
+                modifier = snackbarModifier
+            )
+        } else {
+            AbkSnackbarHost(
+                hostState = snackbarHostState,
+                modifier = snackbarModifier
+            )
+        }
     }
 }
 
