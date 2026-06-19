@@ -631,6 +631,8 @@
     <string name="settings_enter_about">Открыть «О приложении»</string>
     <string name="settings_open_source_licenses">Лицензии открытого ПО</string>
     <string name="settings_open_source_licenses_desc">Лицензии ссылок репозитория, встроенного кода и зависимостей</string>
+    <string name="settings_oss_visit_homepage">Посетить главную</string>
+    <string name="settings_oss_source_label">Источник</string>
     <string name="settings_enter_open_source_licenses">Открыть лицензии открытого ПО</string>
     <string name="settings_appearance_mode">Режим внешнего вида</string>
     <string name="settings_color_source">Источник цвета</string>

@@ -631,6 +631,8 @@
     <string name="settings_enter_about">Open about</string>
     <string name="settings_open_source_licenses">Open source licenses</string>
     <string name="settings_open_source_licenses_desc">Licenses for repository references, embedded source, and dependencies</string>
+    <string name="settings_oss_visit_homepage">Visit Homepage</string>
+    <string name="settings_oss_source_label">Source</string>
     <string name="settings_enter_open_source_licenses">Open open source licenses</string>
     <string name="settings_appearance_mode">Appearance mode</string>
     <string name="settings_color_source">Color source</string>

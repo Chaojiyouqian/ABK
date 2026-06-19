@@ -631,6 +631,8 @@
     <string name="settings_enter_about">进入关于</string>
     <string name="settings_open_source_licenses">开放源代码许可</string>
     <string name="settings_open_source_licenses_desc">本仓库引用、内嵌源码和依赖包的许可证清单</string>
+    <string name="settings_oss_visit_homepage">访问主页</string>
+    <string name="settings_oss_source_label">来源</string>
     <string name="settings_enter_open_source_licenses">进入开放源代码许可</string>
     <string name="settings_appearance_mode">外观模式</string>
     <string name="settings_color_source">颜色来源</string>
