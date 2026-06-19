@@ -15,6 +15,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -110,8 +112,26 @@ import com.abk.kernel.ui.theme.LocalUiSurfaceAlpha
 import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
 import com.abk.kernel.viewmodel.MainViewModel
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.NavEntryDecorator
 import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberDecoratedNavEntries
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.scene.NavigationBackHandler
+import androidx.navigation3.scene.Scene
+import androidx.navigation3.scene.SceneInfo
+import androidx.navigation3.scene.SinglePaneSceneStrategy
+import androidx.navigation3.scene.rememberSceneState
 import androidx.navigation3.ui.NavDisplay
+import androidx.navigation3.ui.NavDisplayTransitionEffects
+import androidx.navigationevent.compose.NavigationEventState
+import androidx.navigationevent.compose.rememberNavigationEventState
+import com.abk.kernel.miuix.animation.predictiveback.MiuixDefaultPredictiveBackHandler
+import com.abk.kernel.miuix.animation.predictiveback.NonePredictiveBackHandler
+import com.abk.kernel.miuix.animation.predictiveback.invokePopTransitionSpec
+import com.abk.kernel.miuix.animation.predictiveback.invokePredictivePopTransitionSpec
+import com.abk.kernel.miuix.animation.predictiveback.invokeTransitionSpec
 import com.abk.kernel.ui.navigation3.LocalNavigator
 import com.abk.kernel.ui.navigation3.Route
 import com.abk.kernel.ui.navigation3.rememberNavigator
@@ -701,9 +721,50 @@ private fun AbkMainScaffold(
                             }
                         )
                 ) {
-                    NavDisplay(
+                    // ReSukiSU-style scene state integration for predictive back.
+                    // The handler is recreated on every state change (remember key), so
+                    // downstream closures below always read the latest handler via this val.
+                    val predictiveBackHandler = remember(state.miuixPredictiveBackEnabled) {
+                        if (state.miuixPredictiveBackEnabled) MiuixDefaultPredictiveBackHandler()
+                        else NonePredictiveBackHandler()
+                    }
+                    // Mutable var captured by closure in entries' decorator. Its value is
+                    // reassigned on every recomposition so the decorator sees the latest
+                    // NavigationEventState. The var-capture trick is what lets gesture progress
+                    // flow into the predictiveBackAnnotation even though entries are remembered.
+                    var gestureState: NavigationEventState<SceneInfo<NavKey>>? = null
+                    val navigationScope = rememberCoroutineScope()
+                    val sceneBackgroundColor = if (state.uiStyle == "miuix") {
+                        MiuixTheme.colorScheme.surface
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainer
+                    }
+
+                    val entries = rememberDecoratedNavEntries(
                         backStack = navigator.backStack,
-                        onBack = { navigator.pop() },
+                        entryDecorators = listOf(
+                            rememberSaveableStateHolderNavEntryDecorator(),
+                            NavEntryDecorator<NavKey>(
+                                onPop = { key ->
+                                    predictiveBackHandler.onPagePop(key, navigationScope)
+                                },
+                                decorate = { entry ->
+                                    with(predictiveBackHandler) {
+                                        Box(
+                                            modifier = Modifier
+                                                .predictiveBackAnnotation(
+                                                    gestureState?.transitionState,
+                                                    entry.contentKey,
+                                                    navigator.current()
+                                                )
+                                                .background(sceneBackgroundColor)
+                                        ) {
+                                            entry.Content()
+                                        }
+                                    }
+                                }
+                            )
+                        ),
                         entryProvider = entryProvider {
                             entry<Route.Main> {
                                 AnimatedContent(
@@ -824,6 +885,40 @@ private fun AbkMainScaffold(
                                 // TODO(Phase A.2): Implement ExtensionManager screen
                             }
                         }
+                    )
+
+                    val sceneState = rememberSceneState(
+                        entries = entries,
+                        sceneStrategies = listOf(SinglePaneSceneStrategy()),
+                        onBack = { navigator.pop() }
+                    )
+                    gestureState = rememberNavigationEventState(
+                        currentInfo = SceneInfo(sceneState.currentScene),
+                        backInfo = sceneState.previousScenes.map { SceneInfo(it) }
+                    )
+
+                    NavigationBackHandler(
+                        sceneState = sceneState,
+                        state = gestureState,
+                        onBack = { navigator.pop() }
+                    )
+
+                    NavDisplay(
+                        sceneState = sceneState,
+                        navigationEventState = gestureState!!,
+                        transitionSpec = {
+                            val scope: AnimatedContentTransitionScope<Scene<NavKey>> = this
+                            predictiveBackHandler.invokeTransitionSpec(scope)
+                        },
+                        popTransitionSpec = {
+                            val scope: AnimatedContentTransitionScope<Scene<NavKey>> = this
+                            predictiveBackHandler.invokePopTransitionSpec(scope)
+                        },
+                        predictivePopTransitionSpec = { swipeEdge ->
+                            val scope: AnimatedContentTransitionScope<Scene<NavKey>> = this
+                            predictiveBackHandler.invokePredictivePopTransitionSpec(scope, swipeEdge)
+                        },
+                        transitionEffects = NavDisplayTransitionEffects.Default
                     )
                 }
             }
