@@ -11,8 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Source
@@ -87,60 +87,65 @@ fun OpenSourceLicensesScreenMiuix() {
             )
         }
     ) { padding ->
-        Column(
+        val groups = remember { miuixOpenSourceNoticeGroups() }
+        LazyColumn(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .verticalScroll(rememberScrollState())
                 .overScrollVertical()
-                .scrollEndHaptic()
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .scrollEndHaptic(),
+            contentPadding = PaddingValues(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            overscrollEffect = null
         ) {
-            Spacer(Modifier.height(8.dp))
+            item { Spacer(Modifier.height(8.dp)) }
 
-            Text(
-                text = stringResource(R.string.settings_open_source_licenses_intro),
-                style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp)
-            )
+            item {
+                Text(
+                    text = stringResource(R.string.settings_open_source_licenses_intro),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp)
+                )
+            }
 
-            miuixOpenSourceNoticeGroups().forEach { group ->
-                SmallTitle(stringResource(group.titleRes))
-                Card {
-                    group.items.forEach { notice ->
-                        val subtitle = listOfNotNull(
-                            notice.license,
-                            notice.source.takeIf { it.isNotBlank() }
-                        ).joinToString(" · ")
-                        val startSlot = @Composable {
-                            Icon(
-                                imageVector = Icons.Default.Source,
-                                contentDescription = null,
-                                tint = MiuixTheme.colorScheme.onSurfaceSecondary
-                            )
-                        }
-                        if (notice.url != null) {
-                            ArrowPreference(
-                                title = notice.name,
-                                summary = subtitle,
-                                startAction = startSlot,
-                                onClick = { selectedNotice = notice }
-                            )
-                        } else {
-                            BasicComponent(
-                                title = notice.name,
-                                summary = subtitle,
-                                startAction = startSlot
-                            )
+            groups.forEach { group ->
+                item { SmallTitle(stringResource(group.titleRes)) }
+                item {
+                    Card {
+                        group.items.forEach { notice ->
+                            val subtitle = listOfNotNull(
+                                notice.license,
+                                notice.source.takeIf { it.isNotBlank() }
+                            ).joinToString(" · ")
+                            val startSlot = @Composable {
+                                Icon(
+                                    imageVector = Icons.Default.Source,
+                                    contentDescription = null,
+                                    tint = MiuixTheme.colorScheme.onSurfaceSecondary
+                                )
+                            }
+                            if (notice.url != null) {
+                                ArrowPreference(
+                                    title = notice.name,
+                                    summary = subtitle,
+                                    startAction = startSlot,
+                                    onClick = { selectedNotice = notice }
+                                )
+                            } else {
+                                BasicComponent(
+                                    title = notice.name,
+                                    summary = subtitle,
+                                    startAction = startSlot
+                                )
+                            }
                         }
                     }
                 }
             }
 
-            Spacer(Modifier.height(60.dp))
+            item { Spacer(Modifier.height(60.dp)) }
         }
     }
 
