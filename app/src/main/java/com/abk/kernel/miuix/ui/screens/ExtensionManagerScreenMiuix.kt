@@ -22,9 +22,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.OpenInNew
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextButton
@@ -192,38 +190,19 @@ fun ExtensionManagerScreenMiuix() {
                             contentDescription = stringResource(R.string.settings_back)
                         )
                     }
-                },
-                actions = {
-                    IconButton(onClick = { requestRefresh() }) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = stringResource(R.string.refresh)
-                        )
-                    }
                 }
             )
         }
     ) { padding ->
-        when {
-            loading -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = MiuixTheme.colorScheme.primary)
-                }
-            }
-
-            extensions.isEmpty() -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.Top
-                ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (extensions.isEmpty()) {
+                item {
                     Card {
                         Column(
                             modifier = Modifier.padding(16.dp),
@@ -250,30 +229,20 @@ fun ExtensionManagerScreenMiuix() {
                         }
                     }
                 }
-            }
-
-            else -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(
-                        items = extensions,
-                        key = { it.extensionId }
-                    ) { extension ->
-                        ExtensionCardMiuix(
-                            extension = extension,
-                            onInstall = { installExtension(extension) },
-                            onOpenOobe = { launchOobe(extension) },
-                            onOpenService = { launchServiceActivity(extension) },
-                            onReset = { resetExtension(extension) }
-                        )
-                    }
-                    item { Spacer(Modifier.size(80.dp)) }
+            } else {
+                items(
+                    items = extensions,
+                    key = { it.extensionId }
+                ) { extension ->
+                    ExtensionCardMiuix(
+                        extension = extension,
+                        onInstall = { installExtension(extension) },
+                        onOpenOobe = { launchOobe(extension) },
+                        onOpenService = { launchServiceActivity(extension) },
+                        onReset = { resetExtension(extension) }
+                    )
                 }
+                item { Spacer(Modifier.size(80.dp)) }
             }
         }
     }
