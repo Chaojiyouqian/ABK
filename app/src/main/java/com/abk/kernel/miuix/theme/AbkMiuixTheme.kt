@@ -7,13 +7,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.ThemeColorSpec
 import top.yukonga.miuix.kmp.theme.ThemeController
+import top.yukonga.miuix.kmp.theme.ThemePaletteStyle
 
 @Composable
 fun AbkMiuixTheme(
     themeMode: String = "system",
     dynamicColorEnabled: Boolean = true,
     customThemeColorArgb: Int? = null,
+    colorStyleName: String = "TonalSpot",
+    colorSpecName: String = "Spec2021",
     content: @Composable () -> Unit
 ) {
     val darkTheme = when (themeMode) {
@@ -36,11 +40,26 @@ fun AbkMiuixTheme(
         }
     }
 
-    val keyColor = customThemeColorArgb?.let { Color(it) }
-        ?: Color(0xFF3DDC84) // ABK green seed
+    // 0 or null => use the ABK green seed; otherwise use the user-picked ARGB value.
+    val seedArgb = customThemeColorArgb?.takeIf { it != 0 }
+    val keyColor = seedArgb?.let { Color(it) } ?: Color(0xFF3DDC84)
 
-    val controller = remember(mode, keyColor) {
-        ThemeController(mode, keyColor = keyColor)
+    val paletteStyle = remember(colorStyleName) {
+        runCatching { ThemePaletteStyle.valueOf(colorStyleName) }
+            .getOrDefault(ThemePaletteStyle.TonalSpot)
+    }
+    val colorSpec = remember(colorSpecName) {
+        runCatching { ThemeColorSpec.valueOf(colorSpecName) }
+            .getOrDefault(ThemeColorSpec.Spec2021)
+    }
+
+    val controller = remember(mode, keyColor, paletteStyle, colorSpec) {
+        ThemeController(
+            colorSchemeMode = mode,
+            keyColor = keyColor,
+            paletteStyle = paletteStyle,
+            colorSpec = colorSpec,
+        )
     }
 
     MiuixTheme(controller = controller, content = content)

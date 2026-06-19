@@ -72,6 +72,9 @@ class PreferencesRepository(private val context: Context) {
         val KEY_UI_STYLE = stringPreferencesKey("ui_style") // "material" | "miuix"
         val KEY_MIUIX_THEME_COLOR = intPreferencesKey("miuix_theme_color_argb")
         val KEY_MIUIX_ACCENT_COLOR = intPreferencesKey("miuix_accent_color_argb")
+        val KEY_MIUIX_DYNAMIC_COLOR_ENABLED = booleanPreferencesKey("miuix_dynamic_color_enabled")
+        val KEY_MIUIX_COLOR_STYLE = stringPreferencesKey("miuix_color_style")
+        val KEY_MIUIX_COLOR_SPEC = stringPreferencesKey("miuix_color_spec")
         val KEY_MIUIX_BLUR_ENABLED = booleanPreferencesKey("miuix_blur_enabled")
         val KEY_MIUIX_FLOATING_BOTTOM_BAR_ENABLED = booleanPreferencesKey("miuix_floating_bottom_bar_enabled")
         val KEY_MIUIX_LIQUID_GLASS_ENABLED = booleanPreferencesKey("miuix_liquid_glass_enabled")
@@ -156,6 +159,9 @@ class PreferencesRepository(private val context: Context) {
     val uiStyle: Flow<String> = context.dataStore.data.map { it[KEY_UI_STYLE] ?: "material" }
     val miuixThemeColorArgb: Flow<Int?> = context.dataStore.data.map { it[KEY_MIUIX_THEME_COLOR] }
     val miuixAccentColorArgb: Flow<Int?> = context.dataStore.data.map { it[KEY_MIUIX_ACCENT_COLOR] }
+    val miuixDynamicColorEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_MIUIX_DYNAMIC_COLOR_ENABLED] ?: false }
+    val miuixColorStyle: Flow<String> = context.dataStore.data.map { it[KEY_MIUIX_COLOR_STYLE] ?: "TonalSpot" }
+    val miuixColorSpec: Flow<String> = context.dataStore.data.map { it[KEY_MIUIX_COLOR_SPEC] ?: "Spec2021" }
     val miuixBlurEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_MIUIX_BLUR_ENABLED] ?: true }
     val miuixFloatingBottomBarEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_MIUIX_FLOATING_BOTTOM_BAR_ENABLED] ?: true }
     val miuixLiquidGlassEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_MIUIX_LIQUID_GLASS_ENABLED] ?: true }
@@ -276,6 +282,9 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setUiStyle(style: String) = context.dataStore.edit { it[KEY_UI_STYLE] = style }
     suspend fun setMiuixThemeColor(argb: Int) = context.dataStore.edit { it[KEY_MIUIX_THEME_COLOR] = argb }
     suspend fun setMiuixAccentColor(argb: Int) = context.dataStore.edit { it[KEY_MIUIX_ACCENT_COLOR] = argb }
+    suspend fun setMiuixDynamicColorEnabled(v: Boolean) = context.dataStore.edit { it[KEY_MIUIX_DYNAMIC_COLOR_ENABLED] = v }
+    suspend fun setMiuixColorStyle(name: String) = context.dataStore.edit { it[KEY_MIUIX_COLOR_STYLE] = name }
+    suspend fun setMiuixColorSpec(name: String) = context.dataStore.edit { it[KEY_MIUIX_COLOR_SPEC] = name }
     suspend fun setMiuixBlurEnabled(v: Boolean) = context.dataStore.edit { it[KEY_MIUIX_BLUR_ENABLED] = v }
     suspend fun setMiuixFloatingBottomBarEnabled(v: Boolean) = context.dataStore.edit { it[KEY_MIUIX_FLOATING_BOTTOM_BAR_ENABLED] = v }
     suspend fun setMiuixLiquidGlassEnabled(v: Boolean) = context.dataStore.edit { it[KEY_MIUIX_LIQUID_GLASS_ENABLED] = v }

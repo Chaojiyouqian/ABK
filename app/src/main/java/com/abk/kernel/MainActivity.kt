@@ -113,6 +113,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import com.abk.kernel.ui.theme.LocalUiSurfaceAlpha
 import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
+import com.abk.kernel.miuix.viewmodel.MiuixSettingsViewModel
 import com.abk.kernel.viewmodel.MainViewModel
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation3.runtime.NavKey
@@ -157,6 +158,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             val vm: MainViewModel = viewModel()
             val state by vm.uiState.collectAsState()
+            val miuixVm: MiuixSettingsViewModel = viewModel()
+            val miuixState by miuixVm.state.collectAsState()
             var extensionBootstrapIssued by rememberSaveable { mutableStateOf(false) }
 
             LaunchedEffect(Unit) {
@@ -204,6 +207,7 @@ class MainActivity : ComponentActivity() {
                         else -> Box(modifier = Modifier.fillMaxSize()) {
                             AbkMainScaffold(
                                 vm = vm,
+                                miuixVm = miuixVm,
                                 pendingModuleInstallUri = pendingModuleInstallUri,
                                 onModuleInstallUriConsumed = { pendingModuleInstallUri = null }
                             )
@@ -234,8 +238,10 @@ class MainActivity : ComponentActivity() {
             when (state.uiStyle) {
                 "miuix" -> AbkMiuixTheme(
                     themeMode = state.themeMode,
-                    dynamicColorEnabled = state.dynamicColorEnabled,
-                    customThemeColorArgb = state.customThemeColorArgb,
+                    dynamicColorEnabled = miuixState.miuixDynamicColorEnabled,
+                    customThemeColorArgb = miuixState.miuixThemeColorArgb,
+                    colorStyleName = miuixState.miuixColorStyle,
+                    colorSpecName = miuixState.miuixColorSpec,
                     content = themeContent
                 )
                 else -> AbkTheme(
@@ -410,6 +416,7 @@ private enum class AbkTab(@StringRes val labelRes: Int) {
 @Composable
 private fun AbkMainScaffold(
     vm: MainViewModel,
+    miuixVm: MiuixSettingsViewModel,
     pendingModuleInstallUri: String? = null,
     onModuleInstallUriConsumed: () -> Unit = {}
 ) {
@@ -882,6 +889,7 @@ private fun AbkMainScaffold(
                             entry<Route.ThemeSettings> {
                                 com.abk.kernel.miuix.ui.screens.ThemeSettingsScreenMiuix(
                                     vm = vm,
+                                    miuixVm = miuixVm,
                                     onBack = { navigator.pop() }
                                 )
                             }

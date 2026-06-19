@@ -17,11 +17,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.MenuOpen
 import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.CallToAction
+import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.abk.kernel.R
+import com.abk.kernel.miuix.theme.miuixKeyColorOptions
+import com.abk.kernel.miuix.viewmodel.MiuixSettingsViewModel
 import com.abk.kernel.viewmodel.MainViewModel
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
@@ -35,15 +38,19 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.ThemeColorSpec
+import top.yukonga.miuix.kmp.theme.ThemePaletteStyle
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 @Composable
 fun ThemeSettingsScreenMiuix(
     vm: MainViewModel,
+    miuixVm: MiuixSettingsViewModel,
     onBack: () -> Unit
 ) {
     val state by vm.uiState.collectAsState()
+    val miuixState by miuixVm.state.collectAsState()
     val dynamicColorAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     Scaffold(
@@ -109,16 +116,93 @@ fun ThemeSettingsScreenMiuix(
             Card {
                 SwitchPreference(
                     title = stringResource(R.string.settings_monet),
-                    summary = if (dynamicColorAvailable) {
-                        stringResource(R.string.settings_monet_desc)
-                    } else {
-                        stringResource(R.string.settings_monet_unavailable_desc)
+                    startAction = {
+                        Icon(
+                            Icons.Rounded.Wallpaper,
+                            modifier = Modifier.padding(end = 6.dp),
+                            contentDescription = stringResource(R.string.settings_monet),
+                            tint = MiuixTheme.colorScheme.onBackground
+                        )
                     },
-                    checked = dynamicColorAvailable && state.dynamicColorEnabled,
+                    checked = dynamicColorAvailable && miuixState.miuixDynamicColorEnabled,
                     onCheckedChange = { enabled ->
-                        vm.setDynamicColorEnabled(enabled)
+                        miuixVm.setMiuixDynamicColorEnabled(enabled)
                     }
                 )
+
+                AnimatedVisibility(
+                    visible = dynamicColorAvailable && miuixState.miuixDynamicColorEnabled
+                ) {
+                    Column {
+                        val colorItems = listOf(stringResource(R.string.settings_key_color_default)) + listOf(
+                            stringResource(R.string.color_red),
+                            stringResource(R.string.settings_color_pink),
+                            stringResource(R.string.settings_color_purple),
+                            stringResource(R.string.color_deep_purple),
+                            stringResource(R.string.color_indigo),
+                            stringResource(R.string.settings_color_blue),
+                            stringResource(R.string.settings_color_cyan),
+                            stringResource(R.string.color_teal),
+                            stringResource(R.string.settings_color_green),
+                            stringResource(R.string.color_yellow),
+                            stringResource(R.string.color_amber),
+                            stringResource(R.string.settings_color_orange),
+                            stringResource(R.string.color_brown),
+                            stringResource(R.string.color_blue_grey),
+                            stringResource(R.string.color_sakura),
+                        )
+                        val colorValues = listOf(0) + miuixKeyColorOptions
+                        val currentArgb = miuixState.miuixThemeColorArgb ?: 0
+                        val currentColorIndex = colorValues.indexOf(currentArgb).takeIf { it >= 0 } ?: 0
+                        OverlayDropdownPreference(
+                            title = stringResource(R.string.settings_key_color),
+                            items = colorItems,
+                            selectedIndex = currentColorIndex,
+                            onSelectedIndexChange = { index ->
+                                miuixVm.setMiuixThemeColor(colorValues[index])
+                            }
+                        )
+
+                        AnimatedVisibility(visible = currentArgb != 0) {
+                            Column {
+                                val paletteStyles = listOf(
+                                    ThemePaletteStyle.TonalSpot,
+                                    ThemePaletteStyle.Neutral,
+                                    ThemePaletteStyle.Vibrant,
+                                    ThemePaletteStyle.Expressive,
+                                    ThemePaletteStyle.Monochrome,
+                                )
+                                val paletteIndex = paletteStyles.indexOfFirst {
+                                    it.name == miuixState.miuixColorStyle
+                                }.takeIf { it >= 0 } ?: 0
+                                OverlayDropdownPreference(
+                                    title = stringResource(R.string.settings_color_style),
+                                    items = paletteStyles.map { it.name },
+                                    selectedIndex = paletteIndex,
+                                    onSelectedIndexChange = { index ->
+                                        miuixVm.setMiuixColorStyle(paletteStyles[index].name)
+                                    }
+                                )
+
+                                val colorSpecs = listOf(
+                                    ThemeColorSpec.Spec2021,
+                                    ThemeColorSpec.Spec2025,
+                                )
+                                val specIndex = colorSpecs.indexOfFirst {
+                                    it.name == miuixState.miuixColorSpec
+                                }.takeIf { it >= 0 } ?: 0
+                                OverlayDropdownPreference(
+                                    title = stringResource(R.string.settings_color_spec),
+                                    items = colorSpecs.map { it.name },
+                                    selectedIndex = specIndex,
+                                    onSelectedIndexChange = { index ->
+                                        miuixVm.setMiuixColorSpec(colorSpecs[index].name)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             // Section 4: 视觉效果
