@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.CallToAction
 import androidx.compose.material.icons.rounded.WaterDrop
@@ -167,6 +168,25 @@ fun ThemeSettingsScreenMiuix(
                         onCheckedChange = { vm.setMiuixLiquidGlassEnabled(it) }
                     )
                 }
+            }
+
+            // Section 5: 导航（MIUIX-only，仅控制 NavDisplay 的预测返回手势；MD3 的 PredictiveChildPageBack 由 SettingsScreen 的独立开关控制）
+            SectionTitleMiuix("导航")
+            Card {
+                SwitchPreference(
+                    title = "预测性返回手势",
+                    summary = "启用边缘滑动返回预览和自定义页面关闭动画",
+                    startAction = {
+                        Icon(
+                            Icons.Default.ArrowBack,
+                            modifier = Modifier.padding(end = 6.dp),
+                            contentDescription = "预测性返回手势",
+                            tint = MiuixTheme.colorScheme.onSurfaceSecondary
+                        )
+                    },
+                    checked = state.miuixPredictiveBackEnabled,
+                    onCheckedChange = { vm.setMiuixPredictiveBackEnabled(it) }
+                )
             }
 
             Spacer(Modifier.height(60.dp))
