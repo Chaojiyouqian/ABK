@@ -2,6 +2,7 @@ package com.abk.kernel.miuix.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -133,8 +135,6 @@ fun StatusScreenMiuix(
                     if (state.rootGranted) RootUtils.getKsuVersion() else "N/A"
                 }
                 StatusMetricGridMiuix(
-                    rootGranted = state.rootGranted,
-                    forkReady = state.forkRepo != null && state.behindBy <= 0,
                     ksuVersion = ksuVersion,
                     buildStatus = state.buildStatus
                 )
@@ -209,26 +209,26 @@ private fun StatusHeroCardMiuix(
     isLoading: Boolean,
     onRequestRoot: () -> Unit,
 ) {
+    val isDark = isSystemInDarkTheme()
     val containerColor = if (rootGranted) {
-        MiuixTheme.colorScheme.secondaryContainer
+        if (isDark) Color(0xFF1A3825) else Color(0xFFDFFAE4)
     } else {
-        MiuixTheme.colorScheme.errorContainer
+        if (isDark) Color(0xFF381A1A) else Color(0xFFFAEEEE)
     }
-    val contentColor = if (rootGranted) {
-        MiuixTheme.colorScheme.onSecondaryContainer
-    } else {
-        MiuixTheme.colorScheme.onErrorContainer
-    }
+    val contentColor = MiuixTheme.colorScheme.onSurface
     val descColor = contentColor.copy(alpha = 0.8f)
     val bgIconTint = if (rootGranted) {
-        MiuixTheme.colorScheme.primary.copy(alpha = 0.8f)
+        Color(0xFF36D167)
     } else {
         MiuixTheme.colorScheme.error.copy(alpha = 0.8f)
     }
 
     Card(
         colors = top.yukonga.miuix.kmp.basic.CardDefaults.defaultColors(color = containerColor),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onRequestRoot,
+        showIndication = true,
+        pressFeedbackType = top.yukonga.miuix.kmp.utils.PressFeedbackType.Tilt
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             Box(
@@ -267,54 +267,52 @@ private fun StatusHeroCardMiuix(
                 )
                 Spacer(Modifier.height(2.dp))
 
-                val subtitle = if (rootGranted) {
-                    val repoPart = if (forkRepoName != null) {
-                        stringResource(R.string.status_hero_activated_subtitle_repo_synced)
-                    } else {
-                        stringResource(R.string.status_no_fork_detected)
-                    }
-                    "${stringResource(R.string.status_version, currentVersion)} / $repoPart"
+                Text(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = stringResource(R.string.status_version, currentVersion),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = descColor
+                )
+                Spacer(Modifier.height(2.dp))
+
+                val repoStatusText = if (forkRepoName != null) {
+                    stringResource(R.string.status_hero_activated_subtitle_repo_synced)
                 } else {
-                    stringResource(R.string.status_version, currentVersion)
+                    stringResource(R.string.status_no_fork_detected)
                 }
                 Text(
                     modifier = Modifier.fillMaxWidth(),
-                    text = subtitle,
+                    text = repoStatusText,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
                     color = descColor
                 )
 
                 if (rootGranted) {
-                    Spacer(Modifier.height(36.dp))
+                    Spacer(Modifier.height(60.dp))
                 } else {
                     Spacer(Modifier.height(12.dp))
-                    Text(
-                        modifier = Modifier.fillMaxWidth(),
-                        text = stringResource(R.string.status_hero_deactivated_hint),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = descColor
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = onRequestRoot,
-                        enabled = !isLoading,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.buttonColorsPrimary()
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         if (isLoading) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
+                                modifier = Modifier.size(14.dp),
                                 strokeWidth = 2.dp,
                                 color = contentColor
                             )
-                        } else {
-                            Icon(Icons.Default.Lock, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.grant_root))
                         }
+                        Text(
+                            modifier = Modifier.weight(1f),
+                            text = stringResource(R.string.status_hero_deactivated_hint),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = descColor
+                        )
                     }
+                    Spacer(Modifier.height(4.dp))
                 }
             }
         }
@@ -352,44 +350,24 @@ private fun StatusChipMiuix(
 
 @Composable
 private fun StatusMetricGridMiuix(
-    rootGranted: Boolean,
-    forkReady: Boolean,
     ksuVersion: String,
     buildStatus: BuildStatus,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            StatusMetricCardMiuix(
-                label = "Root",
-                value = if (rootGranted) stringResource(R.string.status_authorized) else stringResource(R.string.status_partially_active),
-                icon = if (rootGranted) Icons.Default.Lock else Icons.Default.LockOpen,
-                color = if (rootGranted) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.error,
-                modifier = Modifier.weight(1f)
-            )
-            StatusMetricCardMiuix(
-                label = "Fork",
-                value = if (forkReady) stringResource(R.string.status_synced) else stringResource(R.string.status_pending_check),
-                icon = Icons.Default.ForkRight,
-                color = if (forkReady) MiuixTheme.colorScheme.secondary else MiuixTheme.colorScheme.secondary,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            StatusMetricCardMiuix(
-                label = "KernelSU",
-                value = if (ksuVersion == "N/A") stringResource(R.string.status_not_detected) else stringResource(R.string.status_detected),
-                icon = Icons.Default.Shield,
-                color = if (ksuVersion == "N/A") MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.primary,
-                modifier = Modifier.weight(1f)
-            )
-            StatusMetricCardMiuix(
-                label = "Build",
-                value = buildStatusDisplayMiuix(buildStatus),
-                icon = Icons.Default.RunCircle,
-                color = buildStatusColorMiuix(buildStatus),
-                modifier = Modifier.weight(1f)
-            )
-        }
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        StatusMetricCardMiuix(
+            label = "KernelSU",
+            value = if (ksuVersion == "N/A") stringResource(R.string.status_not_detected) else stringResource(R.string.status_detected),
+            icon = Icons.Default.Shield,
+            color = if (ksuVersion == "N/A") MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f)
+        )
+        StatusMetricCardMiuix(
+            label = "Build",
+            value = buildStatusDisplayMiuix(buildStatus),
+            icon = Icons.Default.RunCircle,
+            color = buildStatusColorMiuix(buildStatus),
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
