@@ -425,7 +425,7 @@ private fun buildStatusDisplayMiuix(status: BuildStatus): String = when (status)
     BuildStatus.IN_PROGRESS -> stringResource(R.string.status_in_progress)
     BuildStatus.SUCCESS -> stringResource(R.string.status_success)
     BuildStatus.FAILURE -> stringResource(R.string.status_failure)
-    BuildStatus.CANCELLED -> stringResource(R.string.status_cancelled_label)
+    BuildStatus.CANCELLED -> stringResource(R.string.status_stopped)
 }
 
 @Composable
