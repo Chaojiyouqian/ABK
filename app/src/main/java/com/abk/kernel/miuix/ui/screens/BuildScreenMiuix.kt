@@ -1804,7 +1804,7 @@ private fun BuildHeroCardMiuix(
                     fontWeight = FontWeight.Medium,
                     color = descColor
                 )
-                Spacer(Modifier.height(50.dp))
+                Spacer(Modifier.height(4.dp))
             }
         }
     }
@@ -1862,7 +1862,7 @@ private fun BuildPlanHeroMiuix(
                             if (!config.cancelSusfs) stringResource(R.string.build_susfs_on) else stringResource(R.string.build_susfs_off)
                         )
                     }
-                    Spacer(Modifier.height(50.dp))
+                    Spacer(Modifier.height(4.dp))
                 }
             }
         }
@@ -1920,7 +1920,7 @@ private fun BuildPlanHeroMiuix(
                         if (isRecommended) stringResource(R.string.build_device_recommended) else buildStatusLabel(status)
                     )
                 }
-                Spacer(Modifier.height(50.dp))
+                Spacer(Modifier.height(4.dp))
             }
         }
     }
