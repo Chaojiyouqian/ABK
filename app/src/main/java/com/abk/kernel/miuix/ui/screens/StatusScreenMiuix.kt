@@ -429,13 +429,14 @@ private fun StatusMetricCardMiuix(
     }
 }
 
+@Composable
 private fun buildStatusDisplayMiuix(status: BuildStatus): String = when (status) {
-    BuildStatus.IDLE -> "Idle"
-    BuildStatus.QUEUED -> "Queued"
-    BuildStatus.IN_PROGRESS -> "In Progress"
-    BuildStatus.SUCCESS -> "Success"
-    BuildStatus.FAILURE -> "Failure"
-    BuildStatus.CANCELLED -> "Cancelled"
+    BuildStatus.IDLE -> stringResource(R.string.status_idle)
+    BuildStatus.QUEUED -> stringResource(R.string.status_queued)
+    BuildStatus.IN_PROGRESS -> stringResource(R.string.status_in_progress)
+    BuildStatus.SUCCESS -> stringResource(R.string.status_success)
+    BuildStatus.FAILURE -> stringResource(R.string.status_failure)
+    BuildStatus.CANCELLED -> stringResource(R.string.status_cancelled_label)
 }
 
 @Composable
