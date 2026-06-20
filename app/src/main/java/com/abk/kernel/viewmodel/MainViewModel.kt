@@ -2882,9 +2882,6 @@ class MainViewModel @JvmOverloads constructor(
                             appUpdateError = null
                         )
                     }
-                    if (!info.hasUpdate) {
-                        showSnackbar(text(R.string.vm_app_update_latest))
-                    }
                 }
                 is Result.Error -> {
                     val message = text(R.string.vm_app_update_check_failed, result.message)
