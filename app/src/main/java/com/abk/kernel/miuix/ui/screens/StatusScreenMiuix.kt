@@ -126,7 +126,8 @@ fun StatusScreenMiuix(
                     currentVersion = BuildConfig.VERSION_NAME,
                     forkRepoName = state.forkRepo?.name,
                     isLoading = state.isLoading,
-                    onRequestRoot = { vm.requestRoot() }
+                    onRequestRoot = { vm.requestRoot() },
+                    themeMode = state.themeMode
                 )
             }
 
@@ -208,10 +209,15 @@ private fun StatusHeroCardMiuix(
     forkRepoName: String?,
     isLoading: Boolean,
     onRequestRoot: () -> Unit,
+    themeMode: String,
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = when (themeMode) {
+        "dark" -> true
+        "light" -> false
+        else -> isSystemInDarkTheme()
+    }
     val containerColor = if (rootGranted) {
-        if (isDark) Color(0xFF1A3825) else Color(0xFFDDF9E3)
+        if (isDark) Color(0xFF193822) else Color(0xFFDDF5E6)
     } else {
         if (isDark) Color(0xFF381A18) else Color(0xFFF9EEEC)
     }
