@@ -152,6 +152,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import top.yukonga.miuix.kmp.window.WindowDialog
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -1950,9 +1951,14 @@ private fun BuildPlanToolsCardMiuix(
     onShare: () -> Unit,
     onImport: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = { onExpandedChange(!expanded) },
+        showIndication = true,
+        pressFeedbackType = PressFeedbackType.Tilt
+    ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1970,37 +1976,24 @@ private fun BuildPlanToolsCardMiuix(
                         fontWeight = FontWeight.SemiBold
                     )
                     top.yukonga.miuix.kmp.basic.Text(
-                        text = stringResource(R.string.build_plan_tools_desc),
+                        text = currentSummary,
                         style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.onSurfaceSecondary
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        maxLines = if (expanded) 3 else 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-            }
-
-            top.yukonga.miuix.kmp.basic.Text(
-                text = currentSummary,
-                style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                maxLines = if (expanded) 3 else 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                top.yukonga.miuix.kmp.basic.IconButton(onClick = { onExpandedChange(!expanded) }) {
-                    top.yukonga.miuix.kmp.basic.Icon(
-                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = if (expanded) stringResource(R.string.build_collapse_plan_tools) else stringResource(R.string.build_expand_plan_tools)
-                    )
-                }
+                top.yukonga.miuix.kmp.basic.Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) stringResource(R.string.build_collapse_plan_tools) else stringResource(R.string.build_expand_plan_tools),
+                    tint = MiuixTheme.colorScheme.onSurfaceSecondary
+                )
             }
 
             AnimatedVisibility(
                 visible = expanded,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
+                enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
+                exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2059,7 +2052,6 @@ private fun BuildTargetSelectorMiuix(
     selected: String,
     onSelect: (String) -> Unit,
 ) {
-    SectionTitle(stringResource(R.string.build_target_title))
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -2618,26 +2610,41 @@ private fun SaveBuildPlanDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.Add, null) },
-        title = { Text(stringResource(R.string.build_save_plan)) },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = onNameChange,
-                label = { Text(stringResource(R.string.build_plan_name)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-        },
-        confirmButton = {
-            Button(onClick = onConfirm) { Text(stringResource(R.string.build_save)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+    WindowDialog(
+        show = true,
+        title = stringResource(R.string.build_save_plan),
+        onDismissRequest = onDismiss
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    BuildTextFieldItem(
+                        value = name,
+                        onValueChange = onNameChange,
+                        label = stringResource(R.string.build_plan_name),
+                        placeholder = ""
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                top.yukonga.miuix.kmp.basic.TextButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onDismiss,
+                    text = stringResource(R.string.cancel)
+                )
+                top.yukonga.miuix.kmp.basic.TextButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onConfirm,
+                    text = stringResource(R.string.build_save),
+                    colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary()
+                )
+            }
         }
-    )
+    }
 }
 
 @Composable
@@ -2704,32 +2711,52 @@ private fun ShareBuildPlanScopeDialog(
     onDismiss: () -> Unit,
     onShare: (BuildPlanShareScope) -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.Share, null) },
-        title = { Text(stringResource(R.string.build_share_plan)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(text = plan.name.ifBlank { stringResource(R.string.build_current_plan) }, fontWeight = FontWeight.SemiBold)
-                Text(text = buildPlanSummary(plan.config), style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
-                Text(
-                    text = stringResource(R.string.build_share_plan_desc),
-                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+    WindowDialog(
+        show = true,
+        title = stringResource(R.string.build_share_plan),
+        onDismissRequest = onDismiss
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    top.yukonga.miuix.kmp.basic.Text(
+                        text = plan.name.ifBlank { stringResource(R.string.build_current_plan) },
+                        style = MiuixTheme.textStyles.subtitle,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    top.yukonga.miuix.kmp.basic.Text(
+                        text = buildPlanSummary(plan.config),
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    top.yukonga.miuix.kmp.basic.Text(
+                        text = stringResource(R.string.build_share_plan_desc),
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                top.yukonga.miuix.kmp.basic.TextButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = { onShare(BuildPlanShareScope.FEATURES_ONLY) },
+                    text = stringResource(R.string.build_features_only)
+                )
+                top.yukonga.miuix.kmp.basic.TextButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = { onShare(BuildPlanShareScope.FULL) },
+                    text = stringResource(R.string.build_full_plan),
+                    colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary()
                 )
             }
-        },
-        confirmButton = {
-            Button(onClick = { onShare(BuildPlanShareScope.FULL) }) {
-                Text(stringResource(R.string.build_full_plan))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = { onShare(BuildPlanShareScope.FEATURES_ONLY) }) {
-                Text(stringResource(R.string.build_features_only))
-            }
         }
-    )
+    }
 }
 
 @Composable
