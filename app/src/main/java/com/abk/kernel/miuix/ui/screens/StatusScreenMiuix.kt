@@ -2,6 +2,11 @@ package com.abk.kernel.miuix.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandIn
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkOut
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -187,11 +192,13 @@ fun StatusScreenMiuix(
                 )
             }
 
-            if (state.recentRuns.isNotEmpty()) {
-                item {
-                    RecentRunsCardMiuix(
-                        recentRuns = state.recentRuns.take(5)
-                    )
+            item {
+                AnimatedVisibility(
+                    visible = state.recentRuns.isNotEmpty(),
+                    enter = fadeIn() + expandIn(expandFrom = Alignment.TopStart),
+                    exit = fadeOut() + shrinkOut(shrinkTowards = Alignment.TopStart)
+                ) {
+                    RecentRunsCardMiuix(recentRuns = state.recentRuns.take(5))
                 }
             }
 
@@ -475,162 +482,182 @@ private fun BuildStatusCardMiuix(
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                when (status) {
-                    BuildStatus.IDLE -> {
-                        Icon(Icons.Default.HourglassEmpty, null, tint = MiuixTheme.colorScheme.onSurfaceSecondary, modifier = Modifier.size(28.dp))
-                        Text(
-                            text = stringResource(R.string.status_no_running_build),
-                            style = MiuixTheme.textStyles.subtitle,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    BuildStatus.QUEUED -> {
-                        Icon(Icons.Default.Queue, null, tint = statusColor, modifier = Modifier.size(28.dp))
-                        Text(
-                            text = if (activeRunsCount > 1) stringResource(R.string.status_parallel_build_waiting_runner, activeRunsCount)
-                            else stringResource(R.string.status_build_waiting_runner),
-                            style = MiuixTheme.textStyles.subtitle,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    BuildStatus.IN_PROGRESS -> {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(28.dp),
-                            progress = null,
-                            colors = ProgressIndicatorDefaults.progressIndicatorColors(
-                                foregroundColor = statusColor,
-                                backgroundColor = statusColor.copy(alpha = 0.2f)
-                            ),
-                            strokeWidth = 2.dp,
-                            size = 28.dp
-                        )
-                        Text(
-                            text = "${progress.percent}% · ${progress.currentStep}",
-                            style = MiuixTheme.textStyles.subtitle,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    BuildStatus.SUCCESS -> {
-                        Icon(Icons.Default.CheckCircle, null, tint = statusColor, modifier = Modifier.size(28.dp))
-                        Text(
-                            text = stringResource(R.string.status_recent_build_success),
-                            style = MiuixTheme.textStyles.subtitle,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    BuildStatus.FAILURE -> {
-                        Icon(Icons.Default.Error, null, tint = statusColor, modifier = Modifier.size(28.dp))
-                        Text(
-                            text = stringResource(R.string.status_recent_build_failed),
-                            style = MiuixTheme.textStyles.subtitle,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    BuildStatus.CANCELLED -> {
-                        Icon(Icons.Filled.Cancel, null, tint = statusColor, modifier = Modifier.size(28.dp))
-                        Text(
-                            text = stringResource(R.string.status_build_cancelled),
-                            style = MiuixTheme.textStyles.subtitle,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
+            AnimatedVisibility(
+                visible = status == BuildStatus.IDLE,
+                enter = fadeIn() + expandIn(expandFrom = Alignment.TopStart),
+                exit = fadeOut() + shrinkOut(shrinkTowards = Alignment.TopStart)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(top = 12.dp)
+                ) {
+                    Icon(Icons.Default.HourglassEmpty, null, tint = MiuixTheme.colorScheme.onSurfaceSecondary, modifier = Modifier.size(28.dp))
+                    Text(
+                        text = stringResource(R.string.status_no_running_build),
+                        style = MiuixTheme.textStyles.subtitle,
+                        color = MiuixTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
 
-            val run = currentRun
-            if (run != null && progress.totalSteps > 0) {
-                Spacer(Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth(),
-                    progress = (progress.percent / 100f).coerceIn(0f, 1f),
-                    colors = ProgressIndicatorDefaults.progressIndicatorColors(
-                        foregroundColor = statusColor,
-                        backgroundColor = MiuixTheme.colorScheme.surface,
-                    ),
-                )
-                Text(
-                    text = stringResource(R.string.status_steps_complete, progress.completedSteps, progress.totalSteps),
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurfaceSecondary
-                )
-            }
+            AnimatedVisibility(
+                visible = status != BuildStatus.IDLE,
+                enter = fadeIn() + expandIn(expandFrom = Alignment.TopStart),
+                exit = fadeOut() + shrinkOut(shrinkTowards = Alignment.TopStart)
+            ) {
+                Column {
+                    Spacer(Modifier.height(12.dp))
 
-            val showSingleRunAction = activeRunsCount <= 1
-            if (run != null && showSingleRunAction) {
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            runCatching {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(run.htmlUrl)))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        when (status) {
+                            BuildStatus.IDLE -> {}
+                            BuildStatus.QUEUED -> {
+                                Icon(Icons.Default.Queue, null, tint = statusColor, modifier = Modifier.size(28.dp))
+                                Text(
+                                    text = if (activeRunsCount > 1) stringResource(R.string.status_parallel_build_waiting_runner, activeRunsCount)
+                                    else stringResource(R.string.status_build_waiting_runner),
+                                    style = MiuixTheme.textStyles.subtitle,
+                                    color = MiuixTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
-                        },
-                        colors = ButtonDefaults.buttonColors(),
-                        insideMargin = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        minWidth = 0.dp,
-                        minHeight = 0.dp
-                    ) {
-                        Text(
-                            text = stringResource(R.string.status_view_details, run.runNumber),
-                            fontSize = 12.sp
-                        )
-                    }
-                    if (run.status in setOf("queued", "waiting", "requested", "pending", "in_progress")) {
-                        val isCancelling = run.id in cancellingRunIds
-                        Button(
-                            onClick = { onCancel(run) },
-                            enabled = !isCancelling,
-                            colors = ButtonDefaults.buttonColors(
-                                color = MiuixTheme.colorScheme.error.copy(alpha = 0.12f),
-                                contentColor = MiuixTheme.colorScheme.error,
-                                disabledColor = MiuixTheme.colorScheme.error.copy(alpha = 0.06f),
-                                disabledContentColor = MiuixTheme.colorScheme.error.copy(alpha = 0.38f)
-                            ),
-                            insideMargin = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                            minWidth = 0.dp,
-                            minHeight = 0.dp
-                        ) {
-                            if (isCancelling) {
+                            BuildStatus.IN_PROGRESS -> {
                                 CircularProgressIndicator(
-                                    modifier = Modifier.size(12.dp),
+                                    modifier = Modifier.size(28.dp),
                                     progress = null,
                                     colors = ProgressIndicatorDefaults.progressIndicatorColors(
-                                        foregroundColor = MiuixTheme.colorScheme.error,
-                                        backgroundColor = MiuixTheme.colorScheme.error.copy(alpha = 0.2f)
+                                        foregroundColor = statusColor,
+                                        backgroundColor = statusColor.copy(alpha = 0.2f)
                                     ),
                                     strokeWidth = 2.dp,
-                                    size = 12.dp
+                                    size = 28.dp
                                 )
-                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = "${progress.percent}% · ${progress.currentStep}",
+                                    style = MiuixTheme.textStyles.subtitle,
+                                    color = MiuixTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
-                            Text(
-                                text = if (isCancelling) stringResource(R.string.status_cancelling) else stringResource(R.string.status_cancel),
-                                fontSize = 12.sp
-                            )
+                            BuildStatus.SUCCESS -> {
+                                Icon(Icons.Default.CheckCircle, null, tint = statusColor, modifier = Modifier.size(28.dp))
+                                Text(
+                                    text = stringResource(R.string.status_recent_build_success),
+                                    style = MiuixTheme.textStyles.subtitle,
+                                    color = MiuixTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            BuildStatus.FAILURE -> {
+                                Icon(Icons.Default.Error, null, tint = statusColor, modifier = Modifier.size(28.dp))
+                                Text(
+                                    text = stringResource(R.string.status_recent_build_failed),
+                                    style = MiuixTheme.textStyles.subtitle,
+                                    color = MiuixTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            BuildStatus.CANCELLED -> {
+                                Icon(Icons.Filled.Cancel, null, tint = statusColor, modifier = Modifier.size(28.dp))
+                                Text(
+                                    text = stringResource(R.string.status_build_cancelled),
+                                    style = MiuixTheme.textStyles.subtitle,
+                                    color = MiuixTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
-                }
-            }
 
-            if (activeRunsCount > 1) {
-                Text(
-                    text = stringResource(R.string.status_parallel_workflows_desc, activeRunsCount),
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurfaceSecondary
-                )
+                    val run = currentRun
+                    if (run != null && progress.totalSteps > 0) {
+                        Spacer(Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth(),
+                            progress = (progress.percent / 100f).coerceIn(0f, 1f),
+                            colors = ProgressIndicatorDefaults.progressIndicatorColors(
+                                foregroundColor = statusColor,
+                                backgroundColor = MiuixTheme.colorScheme.surface,
+                            ),
+                        )
+                        Text(
+                            text = stringResource(R.string.status_steps_complete, progress.completedSteps, progress.totalSteps),
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurfaceSecondary
+                        )
+                    }
+
+                    val showSingleRunAction = activeRunsCount <= 1
+                    if (run != null && showSingleRunAction) {
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    runCatching {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(run.htmlUrl)))
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(),
+                                insideMargin = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                minWidth = 0.dp,
+                                minHeight = 0.dp
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.status_view_details, run.runNumber),
+                                    fontSize = 12.sp
+                                )
+                            }
+                            if (run.status in setOf("queued", "waiting", "requested", "pending", "in_progress")) {
+                                val isCancelling = run.id in cancellingRunIds
+                                Button(
+                                    onClick = { onCancel(run) },
+                                    enabled = !isCancelling,
+                                    colors = ButtonDefaults.buttonColors(
+                                        color = MiuixTheme.colorScheme.error.copy(alpha = 0.12f),
+                                        contentColor = MiuixTheme.colorScheme.error,
+                                        disabledColor = MiuixTheme.colorScheme.error.copy(alpha = 0.06f),
+                                        disabledContentColor = MiuixTheme.colorScheme.error.copy(alpha = 0.38f)
+                                    ),
+                                    insideMargin = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    minWidth = 0.dp,
+                                    minHeight = 0.dp
+                                ) {
+                                    if (isCancelling) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(12.dp),
+                                            progress = null,
+                                            colors = ProgressIndicatorDefaults.progressIndicatorColors(
+                                                foregroundColor = MiuixTheme.colorScheme.error,
+                                                backgroundColor = MiuixTheme.colorScheme.error.copy(alpha = 0.2f)
+                                            ),
+                                            strokeWidth = 2.dp,
+                                            size = 12.dp
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                    }
+                                    Text(
+                                        text = if (isCancelling) stringResource(R.string.status_cancelling) else stringResource(R.string.status_cancel),
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (activeRunsCount > 1) {
+                        Text(
+                            text = stringResource(R.string.status_parallel_workflows_desc, activeRunsCount),
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurfaceSecondary
+                        )
+                    }
+                }
             }
         }
     }
