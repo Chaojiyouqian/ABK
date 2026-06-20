@@ -190,9 +190,7 @@ fun StatusScreenMiuix(
             if (state.recentRuns.isNotEmpty()) {
                 item {
                     RecentRunsCardMiuix(
-                        recentRuns = state.recentRuns.take(5),
-                        cancellingRunIds = state.cancellingWorkflowRunIds,
-                        onCancel = { run -> vm.cancelWorkflowRun(run.id) }
+                        recentRuns = state.recentRuns.take(5)
                     )
                 }
             }
@@ -811,8 +809,6 @@ private fun AccountRepositoryRowMiuix(
 @Composable
 private fun RecentRunsCardMiuix(
     recentRuns: List<WorkflowRun>,
-    cancellingRunIds: Set<Long>,
-    onCancel: (WorkflowRun) -> Unit,
 ) {
     Card {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -843,11 +839,7 @@ private fun RecentRunsCardMiuix(
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 recentRuns.forEach { run ->
-                    RunListItemMiuix(
-                        run = run,
-                        cancelling = run.id in cancellingRunIds,
-                        onCancel = { onCancel(run) }
-                    )
+                    RunListItemMiuix(run = run)
                 }
             }
         }
@@ -857,8 +849,6 @@ private fun RecentRunsCardMiuix(
 @Composable
 private fun RunListItemMiuix(
     run: WorkflowRun,
-    cancelling: Boolean,
-    onCancel: () -> Unit,
 ) {
     val (statusColor, statusDisplay) = when {
         run.status == "completed" && run.conclusion == "success" ->
@@ -896,44 +886,11 @@ private fun RunListItemMiuix(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = statusDisplay,
-                style = MiuixTheme.textStyles.body2,
-                color = statusColor,
-                fontWeight = FontWeight.Medium
-            )
-        }
-        if (run.status in setOf("queued", "waiting", "requested", "pending", "in_progress")) {
-            IconButton(
-                onClick = onCancel,
-                enabled = !cancelling,
-                modifier = Modifier.size(32.dp),
-                minHeight = 0.dp,
-                minWidth = 0.dp
-            ) {
-                if (cancelling) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        progress = null,
-                        colors = ProgressIndicatorDefaults.progressIndicatorColors(
-                            foregroundColor = MiuixTheme.colorScheme.error,
-                            backgroundColor = MiuixTheme.colorScheme.error.copy(alpha = 0.2f)
-                        ),
-                        strokeWidth = 2.dp,
-                        size = 18.dp
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Filled.Cancel,
-                        contentDescription = stringResource(R.string.status_cancel_workflow),
-                        tint = MiuixTheme.colorScheme.error
-                    )
-                }
-            }
-        }
+        Text(
+            text = statusDisplay,
+            style = MiuixTheme.textStyles.body2,
+            color = statusColor,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
