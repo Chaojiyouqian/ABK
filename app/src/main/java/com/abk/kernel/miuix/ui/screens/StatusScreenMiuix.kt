@@ -620,7 +620,7 @@ private fun DeviceRepoCardMiuix(
                 Icon(
                     imageVector = Icons.Default.Memory,
                     contentDescription = null,
-                    tint = Color(0xFF1C1B1F),
+                    tint = MiuixTheme.colorScheme.onSurface,
                     modifier = Modifier.size(28.dp)
                 )
                 Spacer(Modifier.width(12.dp))
@@ -628,13 +628,13 @@ private fun DeviceRepoCardMiuix(
                     Text(
                         text = stringResource(R.string.status_device_repo_title),
                         style = MiuixTheme.textStyles.subtitle,
-                        color = Color(0xFF1C1B1F),
+                        color = MiuixTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
                         text = stringResource(R.string.status_device_repo_subtitle),
                         style = MiuixTheme.textStyles.body2,
-                        color = Color(0xFF1C1B1F)
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                     )
                 }
             }
@@ -698,7 +698,7 @@ private fun DeviceInfoRowMiuix(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = Color(0xFF1C1B1F),
+            tint = MiuixTheme.colorScheme.onSurface,
             modifier = Modifier.size(28.dp)
         )
         Column(
@@ -708,13 +708,13 @@ private fun DeviceInfoRowMiuix(
             Text(
                 text = label,
                 style = MiuixTheme.textStyles.subtitle,
-                color = Color(0xFF1C1B1F),
+                color = MiuixTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
                 text = value,
                 style = MiuixTheme.textStyles.body2,
-                color = Color(0xFF1C1B1F),
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
