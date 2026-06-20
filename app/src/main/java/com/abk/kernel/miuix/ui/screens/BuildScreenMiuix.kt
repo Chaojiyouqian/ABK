@@ -925,10 +925,10 @@ fun BuildScreenMiuix(
                     .verticalScroll(rememberScrollState())
                     .overScrollVertical()
                     .scrollEndHaptic()
-                    .padding(horizontal = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
                 BuildHeroCardMiuix(
                     title = stringResource(
                         if (needsLogin) R.string.build_login_required_title
