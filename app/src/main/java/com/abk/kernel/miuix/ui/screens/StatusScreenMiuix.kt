@@ -712,11 +712,7 @@ private fun DeviceRepoCardMiuix(
             }
 
             if (user != null) {
-                Spacer(Modifier.height(12.dp))
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 6.dp),
-                    color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-                )
+                Spacer(Modifier.height(8.dp))
                 AccountRepositoryRowMiuix(
                     avatarUrl = user.avatarUrl,
                     login = user.login,
