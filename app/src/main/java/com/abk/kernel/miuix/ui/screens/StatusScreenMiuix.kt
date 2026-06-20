@@ -781,7 +781,7 @@ private fun RecentRunsCardMiuix(
                 Icon(
                     imageVector = Icons.Filled.History,
                     contentDescription = null,
-                    tint = MiuixTheme.colorScheme.primary,
+                    tint = MiuixTheme.colorScheme.onSurface,
                     modifier = Modifier.size(28.dp)
                 )
                 Spacer(Modifier.width(12.dp))
