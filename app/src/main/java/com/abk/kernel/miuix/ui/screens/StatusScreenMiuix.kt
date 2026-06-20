@@ -358,14 +358,14 @@ private fun StatusMetricGridMiuix(
             label = "KernelSU",
             value = if (ksuVersion == "N/A") stringResource(R.string.status_not_detected) else stringResource(R.string.status_detected),
             icon = Icons.Default.Shield,
-            color = if (ksuVersion == "N/A") MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.primary,
+            color = MiuixTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f)
         )
         StatusMetricCardMiuix(
             label = "Build",
             value = buildStatusDisplayMiuix(buildStatus),
             icon = Icons.Default.RunCircle,
-            color = buildStatusColorMiuix(buildStatus),
+            color = MiuixTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f)
         )
     }
@@ -447,7 +447,7 @@ private fun BuildStatusCardMiuix(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = MiuixTheme.colorScheme.primary,
+                    tint = MiuixTheme.colorScheme.onSurface,
                     modifier = Modifier.size(28.dp)
                 )
                 Spacer(Modifier.width(12.dp))
@@ -679,7 +679,7 @@ private fun DeviceInfoRowMiuix(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (isError) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.primary,
+            tint = if (isError) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.onSurface,
             modifier = Modifier
                 .padding(top = 2.dp)
                 .size(18.dp)
