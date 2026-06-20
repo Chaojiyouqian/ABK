@@ -578,23 +578,15 @@ private fun BuildStatusCardMiuix(
                                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(run.htmlUrl)))
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(
-                            color = Color.Transparent,
-                            contentColor = MiuixTheme.colorScheme.primary,
-                            disabledColor = Color.Transparent,
-                            disabledContentColor = MiuixTheme.colorScheme.primary.copy(alpha = 0.38f)
-                        ),
-                        insideMargin = PaddingValues(0.dp),
+                        colors = ButtonDefaults.buttonColors(),
+                        insideMargin = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         minWidth = 0.dp,
                         minHeight = 0.dp
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.OpenInBrowser,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp)
+                        Text(
+                            text = stringResource(R.string.status_view_details, run.runNumber),
+                            fontSize = 12.sp
                         )
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(R.string.status_view_details, run.runNumber))
                     }
                     if (run.status in setOf("queued", "waiting", "requested", "pending", "in_progress")) {
                         val isCancelling = run.id in cancellingRunIds
@@ -602,36 +594,31 @@ private fun BuildStatusCardMiuix(
                             onClick = { onCancel(run) },
                             enabled = !isCancelling,
                             colors = ButtonDefaults.buttonColors(
-                                color = Color.Transparent,
+                                color = MiuixTheme.colorScheme.error.copy(alpha = 0.12f),
                                 contentColor = MiuixTheme.colorScheme.error,
-                                disabledColor = Color.Transparent,
+                                disabledColor = MiuixTheme.colorScheme.error.copy(alpha = 0.06f),
                                 disabledContentColor = MiuixTheme.colorScheme.error.copy(alpha = 0.38f)
                             ),
-                            insideMargin = PaddingValues(0.dp),
+                            insideMargin = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                             minWidth = 0.dp,
                             minHeight = 0.dp
                         ) {
                             if (isCancelling) {
                                 CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
+                                    modifier = Modifier.size(12.dp),
                                     progress = null,
                                     colors = ProgressIndicatorDefaults.progressIndicatorColors(
                                         foregroundColor = MiuixTheme.colorScheme.error,
                                         backgroundColor = MiuixTheme.colorScheme.error.copy(alpha = 0.2f)
                                     ),
                                     strokeWidth = 2.dp,
-                                    size = 14.dp
+                                    size = 12.dp
                                 )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Filled.Cancel,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp)
-                                )
+                                Spacer(Modifier.width(4.dp))
                             }
-                            Spacer(Modifier.width(4.dp))
                             Text(
-                                text = if (isCancelling) stringResource(R.string.status_cancelling) else stringResource(R.string.status_cancel)
+                                text = if (isCancelling) stringResource(R.string.status_cancelling) else stringResource(R.string.status_cancel),
+                                fontSize = 12.sp
                             )
                         }
                     }
