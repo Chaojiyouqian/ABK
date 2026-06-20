@@ -399,7 +399,6 @@
     <string name="flash_conclusion_failure">failure</string>
     <string name="flash_chip_kernel_kind">Ядро: %1$s</string>
     <string name="flash_chip_susfs">SUSFS</string>
-    <string name="flash_chip_kernel_unknown">?</string>
     <string name="flash_kernel_resukisu">ReSukiSU</string>
     <string name="flash_kernel_sukisu">SukiSU</string>
     <string name="flash_kernel_official">Official</string>
