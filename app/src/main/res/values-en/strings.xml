@@ -546,6 +546,10 @@
     <string name="status_no_build">No build records</string>
     <string name="status_working">Working</string>
     <string name="status_partially_active">Partially active</string>
+    <string name="status_hero_activated_title">Working in Root mode</string>
+    <string name="status_hero_activated_subtitle_repo_synced">Your repository is synced</string>
+    <string name="status_hero_deactivated_title">System partially ready</string>
+    <string name="status_hero_deactivated_hint">Grant root to enable the full build pipeline</string>
     <string name="status_build_number">Build: #%1$d</string>
     <string name="status_parallel_build_number">Build: %1$d workflows in parallel</string>
     <string name="status_version">Version: %1$s</string>

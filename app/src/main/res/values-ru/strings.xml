@@ -546,6 +546,10 @@
     <string name="status_no_build">Записей о сборках нет</string>
     <string name="status_working">Работает</string>
     <string name="status_partially_active">Частично активен</string>
+    <string name="status_hero_activated_title">Работает в режиме Root</string>
+    <string name="status_hero_activated_subtitle_repo_synced">Ваш репозиторий синхронизирован</string>
+    <string name="status_hero_deactivated_title">Система частично готова</string>
+    <string name="status_hero_deactivated_hint">Предоставьте root, чтобы включить полный конвейер сборки</string>
     <string name="status_build_number">Сборка: #%1$d</string>
     <string name="status_parallel_build_number">Сборка: %1$d workflow параллельно</string>
     <string name="status_version">Версия: %1$s</string>

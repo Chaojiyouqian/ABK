@@ -546,6 +546,10 @@
     <string name="status_no_build">暂无构建记录</string>
     <string name="status_working">工作中</string>
     <string name="status_partially_active">部分激活</string>
+    <string name="status_hero_activated_title">正在以 Root 模式工作</string>
+    <string name="status_hero_activated_subtitle_repo_synced">你的仓库已同步</string>
+    <string name="status_hero_deactivated_title">系统部分功能就绪</string>
+    <string name="status_hero_deactivated_hint">点击授权后可启用完整构建流水线</string>
     <string name="status_build_number">构建：#%1$d</string>
     <string name="status_parallel_build_number">构建：%1$d 个工作流并行</string>
     <string name="status_version">版本：%1$s</string>

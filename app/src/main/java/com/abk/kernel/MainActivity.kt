@@ -837,12 +837,23 @@ private fun AbkMainScaffold(
                                     label = "abk-tab"
                                 ) { tab ->
                                     when (tab) {
-                                        AbkTab.Status -> StatusScreen(
-                                            vm = vm,
-                                            outerPadding = contentPadding,
-                                            runtimeNavigationEnabled = state.runtimeNavigationEnabled,
-                                            onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) }
-                                        )
+                                        AbkTab.Status -> {
+                                            if (state.uiStyle == "miuix") {
+                                                com.abk.kernel.miuix.ui.screens.StatusScreenMiuix(
+                                                    vm = vm,
+                                                    outerPadding = contentPadding,
+                                                    runtimeNavigationEnabled = state.runtimeNavigationEnabled,
+                                                    onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) }
+                                                )
+                                            } else {
+                                                StatusScreen(
+                                                    vm = vm,
+                                                    outerPadding = contentPadding,
+                                                    runtimeNavigationEnabled = state.runtimeNavigationEnabled,
+                                                    onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) }
+                                                )
+                                            }
+                                        }
                                         AbkTab.Build -> BuildScreen(
                                             vm = vm,
                                             outerPadding = contentPadding,
