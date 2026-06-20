@@ -1164,6 +1164,7 @@ fun BuildScreenMiuix(
                             title = stringResource(R.string.build_oneplus_device_manifest),
                             items = deviceLabels,
                             selectedIndex = deviceIndex,
+                            maxHeight = 336.dp,
                             onSelectedIndexChange = { index ->
                                 val manifest = deviceOptions[index]
                                 val profile = KernelSupport.onePlusDeviceProfile(manifest)
@@ -1233,6 +1234,7 @@ fun BuildScreenMiuix(
                             title = stringResource(R.string.build_sub_level),
                             items = subLevelOptions,
                             selectedIndex = subIndex,
+                            maxHeight = 240.dp,
                             onSelectedIndexChange = { index ->
                                 vm.updateBuildConfig(KernelSupport.normalize(config.copy(subLevel = subLevelOptions[index])))
                             }
