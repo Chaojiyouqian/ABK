@@ -1852,7 +1852,7 @@ private fun BuildPlanHeroMiuix(
                     Spacer(Modifier.height(2.dp))
                     top.yukonga.miuix.kmp.basic.Text(
                         text = stringResource(R.string.build_oneplus_hero_desc),
-                        fontSize = 14.sp, color = descColor
+                        fontSize = 14.sp, color = descColor, minLines = 2
                     )
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1900,7 +1900,7 @@ private fun BuildPlanHeroMiuix(
                 Spacer(Modifier.height(2.dp))
                 top.yukonga.miuix.kmp.basic.Text(
                     text = stringResource(R.string.build_hero_desc),
-                    fontSize = 14.sp, color = descColor
+                    fontSize = 14.sp, color = descColor, minLines = 2
                 )
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
