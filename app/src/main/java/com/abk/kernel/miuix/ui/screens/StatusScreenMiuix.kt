@@ -17,12 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Text as MaterialText
-import androidx.compose.material3.TextButton as MaterialTextButton
 import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -69,6 +63,12 @@ import com.abk.kernel.viewmodel.MainViewModel
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
+import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
@@ -306,8 +306,13 @@ private fun StatusHeroCardMiuix(
                         if (isLoading) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(14.dp),
+                                progress = null,
+                                colors = ProgressIndicatorDefaults.progressIndicatorColors(
+                                    foregroundColor = contentColor,
+                                    backgroundColor = contentColor.copy(alpha = 0.2f)
+                                ),
                                 strokeWidth = 2.dp,
-                                color = contentColor
+                                size = 14.dp
                             )
                         }
                         Text(
@@ -498,8 +503,13 @@ private fun BuildStatusCardMiuix(
                     BuildStatus.IN_PROGRESS -> {
                         CircularProgressIndicator(
                             modifier = Modifier.size(28.dp),
+                            progress = null,
+                            colors = ProgressIndicatorDefaults.progressIndicatorColors(
+                                foregroundColor = statusColor,
+                                backgroundColor = statusColor.copy(alpha = 0.2f)
+                            ),
                             strokeWidth = 2.dp,
-                            color = statusColor
+                            size = 28.dp
                         )
                         Text(
                             text = "${progress.percent}% · ${progress.currentStep}",
@@ -542,10 +552,12 @@ private fun BuildStatusCardMiuix(
             if (run != null && progress.totalSteps > 0) {
                 Spacer(Modifier.height(8.dp))
                 LinearProgressIndicator(
-                    progress = { (progress.percent / 100f).coerceIn(0f, 1f) },
                     modifier = Modifier.fillMaxWidth(),
-                    color = statusColor,
-                    trackColor = MiuixTheme.colorScheme.surface,
+                    progress = (progress.percent / 100f).coerceIn(0f, 1f),
+                    colors = ProgressIndicatorDefaults.progressIndicatorColors(
+                        foregroundColor = statusColor,
+                        backgroundColor = MiuixTheme.colorScheme.surface,
+                    ),
                 )
                 Text(
                     text = stringResource(R.string.status_steps_complete, progress.completedSteps, progress.totalSteps),
@@ -562,38 +574,65 @@ private fun BuildStatusCardMiuix(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    MaterialTextButton(
+                    Button(
                         onClick = {
                             runCatching {
                                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(run.htmlUrl)))
                             }
                         },
-                        contentPadding = PaddingValues(0.dp)
+                        colors = ButtonDefaults.buttonColors(
+                            color = Color.Transparent,
+                            contentColor = MiuixTheme.colorScheme.primary,
+                            disabledColor = Color.Transparent,
+                            disabledContentColor = MiuixTheme.colorScheme.primary.copy(alpha = 0.38f)
+                        ),
+                        insideMargin = PaddingValues(0.dp),
+                        minWidth = 0.dp,
+                        minHeight = 0.dp
                     ) {
-                        Icon(Icons.Default.OpenInBrowser, null, modifier = Modifier.size(14.dp))
+                        Icon(
+                            imageVector = Icons.Default.OpenInBrowser,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp)
+                        )
                         Spacer(Modifier.width(4.dp))
-                        MaterialText(stringResource(R.string.status_view_details, run.runNumber))
+                        Text(stringResource(R.string.status_view_details, run.runNumber))
                     }
                     if (run.status in setOf("queued", "waiting", "requested", "pending", "in_progress")) {
                         val isCancelling = run.id in cancellingRunIds
-                        MaterialTextButton(
+                        Button(
                             onClick = { onCancel(run) },
                             enabled = !isCancelling,
-                            colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                                contentColor = MiuixTheme.colorScheme.error
-                            )
+                            colors = ButtonDefaults.buttonColors(
+                                color = Color.Transparent,
+                                contentColor = MiuixTheme.colorScheme.error,
+                                disabledColor = Color.Transparent,
+                                disabledContentColor = MiuixTheme.colorScheme.error.copy(alpha = 0.38f)
+                            ),
+                            insideMargin = PaddingValues(0.dp),
+                            minWidth = 0.dp,
+                            minHeight = 0.dp
                         ) {
                             if (isCancelling) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(14.dp),
+                                    progress = null,
+                                    colors = ProgressIndicatorDefaults.progressIndicatorColors(
+                                        foregroundColor = MiuixTheme.colorScheme.error,
+                                        backgroundColor = MiuixTheme.colorScheme.error.copy(alpha = 0.2f)
+                                    ),
                                     strokeWidth = 2.dp,
-                                    color = MiuixTheme.colorScheme.error
+                                    size = 14.dp
                                 )
                             } else {
-                                Icon(Icons.Filled.Cancel, null, modifier = Modifier.size(14.dp))
+                                Icon(
+                                    imageVector = Icons.Filled.Cancel,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
                             }
                             Spacer(Modifier.width(4.dp))
-                            MaterialText(
+                            Text(
                                 text = if (isCancelling) stringResource(R.string.status_cancelling) else stringResource(R.string.status_cancel)
                             )
                         }
@@ -662,7 +701,7 @@ private fun DeviceRepoCardMiuix(
 
             if (user != null) {
                 Spacer(Modifier.height(12.dp))
-                androidx.compose.material3.HorizontalDivider(
+                HorizontalDivider(
                     modifier = Modifier.padding(vertical = 6.dp),
                     color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.1f)
                 )
@@ -866,16 +905,27 @@ private fun RunListItemMiuix(
             IconButton(
                 onClick = onCancel,
                 enabled = !cancelling,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(32.dp),
+                minHeight = 0.dp,
+                minWidth = 0.dp
             ) {
                 if (cancelling) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(18.dp),
+                        progress = null,
+                        colors = ProgressIndicatorDefaults.progressIndicatorColors(
+                            foregroundColor = MiuixTheme.colorScheme.error,
+                            backgroundColor = MiuixTheme.colorScheme.error.copy(alpha = 0.2f)
+                        ),
                         strokeWidth = 2.dp,
-                        color = MiuixTheme.colorScheme.error
+                        size = 18.dp
                     )
                 } else {
-                    Icon(Icons.Filled.Cancel, stringResource(R.string.status_cancel_workflow), tint = MiuixTheme.colorScheme.error)
+                    Icon(
+                        imageVector = Icons.Filled.Cancel,
+                        contentDescription = stringResource(R.string.status_cancel_workflow),
+                        tint = MiuixTheme.colorScheme.error
+                    )
                 }
             }
         }
