@@ -221,17 +221,17 @@ private fun StatusHeroCardMiuix(
     } else {
         if (isDark) Color(0xFF381A18) else Color(0xFFF9EEEC)
     }
-    val contentColor = if (isDark) Color.White else Color(0xFF1C1B1F)
-    val descColor = contentColor.copy(alpha = 0.8f)
+    val contentColor = if (isDark) Color.White else Color(0xFF1A1A1A)
+    val descColor = if (isDark) Color.White.copy(alpha = 0.8f) else Color(0xFF1A1A1A).copy(alpha = 0.8f)
     val bgIconTint = if (rootGranted) {
-        if (isDark) Color.White.copy(alpha = 0.3f) else Color(0xFF35D267)
+        Color(0xFF35D267)
     } else {
-        if (isDark) Color.White.copy(alpha = 0.3f) else Color(0xFFD03636)
+        Color(0xFFD03636)
     }
 
     Card(
         colors = top.yukonga.miuix.kmp.basic.CardDefaults.defaultColors(color = containerColor),
-        modifier = Modifier.fillMaxWidth().height(200.dp),
+        modifier = Modifier.fillMaxWidth(),
         onClick = onRequestRoot,
         showIndication = true,
         pressFeedbackType = top.yukonga.miuix.kmp.utils.PressFeedbackType.Tilt
@@ -294,9 +294,9 @@ private fun StatusHeroCardMiuix(
                     fontWeight = FontWeight.Medium,
                     color = descColor
                 )
-                
+
                 if (rootGranted) {
-                    Spacer(Modifier.height(20.dp))
+                    Spacer(Modifier.height(60.dp))
                 } else {
                     Spacer(Modifier.height(12.dp))
                     Row(
@@ -318,6 +318,7 @@ private fun StatusHeroCardMiuix(
                             color = descColor
                         )
                     }
+                    Spacer(Modifier.height(4.dp))
                 }
             }
         }
