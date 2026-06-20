@@ -2172,11 +2172,13 @@ private fun BuildPlanToolsCardMiuix(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                top.yukonga.miuix.kmp.basic.Icon(
-                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (expanded) stringResource(R.string.build_collapse_plan_tools) else stringResource(R.string.build_expand_plan_tools),
-                    tint = MiuixTheme.colorScheme.onSurfaceSecondary
-                )
+                top.yukonga.miuix.kmp.basic.IconButton(onClick = { onExpandedChange(!expanded) }) {
+                    top.yukonga.miuix.kmp.basic.Icon(
+                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (expanded) stringResource(R.string.build_collapse_plan_tools) else stringResource(R.string.build_expand_plan_tools),
+                        tint = MiuixTheme.colorScheme.onSurfaceSecondary
+                    )
+                }
             }
 
             AnimatedVisibility(
