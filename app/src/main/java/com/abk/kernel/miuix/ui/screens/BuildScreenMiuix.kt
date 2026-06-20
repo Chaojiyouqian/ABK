@@ -2104,19 +2104,11 @@ private fun BuildPlanToolsCardMiuix(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                top.yukonga.miuix.kmp.basic.IconButton(onClick = { onExpandedChange(!expanded) }) {
-                    top.yukonga.miuix.kmp.basic.Icon(
-                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = if (expanded) stringResource(R.string.build_collapse_plan_tools) else stringResource(R.string.build_expand_plan_tools),
-                        tint = MiuixTheme.colorScheme.onSurfaceSecondary
-                    )
-                }
+                top.yukonga.miuix.kmp.basic.Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) stringResource(R.string.build_collapse_plan_tools) else stringResource(R.string.build_expand_plan_tools),
+                    tint = MiuixTheme.colorScheme.onSurfaceSecondary
+                )
             }
 
             AnimatedVisibility(
@@ -2687,13 +2679,13 @@ private fun BuildQueueItemCardMiuix(
                 when (item.status) {
                     BuildQueueItemStatus.PENDING -> top.yukonga.miuix.kmp.basic.TextButton(
                         text = stringResource(R.string.build_remove),
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).height(42.dp),
                         onClick = onRemove
                     )
                     BuildQueueItemStatus.DISPATCHING,
                     BuildQueueItemStatus.RUNNING -> top.yukonga.miuix.kmp.basic.TextButton(
                         text = if (cancelling) stringResource(R.string.status_cancelling) else stringResource(R.string.status_cancel),
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).height(42.dp),
                         enabled = item.runId > 0L && !cancelling,
                         onClick = onCancelRun
                     )
@@ -2706,7 +2698,7 @@ private fun BuildQueueItemCardMiuix(
                     }
                     BuildQueueItemStatus.DONE -> top.yukonga.miuix.kmp.basic.TextButton(
                         text = stringResource(R.string.clear),
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).height(42.dp),
                         onClick = onRemove
                     )
                 }
@@ -2745,17 +2737,13 @@ private fun SaveBuildPlanDialog(
         onDismissRequest = onDismiss
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    BuildTextFieldItem(
-                        value = name,
-                        onValueChange = onNameChange,
-                        label = stringResource(R.string.build_plan_name),
-                        placeholder = ""
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(16.dp))
+            BuildTextFieldItem(
+                value = name,
+                onValueChange = onNameChange,
+                label = stringResource(R.string.build_plan_name),
+                placeholder = ""
+            )
+            Spacer(modifier = Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)

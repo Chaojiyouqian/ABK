@@ -459,7 +459,7 @@ private fun AbkMainScaffold(
         bottom = with(density) { bottomBarHeightPx.toDp() }
     )
     val childPageVisible = when (activeTab) {
-        AbkTab.Build -> buildPlanPageVisible
+        AbkTab.Build -> navIsOnSubPage || buildPlanPageVisible
         AbkTab.Modules -> moduleRepositoryPageVisible
         AbkTab.Flash -> flashDetailPageVisible
         AbkTab.Settings -> navIsOnSubPage || settingsChildPageVisible
