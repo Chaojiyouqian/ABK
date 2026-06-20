@@ -2568,9 +2568,16 @@ private fun BuildPlanLibraryPageMiuix(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         top.yukonga.miuix.kmp.basic.Button(
                             onClick = { onApply(plan) },
-                            modifier = Modifier.weight(1f).height(42.dp)
+                            modifier = Modifier.weight(1f),
+                            insideMargin = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                            minWidth = 0.dp,
+                            minHeight = 0.dp
                         ) {
-                            top.yukonga.miuix.kmp.basic.Text(stringResource(R.string.build_apply_edit))
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(R.string.build_apply_edit),
+                                maxLines = 1,
+                                fontSize = 14.sp
+                            )
                         }
                         top.yukonga.miuix.kmp.basic.TextButton(
                             text = stringResource(R.string.build_share),
