@@ -1679,7 +1679,7 @@ fun BuildScreenMiuix(
                         icon = Icons.Default.Visibility,
                         title = stringResource(R.string.build_config_preview),
                         preview = buildTimePreviewText
-                    )
+                        )
                 }
 
                 // ═══ 12. Submit Button ══════════════════════════════════════
@@ -1687,7 +1687,11 @@ fun BuildScreenMiuix(
                     onClick = { showConfirmDialog = true },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
+                        .height(52.dp),
+                    colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.buttonColors(
+                        color = MiuixTheme.colorScheme.primary,
+                        contentColor = Color.White
+                    )
                 ) {
                     top.yukonga.miuix.kmp.basic.Text(
                         text = if (activeBuild || activeQueueCount > 0 || state.buildQueueProcessing) {
