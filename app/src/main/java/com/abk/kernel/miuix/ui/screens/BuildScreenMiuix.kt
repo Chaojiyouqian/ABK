@@ -1903,19 +1903,11 @@ private fun BuildPlanHeroMiuix(
                     fontSize = 14.sp, color = descColor
                 )
                 Spacer(Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     BuildStatusChipMiuix(ksuVariantDisplayName(config.kernelsuVariant))
                     BuildStatusChipMiuix(
                         if (!config.cancelSusfs) stringResource(R.string.build_susfs_on) else stringResource(R.string.build_susfs_off)
                     )
-                    if (config.virtualizationSupport != "off") {
-                        BuildStatusChipMiuix(
-                            stringResource(R.string.build_virtualization_chip, virtualizationSupportLabel(config.virtualizationSupport))
-                        )
-                    }
                     BuildStatusChipMiuix(
                         if (isRecommended) stringResource(R.string.build_device_recommended) else buildStatusLabel(status)
                     )
