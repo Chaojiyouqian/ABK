@@ -877,16 +877,18 @@ private fun MirrorUrlItem(
 // Private label helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+@Composable
 private fun themeModeLabel(mode: String): String = when (mode) {
-    "light" -> "浅色"
-    "dark" -> "深色"
-    else -> "跟随系统"
+    "light" -> stringResource(R.string.settings_theme_light)
+    "dark" -> stringResource(R.string.settings_theme_dark)
+    else -> stringResource(R.string.settings_theme_system)
 }
 
+@Composable
 private fun dynamicColorLabel(enabled: Boolean): String = when {
-    Build.VERSION.SDK_INT < Build.VERSION_CODES.S -> "动态色不可用"
-    enabled -> "动态色"
-    else -> "自定义"
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.S -> stringResource(R.string.settings_dynamic_color_unavailable)
+    enabled -> stringResource(R.string.settings_dynamic_color)
+    else -> stringResource(R.string.settings_custom)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

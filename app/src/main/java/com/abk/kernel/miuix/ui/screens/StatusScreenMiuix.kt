@@ -620,7 +620,7 @@ private fun DeviceRepoCardMiuix(
                 Icon(
                     imageVector = Icons.Default.Memory,
                     contentDescription = null,
-                    tint = MiuixTheme.colorScheme.primary,
+                    tint = Color(0xFF1C1B1F),
                     modifier = Modifier.size(28.dp)
                 )
                 Spacer(Modifier.width(12.dp))
@@ -628,13 +628,13 @@ private fun DeviceRepoCardMiuix(
                     Text(
                         text = stringResource(R.string.status_device_repo_title),
                         style = MiuixTheme.textStyles.subtitle,
-                        color = MiuixTheme.colorScheme.onSurface,
+                        color = Color(0xFF1C1B1F),
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
                         text = stringResource(R.string.status_device_repo_subtitle),
                         style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.onSurfaceSecondary
+                        color = Color(0xFF1C1B1F)
                     )
                 }
             }
@@ -645,14 +645,12 @@ private fun DeviceRepoCardMiuix(
                 DeviceInfoRowMiuix(
                     icon = Icons.Default.Memory,
                     label = stringResource(R.string.status_kernel),
-                    value = kernelVersion,
-                    isError = false
+                    value = kernelVersion
                 )
                 DeviceInfoRowMiuix(
                     icon = Icons.Default.Shield,
                     label = "KSU",
-                    value = ksuVersion,
-                    isError = ksuVersion == "N/A"
+                    value = ksuVersion
                 )
             }
 
@@ -691,7 +689,6 @@ private fun DeviceInfoRowMiuix(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     value: String,
-    isError: Boolean,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -701,7 +698,7 @@ private fun DeviceInfoRowMiuix(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (isError) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.onSurface,
+            tint = Color(0xFF1C1B1F),
             modifier = Modifier.size(28.dp)
         )
         Column(
@@ -711,13 +708,13 @@ private fun DeviceInfoRowMiuix(
             Text(
                 text = label,
                 style = MiuixTheme.textStyles.subtitle,
-                color = MiuixTheme.colorScheme.onSurface,
+                color = Color(0xFF1C1B1F),
                 fontWeight = FontWeight.SemiBold
             )
             Text(
                 text = value,
                 style = MiuixTheme.textStyles.body2,
-                color = if (isError) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.onSurfaceSecondary,
+                color = Color(0xFF1C1B1F),
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
