@@ -135,6 +135,8 @@ import com.abk.kernel.data.model.isManagerDevBuild
 import com.abk.kernel.viewmodel.BuildPlanImportPreview
 import com.abk.kernel.viewmodel.BuildPlanShareScope
 import com.abk.kernel.viewmodel.MainViewModel
+import com.abk.kernel.ui.navigation3.LocalNavigator
+import com.abk.kernel.ui.navigation3.Route
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Card
@@ -168,6 +170,7 @@ fun BuildScreenMiuix(
     onNavigateToStatus: () -> Unit = {}
 ) {
     val state by vm.uiState.collectAsState()
+    val navigator = LocalNavigator.current
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val rawConfig = state.buildConfig
@@ -205,8 +208,7 @@ fun BuildScreenMiuix(
     var showBuildSubmittedDialog by rememberSaveable { mutableStateOf(false) }
     var showSavePlanDialog by remember { mutableStateOf(false) }
     var showImportPlanDialog by remember { mutableStateOf(false) }
-    var showPlanLibraryPage by rememberSaveable { mutableStateOf(false) }
-    var showBuildQueuePage by rememberSaveable { mutableStateOf(false) }
+
     var planToolsExpanded by rememberSaveable { mutableStateOf(false) }
     var savePlanName by remember { mutableStateOf("") }
     var importPlanCode by remember { mutableStateOf("") }
@@ -253,19 +255,12 @@ fun BuildScreenMiuix(
         if (config != rawConfig) vm.updateBuildConfig(config)
     }
 
-    fun closeChildPage() {
-        showPlanLibraryPage = false
-        showBuildQueuePage = false
-    }
-
     fun openPlanLibraryPage() {
-        showBuildQueuePage = false
-        showPlanLibraryPage = true
+        navigator.push(Route.BuildPlanLibrary)
     }
 
     fun openBuildQueuePage() {
-        showPlanLibraryPage = false
-        showBuildQueuePage = true
+        navigator.push(Route.BuildQueue)
     }
 
     DisposableEffect(Unit) {
@@ -960,8 +955,7 @@ fun BuildScreenMiuix(
     }
 
     // ── Child page overlay ────────────────────────────────────────────────
-    Box(Modifier.fillMaxSize()) {
-        Scaffold(
+    Scaffold(
             topBar = {
                 TopAppBar(
                     title = stringResource(R.string.build_title),
@@ -1643,96 +1637,228 @@ fun BuildScreenMiuix(
                 Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
             }
         }
+}
 
-        // ── Child page overlays ────────────────────────────────────────────
-        val childPageVisible = showPlanLibraryPage || showBuildQueuePage
+// ═════════════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+// Public screens for Navigation3 push destinations
+// ═════════════════════════════════════════════════════════════════════════════
 
-        AnimatedVisibility(
-            visible = childPageVisible,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .padding(outerPadding)
-            )
-        }
+@Composable
+fun BuildPlanLibraryScreenMiuix(vm: MainViewModel) {
+    val state by vm.uiState.collectAsState()
+    val context = LocalContext.current
+    val navigator = LocalNavigator.current
+    val scrollBehavior = MiuixScrollBehavior()
 
-        AnimatedVisibility(
-            visible = childPageVisible,
-            enter = fadeIn() + expandIn(expandFrom = Alignment.TopStart),
-            exit = fadeOut() + shrinkOut(shrinkTowards = Alignment.TopStart)
-        ) {
-            Scaffold(
-                topBar = {
-                    TopAppBar(
-                        title = if (showBuildQueuePage) {
-                            stringResource(R.string.build_queue_title)
-                        } else {
-                            stringResource(R.string.build_plan_library)
-                        },
-                        navigationIcon = {
-                            top.yukonga.miuix.kmp.basic.IconButton(onClick = ::closeChildPage) {
-                                top.yukonga.miuix.kmp.basic.Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = stringResource(R.string.build_back_to_config)
-                                )
-                            }
-                        }
+    var sharePlanTarget by remember { mutableStateOf<BuildPlan?>(null) }
+    var renamePlanTarget by remember { mutableStateOf<BuildPlan?>(null) }
+    var renamePlanName by remember { mutableStateOf("") }
+    var deletePlanTarget by remember { mutableStateOf<BuildPlan?>(null) }
+
+    sharePlanTarget?.let { plan ->
+        ShareBuildPlanScopeDialog(
+            plan = plan,
+            onDismiss = { sharePlanTarget = null },
+            onShare = { scope ->
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(
+                    ClipData.newPlainText(
+                        context.getString(R.string.build_plan_clipboard_label),
+                        vm.shareBuildPlanCode(plan.config, plan.name, scope)
                     )
-                }
-            ) { childPadding ->
-                Column(
-                    modifier = Modifier
-                        .padding(childPadding)
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .overScrollVertical()
-                        .scrollEndHaptic()
-                        .padding(horizontal = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    if (showBuildQueuePage) {
-                        BuildQueuePageMiuix(
-                            queue = state.buildQueue,
-                            cancellingRunIds = state.cancellingWorkflowRunIds,
-                            onApply = {
-                                vm.updateBuildConfig(it.config)
-                                closeChildPage()
-                                Toast.makeText(context, context.getString(R.string.build_queue_applied), Toast.LENGTH_SHORT).show()
-                            },
-                            onRemove = { vm.removeBuildQueueItem(it.id) },
-                            onRetry = { vm.retryBuildQueueItem(it.id) },
-                            onCancelRun = { runId -> vm.cancelWorkflowRun(runId) },
-                            onClearCompleted = vm::clearCompletedBuildQueueItems
-                        )
-                    } else {
-                        BuildPlanLibraryPageMiuix(
-                            plans = state.buildPlans,
-                            onApply = {
-                                vm.applyBuildPlan(it)
-                                closeChildPage()
-                                Toast.makeText(context, context.getString(R.string.build_plan_applied_edit), Toast.LENGTH_SHORT).show()
-                            },
-                            onShare = { sharePlanTarget = it },
-                            onRename = {
-                                renamePlanTarget = it
-                                renamePlanName = it.name
-                            },
-                            onDelete = { deletePlanTarget = it }
+                )
+                sharePlanTarget = null
+                Toast.makeText(context, context.getString(R.string.build_plan_code_copied), Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    renamePlanTarget?.let { plan ->
+        WindowDialog(
+            show = true,
+            title = stringResource(R.string.build_rename_plan),
+            onDismissRequest = { renamePlanTarget = null }
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        BuildTextFieldItem(
+                            value = renamePlanName,
+                            onValueChange = { renamePlanName = it },
+                            label = stringResource(R.string.build_plan_name),
+                            placeholder = ""
                         )
                     }
-                    Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = { renamePlanTarget = null },
+                        text = stringResource(R.string.cancel)
+                    )
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            vm.renameBuildPlan(plan.id, renamePlanName)
+                            renamePlanTarget = null
+                            Toast.makeText(context, context.getString(R.string.build_plan_renamed), Toast.LENGTH_SHORT).show()
+                        },
+                        text = stringResource(R.string.build_save),
+                        colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary()
+                    )
                 }
             }
+        }
+    }
+
+    deletePlanTarget?.let { plan ->
+        WindowDialog(
+            show = true,
+            title = stringResource(R.string.build_delete_plan),
+            onDismissRequest = { deletePlanTarget = null }
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        top.yukonga.miuix.kmp.basic.Text(
+                            text = stringResource(R.string.build_delete_plan_confirm, plan.name),
+                            style = MiuixTheme.textStyles.body1
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = { deletePlanTarget = null },
+                        text = stringResource(R.string.cancel)
+                    )
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            vm.deleteBuildPlan(plan.id)
+                            deletePlanTarget = null
+                            Toast.makeText(context, context.getString(R.string.build_plan_deleted), Toast.LENGTH_SHORT).show()
+                        },
+                        text = stringResource(R.string.delete),
+                        colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColors(
+                            color = MiuixTheme.colorScheme.error
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = stringResource(R.string.build_plan_library),
+                scrollBehavior = scrollBehavior,
+                navigationIcon = {
+                    top.yukonga.miuix.kmp.basic.IconButton(onClick = { navigator.pop() }) {
+                        top.yukonga.miuix.kmp.basic.Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.build_back_to_config)
+                        )
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .verticalScroll(rememberScrollState())
+                .overScrollVertical()
+                .scrollEndHaptic()
+                .padding(horizontal = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            BuildPlanLibraryPageMiuix(
+                plans = state.buildPlans,
+                onApply = {
+                    vm.applyBuildPlan(it)
+                    navigator.pop()
+                    Toast.makeText(context, context.getString(R.string.build_plan_applied_edit), Toast.LENGTH_SHORT).show()
+                },
+                onShare = { sharePlanTarget = it },
+                onRename = {
+                    renamePlanTarget = it
+                    renamePlanName = it.name
+                },
+                onDelete = { deletePlanTarget = it }
+            )
+            Spacer(Modifier.height(80.dp))
+        }
+    }
+}
+
+@Composable
+fun BuildQueueScreenMiuix(vm: MainViewModel) {
+    val state by vm.uiState.collectAsState()
+    val context = LocalContext.current
+    val navigator = LocalNavigator.current
+    val scrollBehavior = MiuixScrollBehavior()
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = stringResource(R.string.build_queue_title),
+                scrollBehavior = scrollBehavior,
+                navigationIcon = {
+                    top.yukonga.miuix.kmp.basic.IconButton(onClick = { navigator.pop() }) {
+                        top.yukonga.miuix.kmp.basic.Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.build_back_to_config)
+                        )
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .verticalScroll(rememberScrollState())
+                .overScrollVertical()
+                .scrollEndHaptic()
+                .padding(horizontal = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            BuildQueuePageMiuix(
+                queue = state.buildQueue,
+                cancellingRunIds = state.cancellingWorkflowRunIds,
+                onApply = {
+                    vm.updateBuildConfig(it.config)
+                    navigator.pop()
+                    Toast.makeText(context, context.getString(R.string.build_queue_applied), Toast.LENGTH_SHORT).show()
+                },
+                onRemove = { vm.removeBuildQueueItem(it.id) },
+                onRetry = { vm.retryBuildQueueItem(it.id) },
+                onCancelRun = { runId -> vm.cancelWorkflowRun(runId) },
+                onClearCompleted = vm::clearCompletedBuildQueueItems
+            )
+            Spacer(Modifier.height(80.dp))
         }
     }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Private composable helpers
+// ═════════════════════════════════════════════════════════════════════════════
 // ═════════════════════════════════════════════════════════════════════════════
 
 @Composable
@@ -1951,12 +2077,7 @@ private fun BuildPlanToolsCardMiuix(
     onShare: () -> Unit,
     onImport: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = { onExpandedChange(!expanded) },
-        showIndication = true,
-        pressFeedbackType = PressFeedbackType.Tilt
-    ) {
+    Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1983,11 +2104,19 @@ private fun BuildPlanToolsCardMiuix(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                top.yukonga.miuix.kmp.basic.Icon(
-                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (expanded) stringResource(R.string.build_collapse_plan_tools) else stringResource(R.string.build_expand_plan_tools),
-                    tint = MiuixTheme.colorScheme.onSurfaceSecondary
-                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                top.yukonga.miuix.kmp.basic.IconButton(onClick = { onExpandedChange(!expanded) }) {
+                    top.yukonga.miuix.kmp.basic.Icon(
+                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (expanded) stringResource(R.string.build_collapse_plan_tools) else stringResource(R.string.build_expand_plan_tools),
+                        tint = MiuixTheme.colorScheme.onSurfaceSecondary
+                    )
+                }
             }
 
             AnimatedVisibility(
@@ -2617,7 +2746,7 @@ private fun SaveBuildPlanDialog(
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(12.dp)) {
                     BuildTextFieldItem(
                         value = name,
                         onValueChange = onNameChange,
@@ -2626,7 +2755,7 @@ private fun SaveBuildPlanDialog(
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -2658,51 +2787,76 @@ private fun ImportBuildPlanDialog(
     onSave: (BuildPlanImportPreview) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.Download, null) },
-        title = { Text(stringResource(R.string.build_import_plan)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = code,
-                    onValueChange = onCodeChange,
-                    label = { Text(stringResource(R.string.build_abkp2_code)) },
-                    placeholder = { Text(stringResource(R.string.build_abkp2_placeholder)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 3,
-                    maxLines = 5
-                )
-                error?.let {
-                    Text(text = it, style = androidx.compose.material3.MaterialTheme.typography.bodySmall, color = androidx.compose.material3.MaterialTheme.colorScheme.error)
-                }
-                preview?.let {
-                    Column {
-                        Text(text = it.plan.name, fontWeight = FontWeight.SemiBold)
-                        Text(
+    WindowDialog(
+        show = true,
+        title = stringResource(R.string.build_import_plan),
+        onDismissRequest = onDismiss
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    BuildTextFieldItem(
+                        value = code,
+                        onValueChange = onCodeChange,
+                        label = stringResource(R.string.build_abkp2_code),
+                        placeholder = stringResource(R.string.build_abkp2_placeholder)
+                    )
+                    error?.let {
+                        Spacer(Modifier.height(8.dp))
+                        top.yukonga.miuix.kmp.basic.Text(
+                            text = it,
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.error
+                        )
+                    }
+                    preview?.let {
+                        Spacer(Modifier.height(8.dp))
+                        top.yukonga.miuix.kmp.basic.Text(
+                            text = it.plan.name,
+                            style = MiuixTheme.textStyles.subtitle,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        top.yukonga.miuix.kmp.basic.Text(
                             text = buildPlanSummary(it.plan.config),
-                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                         )
                     }
                 }
             }
-        },
-        confirmButton = {
-            if (preview == null) {
-                Button(onClick = onParse, enabled = code.isNotBlank()) {
-                    Text(stringResource(R.string.build_parse))
-                }
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { onSave(preview) }) { Text(stringResource(R.string.build_save)) }
-                    Button(onClick = { onApply(preview) }) { Text(stringResource(R.string.build_apply)) }
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                top.yukonga.miuix.kmp.basic.TextButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onDismiss,
+                    text = stringResource(R.string.cancel)
+                )
+                if (preview == null) {
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = onParse,
+                        text = stringResource(R.string.build_parse),
+                        colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary()
+                    )
+                } else {
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = { onSave(preview) },
+                        text = stringResource(R.string.build_save)
+                    )
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = { onApply(preview) },
+                        text = stringResource(R.string.build_apply),
+                        colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary()
+                    )
                 }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         }
-    )
+    }
 }
 
 @Composable

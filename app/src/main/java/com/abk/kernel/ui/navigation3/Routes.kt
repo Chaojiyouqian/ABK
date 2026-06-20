@@ -40,5 +40,13 @@ sealed interface Route : NavKey, Parcelable {
     @Serializable
     data object ExtensionManager : Route
 
+    @Parcelize
+    @Serializable
+    data object BuildPlanLibrary : Route
+
+    @Parcelize
+    @Serializable
+    data object BuildQueue : Route
+
     // 以后可按需添加更多子页面 Route
 }

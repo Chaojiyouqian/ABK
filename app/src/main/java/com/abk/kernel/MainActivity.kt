@@ -958,6 +958,12 @@ private fun AbkMainScaffold(
                             entry<Route.ExtensionManager> {
                                 com.abk.kernel.miuix.ui.screens.ExtensionManagerScreenMiuix()
                             }
+                            entry<Route.BuildPlanLibrary> {
+                                com.abk.kernel.miuix.ui.screens.BuildPlanLibraryScreenMiuix(vm = vm)
+                            }
+                            entry<Route.BuildQueue> {
+                                com.abk.kernel.miuix.ui.screens.BuildQueueScreenMiuix(vm = vm)
+                            }
                         }
                     )
 
