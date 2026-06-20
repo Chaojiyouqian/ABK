@@ -468,44 +468,66 @@ private fun BuildStatusCardMiuix(
 
             Spacer(Modifier.height(12.dp))
 
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 when (status) {
                     BuildStatus.IDLE -> {
-                        Icon(Icons.Default.HourglassEmpty, null, tint = MiuixTheme.colorScheme.onSurfaceSecondary, modifier = Modifier.size(20.dp))
-                        Text(stringResource(R.string.status_no_running_build), style = MiuixTheme.textStyles.body1, color = MiuixTheme.colorScheme.onSurface)
+                        Icon(Icons.Default.HourglassEmpty, null, tint = MiuixTheme.colorScheme.onSurfaceSecondary, modifier = Modifier.size(28.dp))
+                        Text(
+                            text = stringResource(R.string.status_no_running_build),
+                            style = MiuixTheme.textStyles.subtitle,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                     BuildStatus.QUEUED -> {
-                        Icon(Icons.Default.Queue, null, tint = statusColor, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Queue, null, tint = statusColor, modifier = Modifier.size(28.dp))
                         Text(
                             text = if (activeRunsCount > 1) stringResource(R.string.status_parallel_build_waiting_runner, activeRunsCount)
                             else stringResource(R.string.status_build_waiting_runner),
-                            style = MiuixTheme.textStyles.body1,
-                            color = MiuixTheme.colorScheme.onSurface
+                            style = MiuixTheme.textStyles.subtitle,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                     BuildStatus.IN_PROGRESS -> {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(28.dp),
                             strokeWidth = 2.dp,
                             color = statusColor
                         )
                         Text(
                             text = "${progress.percent}% · ${progress.currentStep}",
-                            style = MiuixTheme.textStyles.body1,
-                            color = MiuixTheme.colorScheme.onSurface
+                            style = MiuixTheme.textStyles.subtitle,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                     BuildStatus.SUCCESS -> {
-                        Icon(Icons.Default.CheckCircle, null, tint = statusColor, modifier = Modifier.size(20.dp))
-                        Text(stringResource(R.string.status_recent_build_success), style = MiuixTheme.textStyles.body1, color = MiuixTheme.colorScheme.onSurface)
+                        Icon(Icons.Default.CheckCircle, null, tint = statusColor, modifier = Modifier.size(28.dp))
+                        Text(
+                            text = stringResource(R.string.status_recent_build_success),
+                            style = MiuixTheme.textStyles.subtitle,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                     BuildStatus.FAILURE -> {
-                        Icon(Icons.Default.Error, null, tint = statusColor, modifier = Modifier.size(20.dp))
-                        Text(stringResource(R.string.status_recent_build_failed), style = MiuixTheme.textStyles.body1, color = MiuixTheme.colorScheme.error)
+                        Icon(Icons.Default.Error, null, tint = statusColor, modifier = Modifier.size(28.dp))
+                        Text(
+                            text = stringResource(R.string.status_recent_build_failed),
+                            style = MiuixTheme.textStyles.subtitle,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                     BuildStatus.CANCELLED -> {
-                        Icon(Icons.Filled.Cancel, null, tint = statusColor, modifier = Modifier.size(20.dp))
-                        Text(stringResource(R.string.status_build_cancelled), style = MiuixTheme.textStyles.body1, color = MiuixTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Cancel, null, tint = statusColor, modifier = Modifier.size(28.dp))
+                        Text(
+                            text = stringResource(R.string.status_build_cancelled),
+                            style = MiuixTheme.textStyles.subtitle,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }
@@ -673,16 +695,14 @@ private fun DeviceInfoRowMiuix(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             tint = if (isError) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .padding(top = 2.dp)
-                .size(18.dp)
+            modifier = Modifier.size(28.dp)
         )
         Column(
             modifier = Modifier.weight(1f),
@@ -690,13 +710,14 @@ private fun DeviceInfoRowMiuix(
         ) {
             Text(
                 text = label,
-                style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.onSurfaceSecondary
+                style = MiuixTheme.textStyles.subtitle,
+                color = MiuixTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold
             )
             Text(
                 text = value,
-                style = MiuixTheme.textStyles.body1,
-                color = if (isError) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.onSurface,
+                style = MiuixTheme.textStyles.body2,
+                color = if (isError) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.onSurfaceSecondary,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
