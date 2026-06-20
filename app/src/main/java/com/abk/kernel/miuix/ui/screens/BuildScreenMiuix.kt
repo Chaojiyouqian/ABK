@@ -341,108 +341,170 @@ fun BuildScreenMiuix(
     }
 
     if (showConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showConfirmDialog = false },
-            icon = { Icon(Icons.Default.RocketLaunch, null) },
-            title = { Text(stringResource(R.string.build_confirm_submit)) },
-            text = {
-                val noRootScheme = config.kernelsuVariant == KSU_VARIANT_NONE
-                val enabledLabel = stringResource(R.string.build_feature_enabled)
-                val disabledLabel = stringResource(R.string.build_feature_disabled)
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(stringResource(R.string.build_config_overview), fontWeight = FontWeight.SemiBold)
-                    if (isOnePlusBuild) {
-                        Text(stringResource(R.string.build_target_line, buildTargetLabel(config.buildTarget)))
-                        Text(stringResource(R.string.build_oneplus_device_line, KernelSupport.onePlusDeviceLabel(config.onePlusDeviceManifest)))
-                        Text(stringResource(R.string.build_oneplus_kernel_line, config.androidVersion, config.kernelVersion))
-                        Text("KSU: ${ksuVariantDisplayName(config.kernelsuVariant)}")
-                        Text(
-                            stringResource(
-                                R.string.build_oneplus_feature_line,
-                                if (!config.cancelSusfs) enabledLabel else disabledLabel,
-                                if (config.onePlusUseLz4kd) enabledLabel else disabledLabel,
-                                if (config.useKpm) enabledLabel else disabledLabel
+        WindowDialog(
+            show = true,
+            title = stringResource(R.string.build_confirm_submit),
+            onDismissRequest = { showConfirmDialog = false }
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val noRootScheme = config.kernelsuVariant == KSU_VARIANT_NONE
+                        val enabledLabel = stringResource(R.string.build_feature_enabled)
+                        val disabledLabel = stringResource(R.string.build_feature_disabled)
+                        top.yukonga.miuix.kmp.basic.Text(
+                            text = stringResource(R.string.build_config_overview),
+                            style = MiuixTheme.textStyles.body1,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (isOnePlusBuild) {
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(R.string.build_target_line, buildTargetLabel(config.buildTarget)),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary
                             )
-                        )
-                        Text(
-                            stringResource(
-                                R.string.build_oneplus_network_line,
-                                if (config.onePlusUseBbr) enabledLabel else disabledLabel,
-                                if (config.onePlusUseProxyOptimization) enabledLabel else disabledLabel,
-                                if (config.onePlusUseUnicodeBypass) enabledLabel else disabledLabel
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(R.string.build_oneplus_device_line, KernelSupport.onePlusDeviceLabel(config.onePlusDeviceManifest)),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary
                             )
-                        )
-                        Text(
-                            stringResource(
-                                R.string.build_protection_line,
-                                if (config.useBbg) enabledLabel else disabledLabel,
-                                disabledLabel
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(R.string.build_oneplus_kernel_line, config.androidVersion, config.kernelVersion),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary
                             )
-                        )
-                    } else {
-                        Text(stringResource(R.string.build_kernel_line, config.androidVersion, config.kernelVersion, config.subLevel))
-                        Text(
-                            if (noRootScheme) {
-                                "KSU: ${ksuVariantDisplayName(config.kernelsuVariant)}"
-                            } else {
-                                "KSU: ${config.kernelsuVariant} (${config.kernelsuBranch})"
-                            }
-                        )
-                        Text(stringResource(R.string.build_patch_level_line, config.osPatchLevel))
-                        Text(
-                            stringResource(
-                                R.string.build_feature_line,
-                                if (!config.cancelSusfs) enabledLabel else disabledLabel,
-                                if (config.useZram) enabledLabel else disabledLabel,
-                                if (config.useKpm) enabledLabel else disabledLabel
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = "KSU: ${ksuVariantDisplayName(config.kernelsuVariant)}",
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary
                             )
-                        )
-                        Text(
-                            stringResource(
-                                R.string.build_protection_line,
-                                if (config.useBbg) enabledLabel else disabledLabel,
-                                if (config.useDdk) enabledLabel else disabledLabel
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(
+                                    R.string.build_oneplus_feature_line,
+                                    if (!config.cancelSusfs) enabledLabel else disabledLabel,
+                                    if (config.onePlusUseLz4kd) enabledLabel else disabledLabel,
+                                    if (config.useKpm) enabledLabel else disabledLabel
+                                ),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary
                             )
-                        )
-                        Text(
-                            stringResource(
-                                R.string.build_sync_network_line,
-                                if (config.useNtsync) enabledLabel else disabledLabel,
-                                if (config.useNetworking) enabledLabel else disabledLabel
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(
+                                    R.string.build_oneplus_network_line,
+                                    if (config.onePlusUseBbr) enabledLabel else disabledLabel,
+                                    if (config.onePlusUseProxyOptimization) enabledLabel else disabledLabel,
+                                    if (config.onePlusUseUnicodeBypass) enabledLabel else disabledLabel
+                                ),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary
                             )
-                        )
-                        Text(stringResource(R.string.build_virtualization_line, virtualizationSupportLabel(config.virtualizationSupport)))
-                        Text(
-                            stringResource(
-                                R.string.build_external_modules_line,
-                                if (config.useCustomExternalModules) {
-                                    stringResource(R.string.build_external_modules_count, config.customExternalModules.size)
-                                } else {
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(
+                                    R.string.build_protection_line,
+                                    if (config.useBbg) enabledLabel else disabledLabel,
                                     disabledLabel
-                                }
+                                ),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary
                             )
-                        )
-                    }
-                    if (activeBuild || activeQueueCount > 0) {
-                        Text(
-                            text = stringResource(R.string.build_active_queue_notice),
-                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        } else {
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(R.string.build_kernel_line, config.androidVersion, config.kernelVersion, config.subLevel),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary
+                            )
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = if (noRootScheme) {
+                                    "KSU: ${ksuVariantDisplayName(config.kernelsuVariant)}"
+                                } else {
+                                    "KSU: ${config.kernelsuVariant} (${config.kernelsuBranch})"
+                                },
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary
+                            )
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(R.string.build_patch_level_line, config.osPatchLevel),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary
+                            )
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(
+                                    R.string.build_feature_line,
+                                    if (!config.cancelSusfs) enabledLabel else disabledLabel,
+                                    if (config.useZram) enabledLabel else disabledLabel,
+                                    if (config.useKpm) enabledLabel else disabledLabel
+                                ),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary
+                            )
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(
+                                    R.string.build_protection_line,
+                                    if (config.useBbg) enabledLabel else disabledLabel,
+                                    if (config.useDdk) enabledLabel else disabledLabel
+                                ),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary
+                            )
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(
+                                    R.string.build_sync_network_line,
+                                    if (config.useNtsync) enabledLabel else disabledLabel,
+                                    if (config.useNetworking) enabledLabel else disabledLabel
+                                ),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary
+                            )
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(R.string.build_virtualization_line, virtualizationSupportLabel(config.virtualizationSupport)),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary
+                            )
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(
+                                    R.string.build_external_modules_line,
+                                    if (config.useCustomExternalModules) {
+                                        stringResource(R.string.build_external_modules_count, config.customExternalModules.size)
+                                    } else {
+                                        disabledLabel
+                                    }
+                                ),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary
+                            )
+                        }
+                        if (activeBuild || activeQueueCount > 0) {
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(R.string.build_active_queue_notice),
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                            )
+                        }
                     }
                 }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    showConfirmDialog = false
-                    vm.dispatchBuild(config)
-                    showBuildSubmittedDialog = true
-                }) { Text(stringResource(R.string.confirm)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirmDialog = false }) { Text(stringResource(R.string.cancel)) }
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        text = stringResource(R.string.cancel),
+                        modifier = Modifier.weight(1f),
+                        onClick = { showConfirmDialog = false }
+                    )
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        text = stringResource(R.string.confirm),
+                        modifier = Modifier.weight(1f),
+                        colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary(),
+                        onClick = {
+                            showConfirmDialog = false
+                            vm.dispatchBuild(config)
+                            showBuildSubmittedDialog = true
+                        }
+                    )
+                }
             }
-        )
+        }
     }
 
     if (showSavePlanDialog) {
