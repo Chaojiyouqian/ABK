@@ -549,7 +549,7 @@
     <string name="status_hero_activated_title">Работает в режиме Root</string>
     <string name="status_hero_activated_subtitle_repo_synced">Ваш репозиторий синхронизирован</string>
     <string name="status_hero_deactivated_title">Система частично готова</string>
-    <string name="status_hero_deactivated_hint">Предоставьте root, чтобы включить полный конвейер сборки</string>
+    <string name="status_hero_deactivated_hint">Предоставьте root, чтобы включить все функции приложения</string>
     <string name="status_build_number">Сборка: #%1$d</string>
     <string name="status_parallel_build_number">Сборка: %1$d workflow параллельно</string>
     <string name="status_version">Версия: %1$s</string>
@@ -643,6 +643,9 @@
     <string name="settings_monet">Цвета Monet</string>
     <string name="settings_monet_desc">Использовать динамические цвета Material You, сгенерированные из системных обоев</string>
     <string name="settings_monet_unavailable_desc">Доступно на Android 12 и выше. Сейчас используется собственная палитра.</string>
+    <string name="settings_dynamic_color">Динамический цвет</string>
+    <string name="settings_dynamic_color_unavailable">Динамический цвет недоступен</string>
+    <string name="settings_custom">Свой</string>
     <string name="settings_custom_colors">Свои цвета</string>
     <string name="settings_theme_color">Цвет темы</string>
     <string name="settings_theme_color_desc">Основные действия, выделение и главные акценты</string>

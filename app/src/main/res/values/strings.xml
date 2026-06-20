@@ -549,7 +549,7 @@
     <string name="status_hero_activated_title">正在以 Root 模式工作</string>
     <string name="status_hero_activated_subtitle_repo_synced">你的仓库已同步</string>
     <string name="status_hero_deactivated_title">系统部分功能就绪</string>
-    <string name="status_hero_deactivated_hint">点击授权后可启用完整构建流水线</string>
+    <string name="status_hero_deactivated_hint">点击授权后可启用应用完整功能</string>
     <string name="status_build_number">构建：#%1$d</string>
     <string name="status_parallel_build_number">构建：%1$d 个工作流并行</string>
     <string name="status_version">版本：%1$s</string>
@@ -643,6 +643,9 @@
     <string name="settings_monet">莫奈取色</string>
     <string name="settings_monet_desc">使用系统壁纸生成的 Material You 动态颜色</string>
     <string name="settings_monet_unavailable_desc">Android 12 及以上可用，当前使用自定义色板</string>
+    <string name="settings_dynamic_color">动态色</string>
+    <string name="settings_dynamic_color_unavailable">动态色不可用</string>
+    <string name="settings_custom">自定义</string>
     <string name="settings_custom_colors">自定义颜色</string>
     <string name="settings_theme_color">主题色</string>
     <string name="settings_theme_color_desc">主操作、选中状态和主要强调区域</string>

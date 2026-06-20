@@ -549,7 +549,7 @@
     <string name="status_hero_activated_title">Working in Root mode</string>
     <string name="status_hero_activated_subtitle_repo_synced">Your repository is synced</string>
     <string name="status_hero_deactivated_title">System partially ready</string>
-    <string name="status_hero_deactivated_hint">Grant root to enable the full build pipeline</string>
+    <string name="status_hero_deactivated_hint">Grant root to enable full app features</string>
     <string name="status_build_number">Build: #%1$d</string>
     <string name="status_parallel_build_number">Build: %1$d workflows in parallel</string>
     <string name="status_version">Version: %1$s</string>
@@ -643,6 +643,9 @@
     <string name="settings_monet">Monet colors</string>
     <string name="settings_monet_desc">Use Material You dynamic colors generated from the system wallpaper</string>
     <string name="settings_monet_unavailable_desc">Available on Android 12 and later. Custom palette is used now.</string>
+    <string name="settings_dynamic_color">Dynamic color</string>
+    <string name="settings_dynamic_color_unavailable">Dynamic color unavailable</string>
+    <string name="settings_custom">Custom</string>
     <string name="settings_custom_colors">Custom colors</string>
     <string name="settings_theme_color">Theme color</string>
     <string name="settings_theme_color_desc">Primary actions, selected states, and main accents</string>
