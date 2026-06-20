@@ -854,12 +854,23 @@ private fun AbkMainScaffold(
                                                 )
                                             }
                                         }
-                                        AbkTab.Build -> BuildScreen(
-                                            vm = vm,
-                                            outerPadding = contentPadding,
-                                            onPlanPageVisibleChange = { buildPlanPageVisible = it },
-                                            onNavigateToStatus = { selectedTab = AbkTab.Status }
-                                        )
+                                        AbkTab.Build -> {
+                                            if (state.uiStyle == "miuix") {
+                                                com.abk.kernel.miuix.ui.screens.BuildScreenMiuix(
+                                                    vm = vm,
+                                                    outerPadding = contentPadding,
+                                                    onPlanPageVisibleChange = { buildPlanPageVisible = it },
+                                                    onNavigateToStatus = { selectedTab = AbkTab.Status }
+                                                )
+                                            } else {
+                                                BuildScreen(
+                                                    vm = vm,
+                                                    outerPadding = contentPadding,
+                                                    onPlanPageVisibleChange = { buildPlanPageVisible = it },
+                                                    onNavigateToStatus = { selectedTab = AbkTab.Status }
+                                                )
+                                            }
+                                        }
                                         AbkTab.Modules -> ModuleRepositoryScreen(
                                             vm = vm,
                                             mode = if (state.runtimeNavigationEnabled) {
