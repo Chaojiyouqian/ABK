@@ -860,13 +860,19 @@ private fun RunListItemMiuix(
     cancelling: Boolean,
     onCancel: () -> Unit,
 ) {
-    val statusDisplay = buildStatusDisplayMiuix(run.status.toBuildStatus())
-    val statusColor = when (run.status) {
-        "success" -> MiuixTheme.colorScheme.primary
-        "failure" -> MiuixTheme.colorScheme.error
-        "in_progress" -> MiuixTheme.colorScheme.primary
-        "cancelled" -> MiuixTheme.colorScheme.onSurfaceSecondary
-        else -> MiuixTheme.colorScheme.onSurfaceSecondary
+    val (statusColor, statusDisplay) = when {
+        run.status == "completed" && run.conclusion == "success" ->
+            MiuixTheme.colorScheme.primary to stringResource(R.string.status_success)
+        run.status == "completed" && run.conclusion == "cancelled" ->
+            MiuixTheme.colorScheme.onSurfaceSecondary to stringResource(R.string.status_cancelled_label)
+        run.status == "completed" ->
+            MiuixTheme.colorScheme.error to stringResource(R.string.status_failure)
+        run.status == "in_progress" ->
+            MiuixTheme.colorScheme.primary to stringResource(R.string.status_in_progress)
+        run.status in setOf("queued", "waiting", "requested", "pending") ->
+            MiuixTheme.colorScheme.onSurfaceSecondary to stringResource(R.string.status_queued)
+        else ->
+            MiuixTheme.colorScheme.onSurfaceSecondary to (run.status)
     }
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -875,7 +881,7 @@ private fun RunListItemMiuix(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = run.runNumber.toString(),
+                text = run.displayTitle ?: run.name ?: "#${run.runNumber}",
                 style = MiuixTheme.textStyles.body1,
                 color = MiuixTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Medium,
@@ -883,7 +889,7 @@ private fun RunListItemMiuix(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = run.createdAt,
+                text = run.createdAt.take(10),
                 style = MiuixTheme.textStyles.body2,
                 color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 maxLines = 1,
@@ -930,13 +936,4 @@ private fun RunListItemMiuix(
             }
         }
     }
-}
-
-private fun String.toBuildStatus(): BuildStatus = when (this) {
-    "queued", "waiting", "requested", "pending" -> BuildStatus.QUEUED
-    "in_progress" -> BuildStatus.IN_PROGRESS
-    "success" -> BuildStatus.SUCCESS
-    "failure" -> BuildStatus.FAILURE
-    "cancelled" -> BuildStatus.CANCELLED
-    else -> BuildStatus.IDLE
 }
