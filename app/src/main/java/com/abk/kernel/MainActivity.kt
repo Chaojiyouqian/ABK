@@ -32,6 +32,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -818,120 +820,167 @@ private fun AbkMainScaffold(
                         ),
                         entryProvider = entryProvider {
                             entry<Route.Main> {
-                                AnimatedContent(
-                                    targetState = activeTab,
-                                    transitionSpec = {
-                                        val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
-                                        (
-                                            fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) +
-                                                slideInHorizontally(
-                                                    animationSpec = motionScheme.defaultSpatialSpec()
-                                                ) { width -> direction * width / 4 }
-                                            ) togetherWith (
-                                            fadeOut(animationSpec = motionScheme.fastEffectsSpec()) +
-                                                slideOutHorizontally(
-                                                    animationSpec = motionScheme.fastSpatialSpec()
-                                                ) { width -> -direction * width / 6 }
+                                if (state.uiStyle == "miuix") {
+                                    val pagerState = rememberPagerState(
+                                        initialPage = visibleTabs.indexOf(activeTab).coerceAtLeast(0),
+                                        pageCount = { visibleTabs.size }
+                                    )
+
+                                    // Sync pagerState -> selectedTab
+                                    LaunchedEffect(pagerState.currentPage) {
+                                        if (pagerState.currentPage in visibleTabs.indices) {
+                                            selectedTab = visibleTabs[pagerState.currentPage]
+                                        }
+                                    }
+
+                                    // Sync selectedTab -> pagerState
+                                    LaunchedEffect(activeTab) {
+                                        val index = visibleTabs.indexOf(activeTab)
+                                        if (index >= 0 && pagerState.currentPage != index) {
+                                            pagerState.animateScrollToPage(index)
+                                        }
+                                    }
+
+                                    HorizontalPager(
+                                        state = pagerState,
+                                        modifier = Modifier.fillMaxSize()
+                                    ) { page ->
+                                        when (visibleTabs[page]) {
+                                            AbkTab.Status -> com.abk.kernel.miuix.ui.screens.StatusScreenMiuix(
+                                                vm = vm,
+                                                outerPadding = contentPadding,
+                                                runtimeNavigationEnabled = state.runtimeNavigationEnabled,
+                                                onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) }
                                             )
-                                    },
-                                    label = "abk-tab"
-                                ) { tab ->
-                                    when (tab) {
-                                        AbkTab.Status -> {
-                                            if (state.uiStyle == "miuix") {
-                                                com.abk.kernel.miuix.ui.screens.StatusScreenMiuix(
-                                                    vm = vm,
-                                                    outerPadding = contentPadding,
-                                                    runtimeNavigationEnabled = state.runtimeNavigationEnabled,
-                                                    onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) }
-                                                )
-                                            } else {
-                                                StatusScreen(
-                                                    vm = vm,
-                                                    outerPadding = contentPadding,
-                                                    runtimeNavigationEnabled = state.runtimeNavigationEnabled,
-                                                    onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) }
-                                                )
-                                            }
-                                        }
-                                        AbkTab.Build -> {
-                                            if (state.uiStyle == "miuix") {
-                                                com.abk.kernel.miuix.ui.screens.BuildScreenMiuix(
-                                                    vm = vm,
-                                                    outerPadding = contentPadding,
-                                                    onPlanPageVisibleChange = { buildPlanPageVisible = it },
-                                                    onNavigateToStatus = { selectedTab = AbkTab.Status }
-                                                )
-                                            } else {
-                                                BuildScreen(
-                                                    vm = vm,
-                                                    outerPadding = contentPadding,
-                                                    onPlanPageVisibleChange = { buildPlanPageVisible = it },
-                                                    onNavigateToStatus = { selectedTab = AbkTab.Status }
-                                                )
-                                            }
-                                        }
-                                        AbkTab.Modules -> ModuleRepositoryScreen(
-                                            vm = vm,
-                                            mode = if (state.runtimeNavigationEnabled) {
-                                                com.abk.kernel.ui.screens.ModuleRepositoryMode.RUNTIME_STANDARD
-                                            } else {
-                                                com.abk.kernel.ui.screens.ModuleRepositoryMode.BUILD_ABK
-                                            },
-                                            outerPadding = contentPadding,
-                                            onRepositoryPageVisibleChange = { moduleRepositoryPageVisible = it }
-                                        )
-                                        AbkTab.Flash -> FlashScreen(
-                                            vm = vm,
-                                            outerPadding = contentPadding,
-                                            onDetailPageVisibleChange = { flashDetailPageVisible = it }
-                                        )
-                                        AbkTab.RuntimeHome -> RuntimeHomeScreen(
-                                            vm = vm,
-                                            outerPadding = contentPadding,
-                                            onSwitchToClassic = { vm.setRuntimeNavigationEnabled(false) },
-                                            onManagerPatchPageVisibleChange = { managerPatchPageVisible = it }
-                                        )
-                                        AbkTab.InstalledModules -> InstalledModulesScreen(
-                                            vm = vm,
-                                            outerPadding = contentPadding,
-                                            pendingModuleInstallUri = pendingModuleInstallUri,
-                                            onPendingModuleInstallUriConsumed = onModuleInstallUriConsumed
-                                        )
-                                        AbkTab.RootAuth -> RootAuthorizationScreen(
-                                            vm = vm,
-                                            outerPadding = contentPadding,
-                                            onDetailPageVisibleChange = { rootAuthDetailPageVisible = it }
-                                        )
-                                        AbkTab.Settings -> {
-                                            if (state.uiStyle == "miuix") {
-                                                com.abk.kernel.miuix.ui.screens.SettingsScreenMiuix(
-                                                    vm = vm,
-                                                    outerPadding = contentPadding,
-                                                    onOpenInstalledModules = {
-                                                        if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
-                                                        selectedTab = if (state.rootGranted) {
-                                                            AbkTab.InstalledModules
-                                                        } else {
-                                                            AbkTab.RuntimeHome
-                                                        }
+                                            AbkTab.Build -> com.abk.kernel.miuix.ui.screens.BuildScreenMiuix(
+                                                vm = vm,
+                                                outerPadding = contentPadding,
+                                                onPlanPageVisibleChange = { buildPlanPageVisible = it },
+                                                onNavigateToStatus = { selectedTab = AbkTab.Status }
+                                            )
+                                            AbkTab.Modules -> ModuleRepositoryScreen(
+                                                vm = vm,
+                                                mode = if (state.runtimeNavigationEnabled) {
+                                                    com.abk.kernel.ui.screens.ModuleRepositoryMode.RUNTIME_STANDARD
+                                                } else {
+                                                    com.abk.kernel.ui.screens.ModuleRepositoryMode.BUILD_ABK
+                                                },
+                                                outerPadding = contentPadding,
+                                                onRepositoryPageVisibleChange = { moduleRepositoryPageVisible = it }
+                                            )
+                                            AbkTab.Flash -> FlashScreen(
+                                                vm = vm,
+                                                outerPadding = contentPadding,
+                                                onDetailPageVisibleChange = { flashDetailPageVisible = it }
+                                            )
+                                            AbkTab.RuntimeHome -> RuntimeHomeScreen(
+                                                vm = vm,
+                                                outerPadding = contentPadding,
+                                                onSwitchToClassic = { vm.setRuntimeNavigationEnabled(false) },
+                                                onManagerPatchPageVisibleChange = { managerPatchPageVisible = it }
+                                            )
+                                            AbkTab.InstalledModules -> InstalledModulesScreen(
+                                                vm = vm,
+                                                outerPadding = contentPadding,
+                                                pendingModuleInstallUri = pendingModuleInstallUri,
+                                                onPendingModuleInstallUriConsumed = onModuleInstallUriConsumed
+                                            )
+                                            AbkTab.RootAuth -> RootAuthorizationScreen(
+                                                vm = vm,
+                                                outerPadding = contentPadding,
+                                                onDetailPageVisibleChange = { rootAuthDetailPageVisible = it }
+                                            )
+                                            AbkTab.Settings -> com.abk.kernel.miuix.ui.screens.SettingsScreenMiuix(
+                                                vm = vm,
+                                                outerPadding = contentPadding,
+                                                onOpenInstalledModules = {
+                                                    if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
+                                                    selectedTab = if (state.rootGranted) {
+                                                        AbkTab.InstalledModules
+                                                    } else {
+                                                        AbkTab.RuntimeHome
                                                     }
+                                                }
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    AnimatedContent(
+                                        targetState = activeTab,
+                                        transitionSpec = {
+                                            val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
+                                            (
+                                                fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) +
+                                                    slideInHorizontally(
+                                                        animationSpec = motionScheme.defaultSpatialSpec()
+                                                    ) { width -> direction * width / 4 }
+                                                ) togetherWith (
+                                                fadeOut(animationSpec = motionScheme.fastEffectsSpec()) +
+                                                    slideOutHorizontally(
+                                                        animationSpec = motionScheme.fastSpatialSpec()
+                                                    ) { width -> -direction * width / 6 }
                                                 )
-                                            } else {
-                                                SettingsScreen(
-                                                    vm = vm,
-                                                    outerPadding = contentPadding,
-                                                    onChildPageVisibleChange = { settingsChildPageVisible = it },
-                                                    onOpenInstalledModules = {
-                                                        if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
-                                                        selectedTab = if (state.rootGranted) {
-                                                            AbkTab.InstalledModules
-                                                        } else {
-                                                            AbkTab.RuntimeHome
-                                                        }
+                                        },
+                                        label = "abk-tab"
+                                    ) { tab ->
+                                        when (tab) {
+                                            AbkTab.Status -> StatusScreen(
+                                                vm = vm,
+                                                outerPadding = contentPadding,
+                                                runtimeNavigationEnabled = state.runtimeNavigationEnabled,
+                                                onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) }
+                                            )
+                                            AbkTab.Build -> BuildScreen(
+                                                vm = vm,
+                                                outerPadding = contentPadding,
+                                                onPlanPageVisibleChange = { buildPlanPageVisible = it },
+                                                onNavigateToStatus = { selectedTab = AbkTab.Status }
+                                            )
+                                            AbkTab.Modules -> ModuleRepositoryScreen(
+                                                vm = vm,
+                                                mode = if (state.runtimeNavigationEnabled) {
+                                                    com.abk.kernel.ui.screens.ModuleRepositoryMode.RUNTIME_STANDARD
+                                                } else {
+                                                    com.abk.kernel.ui.screens.ModuleRepositoryMode.BUILD_ABK
+                                                },
+                                                outerPadding = contentPadding,
+                                                onRepositoryPageVisibleChange = { moduleRepositoryPageVisible = it }
+                                            )
+                                            AbkTab.Flash -> FlashScreen(
+                                                vm = vm,
+                                                outerPadding = contentPadding,
+                                                onDetailPageVisibleChange = { flashDetailPageVisible = it }
+                                            )
+                                            AbkTab.RuntimeHome -> RuntimeHomeScreen(
+                                                vm = vm,
+                                                outerPadding = contentPadding,
+                                                onSwitchToClassic = { vm.setRuntimeNavigationEnabled(false) },
+                                                onManagerPatchPageVisibleChange = { managerPatchPageVisible = it }
+                                            )
+                                            AbkTab.InstalledModules -> InstalledModulesScreen(
+                                                vm = vm,
+                                                outerPadding = contentPadding,
+                                                pendingModuleInstallUri = pendingModuleInstallUri,
+                                                onPendingModuleInstallUriConsumed = onModuleInstallUriConsumed
+                                            )
+                                            AbkTab.RootAuth -> RootAuthorizationScreen(
+                                                vm = vm,
+                                                outerPadding = contentPadding,
+                                                onDetailPageVisibleChange = { rootAuthDetailPageVisible = it }
+                                            )
+                                            AbkTab.Settings -> SettingsScreen(
+                                                vm = vm,
+                                                outerPadding = contentPadding,
+                                                onChildPageVisibleChange = { settingsChildPageVisible = it },
+                                                onOpenInstalledModules = {
+                                                    if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
+                                                    selectedTab = if (state.rootGranted) {
+                                                        AbkTab.InstalledModules
+                                                    } else {
+                                                        AbkTab.RuntimeHome
                                                     }
-                                                )
-                                            }
+                                                }
+                                            )
                                         }
                                     }
                                 }
