@@ -460,7 +460,7 @@ private fun AbkMainScaffold(
     )
     val childPageVisible = when (activeTab) {
         AbkTab.Build -> navIsOnSubPage || buildPlanPageVisible
-        AbkTab.Modules -> navIsOnSubPage || moduleRepositoryPageVisible
+        AbkTab.Modules -> navIsOnSubPage
         AbkTab.Flash -> flashDetailPageVisible
         AbkTab.Settings -> navIsOnSubPage || settingsChildPageVisible
         AbkTab.RootAuth -> rootAuthDetailPageVisible
