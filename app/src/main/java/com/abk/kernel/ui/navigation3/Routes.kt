@@ -56,5 +56,13 @@ sealed interface Route : NavKey, Parcelable {
     @Serializable
     data object RuntimeModuleRepoSettings : Route
 
+    @Parcelize
+    @Serializable
+    data class FlashWorkflowDetail(val runId: Long) : Route
+
+    @Parcelize
+    @Serializable
+    data class FlashPrebuiltDetail(val releaseId: Long) : Route
+
     // 以后可按需添加更多子页面 Route
 }
