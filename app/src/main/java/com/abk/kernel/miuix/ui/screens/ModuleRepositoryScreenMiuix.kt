@@ -93,6 +93,7 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -709,6 +710,10 @@ private fun BuildModuleCardMiuix(
                         primary = false
                     )
                 }
+            }
+
+            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                HorizontalDivider()
             }
 
             // Action buttons
