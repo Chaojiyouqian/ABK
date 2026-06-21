@@ -180,7 +180,9 @@ fun ModuleRepositoryScreen(
             value = ModuleListComputation(items = emptyList(), loading = false)
             return@produceState
         }
-        value = ModuleListComputation(loading = true)
+        // Keep previous items visible while recomputing to avoid UI flicker
+        val previousItems = value.items
+        value = ModuleListComputation(items = previousItems, loading = false)
         val merged = withContext(Dispatchers.Default) {
             mergeRuntimeCatalogModules(state.runtimeModuleRepositories)
         }
@@ -195,10 +197,14 @@ fun ModuleRepositoryScreen(
         key2 = searchQuery
     ) {
         if (mergedModulesState.loading) {
-            value = ModuleListComputation(loading = true)
+            // Keep previous items visible while parent recomputes
+            val prevItems = value.items
+            value = ModuleListComputation(items = prevItems, loading = false)
             return@produceState
         }
-        value = ModuleListComputation(loading = true)
+        // Keep previous items visible while filtering
+        val prevFiltered = value.items
+        value = ModuleListComputation(items = prevFiltered, loading = false)
         val filtered = withContext(Dispatchers.Default) {
             if (searchQuery.isBlank()) {
                 mergedModules
@@ -481,7 +487,9 @@ private fun BuildModuleRepositoryScreenContent(
             value = ModuleListComputation(items = emptyList(), loading = false)
             return@produceState
         }
-        value = ModuleListComputation(loading = true)
+        // Keep previous items visible while recomputing to avoid UI flicker
+        val previousItems = value.items
+        value = ModuleListComputation(items = previousItems, loading = false)
         val merged = withContext(Dispatchers.Default) {
             mergeBuildPageCatalogModules(state.buildModuleRepositories)
         }
@@ -496,10 +504,14 @@ private fun BuildModuleRepositoryScreenContent(
         key2 = searchQuery
     ) {
         if (mergedModulesState.loading) {
-            value = ModuleListComputation(loading = true)
+            // Keep previous items visible while parent recomputes
+            val prevItems = value.items
+            value = ModuleListComputation(items = prevItems, loading = false)
             return@produceState
         }
-        value = ModuleListComputation(loading = true)
+        // Keep previous items visible while filtering
+        val prevFiltered = value.items
+        value = ModuleListComputation(items = prevFiltered, loading = false)
         val filtered = withContext(Dispatchers.Default) {
             if (searchQuery.isBlank()) {
                 mergedModules
