@@ -21,7 +21,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -52,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -73,6 +76,7 @@ import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
@@ -91,6 +95,7 @@ fun StatusScreenMiuix(
     onToggleRuntimeNavigation: () -> Unit = {},
 ) {
     val state by vm.uiState.collectAsState()
+    val scrollBehavior = MiuixScrollBehavior()
 
     androidx.compose.runtime.LaunchedEffect(Unit) { vm.loadRecentRuns() }
 
@@ -98,6 +103,7 @@ fun StatusScreenMiuix(
         topBar = {
             TopAppBar(
                 title = stringResource(R.string.app_name),
+                scrollBehavior = scrollBehavior,
                 navigationIcon = {
                     IconButton(onClick = onToggleRuntimeNavigation) {
                         Icon(
@@ -115,94 +121,86 @@ fun StatusScreenMiuix(
             )
         }
     ) { padding ->
-        LazyColumn(
+        val listState = rememberScrollState()
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .verticalScroll(listState)
                 .padding(horizontal = 12.dp)
                 .overScrollVertical()
                 .scrollEndHaptic(),
-            contentPadding = PaddingValues(vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            item {
-                StatusHeroCardMiuix(
-                    rootGranted = state.rootGranted,
-                    currentVersion = BuildConfig.VERSION_NAME,
-                    forkRepoName = state.forkRepo?.name,
-                    isLoading = state.isLoading,
-                    onRequestRoot = { vm.requestRoot() },
-                    themeMode = state.themeMode
-                )
-            }
+            Spacer(Modifier.height(16.dp))
 
-            item {
-                val ksuVersion = androidx.compose.runtime.remember(state.rootGranted) {
-                    if (state.rootGranted) RootUtils.getKsuVersion() else "N/A"
-                }
-                StatusMetricGridMiuix(
-                    ksuVersion = ksuVersion,
-                    buildStatus = state.buildStatus
-                )
-            }
+            StatusHeroCardMiuix(
+                rootGranted = state.rootGranted,
+                currentVersion = BuildConfig.VERSION_NAME,
+                forkRepoName = state.forkRepo?.name,
+                isLoading = state.isLoading,
+                onRequestRoot = { vm.requestRoot() },
+                themeMode = state.themeMode
+            )
 
-            item {
+            val ksuVersion = androidx.compose.runtime.remember(state.rootGranted) {
+                if (state.rootGranted) RootUtils.getKsuVersion() else "N/A"
+            }
+            StatusMetricGridMiuix(
+                ksuVersion = ksuVersion,
+                buildStatus = state.buildStatus
+            )
+
+            BuildStatusCardMiuix(
+                title = stringResource(R.string.status_build),
+                subtitle = stringResource(R.string.status_progress_sync),
+                icon = Icons.Default.RunCircle,
+                status = state.kernelBuildStatus,
+                progress = state.kernelBuildProgress,
+                currentRun = state.kernelCurrentRun,
+                activeRunsCount = state.kernelActiveBuildRuns.size,
+                cancellingRunIds = state.cancellingWorkflowRunIds,
+                onCancel = { run -> vm.cancelWorkflowRun(run.id) }
+            )
+
+            if (state.managerBuildStatus != BuildStatus.IDLE || state.managerCurrentRun != null) {
                 BuildStatusCardMiuix(
-                    title = stringResource(R.string.status_build),
-                    subtitle = stringResource(R.string.status_progress_sync),
-                    icon = Icons.Default.RunCircle,
-                    status = state.kernelBuildStatus,
-                    progress = state.kernelBuildProgress,
-                    currentRun = state.kernelCurrentRun,
-                    activeRunsCount = state.kernelActiveBuildRuns.size,
+                    title = stringResource(R.string.status_manager_build),
+                    subtitle = stringResource(R.string.status_manager_progress_sync),
+                    icon = Icons.Default.Shield,
+                    status = state.managerBuildStatus,
+                    progress = state.managerBuildProgress,
+                    currentRun = state.managerCurrentRun,
+                    activeRunsCount = state.managerActiveBuildRuns.size,
                     cancellingRunIds = state.cancellingWorkflowRunIds,
                     onCancel = { run -> vm.cancelWorkflowRun(run.id) }
                 )
             }
 
-            if (state.managerBuildStatus != BuildStatus.IDLE || state.managerCurrentRun != null) {
-                item {
-                    BuildStatusCardMiuix(
-                        title = stringResource(R.string.status_manager_build),
-                        subtitle = stringResource(R.string.status_manager_progress_sync),
-                        icon = Icons.Default.Shield,
-                        status = state.managerBuildStatus,
-                        progress = state.managerBuildProgress,
-                        currentRun = state.managerCurrentRun,
-                        activeRunsCount = state.managerActiveBuildRuns.size,
-                        cancellingRunIds = state.cancellingWorkflowRunIds,
-                        onCancel = { run -> vm.cancelWorkflowRun(run.id) }
-                    )
-                }
+            val ksuVersionForRepo = androidx.compose.runtime.remember(state.rootGranted) {
+                if (state.rootGranted) RootUtils.getKsuVersion() else "N/A"
+            }
+            val kernelVersion = androidx.compose.runtime.remember(state.rootGranted) {
+                RootUtils.getKernelVersion()
+            }
+            DeviceRepoCardMiuix(
+                kernelVersion = kernelVersion,
+                ksuVersion = ksuVersionForRepo,
+                user = state.user,
+                forkRepo = state.forkRepo,
+                behindBy = state.behindBy
+            )
+
+            AnimatedVisibility(
+                visible = state.recentRuns.isNotEmpty(),
+                enter = fadeIn() + expandIn(expandFrom = Alignment.TopStart),
+                exit = fadeOut() + shrinkOut(shrinkTowards = Alignment.TopStart)
+            ) {
+                RecentRunsCardMiuix(recentRuns = state.recentRuns.take(5))
             }
 
-            item {
-                val ksuVersionForRepo = androidx.compose.runtime.remember(state.rootGranted) {
-                    if (state.rootGranted) RootUtils.getKsuVersion() else "N/A"
-                }
-                val kernelVersion = androidx.compose.runtime.remember(state.rootGranted) {
-                    RootUtils.getKernelVersion()
-                }
-                DeviceRepoCardMiuix(
-                    kernelVersion = kernelVersion,
-                    ksuVersion = ksuVersionForRepo,
-                    user = state.user,
-                    forkRepo = state.forkRepo,
-                    behindBy = state.behindBy
-                )
-            }
-
-            item {
-                AnimatedVisibility(
-                    visible = state.recentRuns.isNotEmpty(),
-                    enter = fadeIn() + expandIn(expandFrom = Alignment.TopStart),
-                    exit = fadeOut() + shrinkOut(shrinkTowards = Alignment.TopStart)
-                ) {
-                    RecentRunsCardMiuix(recentRuns = state.recentRuns.take(5))
-                }
-            }
-
-            item { Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding())) }
+            Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
         }
     }
 }
