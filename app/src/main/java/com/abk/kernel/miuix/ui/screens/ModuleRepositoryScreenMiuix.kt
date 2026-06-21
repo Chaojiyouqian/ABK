@@ -497,14 +497,13 @@ private fun BuildModuleRepositoryScreenMiuix(
                 isRefreshing = isRefreshing,
                 pullToRefreshState = pullToRefreshState,
                 onRefresh = { vm.refreshAllBuildModuleRepositories() },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                modifier = Modifier.fillMaxSize()
             ) {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxHeight()
                         .overScrollVertical()
+                        .nestedScroll(scrollBehavior.nestedScrollConnection)
                         .scrollEndHaptic(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(
@@ -1218,14 +1217,13 @@ private fun RuntimeModuleRepositoryScreenMiuix(
                 isRefreshing = isRefreshing,
                 pullToRefreshState = pullToRefreshState,
                 onRefresh = { vm.refreshAllRuntimeModuleRepositories() },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                modifier = Modifier.fillMaxSize()
             ) {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxHeight()
                         .overScrollVertical()
+                        .nestedScroll(scrollBehavior.nestedScrollConnection)
                         .scrollEndHaptic(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(
