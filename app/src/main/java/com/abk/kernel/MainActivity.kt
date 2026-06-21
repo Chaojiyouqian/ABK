@@ -460,7 +460,7 @@ private fun AbkMainScaffold(
     )
     val childPageVisible = when (activeTab) {
         AbkTab.Build -> navIsOnSubPage || buildPlanPageVisible
-        AbkTab.Modules -> moduleRepositoryPageVisible
+        AbkTab.Modules -> navIsOnSubPage || moduleRepositoryPageVisible
         AbkTab.Flash -> flashDetailPageVisible
         AbkTab.Settings -> navIsOnSubPage || settingsChildPageVisible
         AbkTab.RootAuth -> rootAuthDetailPageVisible
@@ -848,7 +848,8 @@ private fun AbkMainScaffold(
 
                                     HorizontalPager(
                                         state = pagerState,
-                                        modifier = Modifier.fillMaxSize()
+                                        modifier = Modifier.fillMaxSize(),
+                                        beyondViewportPageCount = 1
                                     ) { page ->
                                         when (visibleTabs[page]) {
                                             AbkTab.Status -> com.abk.kernel.miuix.ui.screens.StatusScreenMiuix(
@@ -863,7 +864,7 @@ private fun AbkMainScaffold(
                                                 onPlanPageVisibleChange = { buildPlanPageVisible = it },
                                                 onNavigateToStatus = { selectedTab = AbkTab.Status }
                                             )
-                                            AbkTab.Modules -> ModuleRepositoryScreen(
+                                            AbkTab.Modules -> com.abk.kernel.miuix.ui.screens.ModuleRepositoryScreenMiuix(
                                                 vm = vm,
                                                 mode = if (state.runtimeNavigationEnabled) {
                                                     com.abk.kernel.ui.screens.ModuleRepositoryMode.RUNTIME_STANDARD
@@ -1017,6 +1018,12 @@ private fun AbkMainScaffold(
                             }
                             entry<Route.BuildQueue> {
                                 com.abk.kernel.miuix.ui.screens.BuildQueueScreenMiuix(vm = vm)
+                            }
+                            entry<Route.BuildModuleRepoSettings> {
+                                com.abk.kernel.miuix.ui.screens.BuildModuleRepoSettingsScreenMiuix(vm = vm)
+                            }
+                            entry<Route.RuntimeModuleRepoSettings> {
+                                com.abk.kernel.miuix.ui.screens.RuntimeModuleRepoSettingsScreenMiuix(vm = vm)
                             }
                         }
                     )
