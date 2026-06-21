@@ -1,6 +1,8 @@
 package com.abk.kernel.miuix.ui.screens
 
 import android.content.Context
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -617,6 +619,7 @@ private fun BuildModuleCardMiuix(
     onAdd: () -> Unit
 ) {
     val context = LocalContext.current
+    val vibrator = remember { context.getSystemService(Vibrator::class.java) }
     val module = merged.module
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -715,7 +718,10 @@ private fun BuildModuleCardMiuix(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(
-                    onClick = onOpen,
+                    onClick = {
+                        vibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+                        onOpen()
+                    },
                     colors = ButtonDefaults.buttonColors(),
                     insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     minWidth = 0.dp,
@@ -734,9 +740,15 @@ private fun BuildModuleCardMiuix(
                 }
                 Spacer(Modifier.width(8.dp))
                 Button(
-                    onClick = onAdd,
-                    enabled = !allStagesAdded,
-                    colors = ButtonDefaults.buttonColorsPrimary(),
+                    onClick = {
+                        vibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+                        if (!allStagesAdded) onAdd()
+                    },
+                    colors = if (allStagesAdded) {
+                        ButtonDefaults.buttonColors()
+                    } else {
+                        ButtonDefaults.buttonColorsPrimary()
+                    },
                     insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     minWidth = 0.dp,
                     minHeight = 0.dp
@@ -778,6 +790,7 @@ private fun BuildModuleStageSelectionDialogMiuix(
     onAddAll: () -> Unit
 ) {
     val context = LocalContext.current
+    val vibrator = remember { context.getSystemService(Vibrator::class.java) }
     val effectiveStages = supportedStages.filter {
         it in selectedStages && it !in addedStages
     }
@@ -852,14 +865,20 @@ private fun BuildModuleStageSelectionDialogMiuix(
                 TextButton(
                     text = stringResource(R.string.cancel),
                     modifier = Modifier.weight(1f),
-                    onClick = onDismiss
+                    onClick = {
+                        vibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+                        onDismiss()
+                    }
                 )
                 TextButton(
                     text = stringResource(R.string.module_repo_add_selected),
                     modifier = Modifier.weight(1f),
                     enabled = effectiveStages.isNotEmpty(),
                     colors = ButtonDefaults.textButtonColorsPrimary(),
-                    onClick = onAddSelected
+                    onClick = {
+                        vibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+                        onAddSelected()
+                    }
                 )
             }
         }
@@ -878,6 +897,8 @@ private fun BuildModuleSetSelectionDialogMiuix(
     onConfirm: () -> Unit
 ) {
     val children = metadata.children
+    val context = LocalContext.current
+    val vibrator = remember { context.getSystemService(Vibrator::class.java) }
     val canConfirm = selectedChildren.isNotEmpty() && children
         .filter { it.id in selectedChildren }
         .all { child ->
@@ -978,16 +999,21 @@ private fun BuildModuleSetSelectionDialogMiuix(
                 TextButton(
                     text = stringResource(R.string.cancel),
                     modifier = Modifier.weight(1f),
-                    onClick = onDismiss
+                    onClick = {
+                        vibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+                        onDismiss()
+                    }
                 )
-                Button(
-                    onClick = onConfirm,
-                    enabled = canConfirm,
+                TextButton(
+                    text = stringResource(R.string.module_repo_add_selected),
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColorsPrimary()
-                ) {
-                    Text(stringResource(R.string.module_repo_add_selected))
-                }
+                    enabled = canConfirm,
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    onClick = {
+                        vibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+                        onConfirm()
+                    }
+                )
             }
         }
     }
