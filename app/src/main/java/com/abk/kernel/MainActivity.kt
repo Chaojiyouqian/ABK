@@ -849,7 +849,7 @@ private fun AbkMainScaffold(
                                     HorizontalPager(
                                         state = pagerState,
                                         modifier = Modifier.fillMaxSize(),
-                                        beyondViewportPageCount = 1
+                                        beyondViewportPageCount = visibleTabs.size
                                     ) { page ->
                                         when (visibleTabs[page]) {
                                             AbkTab.Status -> com.abk.kernel.miuix.ui.screens.StatusScreenMiuix(
