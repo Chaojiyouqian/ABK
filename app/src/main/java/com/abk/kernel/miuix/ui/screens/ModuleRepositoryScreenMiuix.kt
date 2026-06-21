@@ -67,8 +67,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.PullToRefresh
-import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import com.abk.kernel.R
 import com.abk.kernel.data.model.CustomExternalModuleStage
 import com.abk.kernel.data.model.ExternalModuleMetadata
@@ -491,87 +489,78 @@ private fun BuildModuleRepositoryScreenMiuix(
                 state.refreshingBuildModuleRepositoryIds.isNotEmpty() &&
                     mergedModules.isEmpty() && searchQuery.isBlank()
                 )
-            val isRefreshing = state.refreshingBuildModuleRepositoryIds.isNotEmpty()
-            val pullToRefreshState = rememberPullToRefreshState()
-            PullToRefresh(
-                isRefreshing = isRefreshing,
-                pullToRefreshState = pullToRefreshState,
-                onRefresh = { vm.refreshAllBuildModuleRepositories() },
-                modifier = Modifier.fillMaxSize()
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .overScrollVertical()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .scrollEndHaptic(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(
+                    start = 20.dp,
+                    end = 20.dp,
+                    bottom = 80.dp + outerPadding.calculateBottomPadding()
+                ),
+                overscrollEffect = null
             ) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .overScrollVertical()
-                        .nestedScroll(scrollBehavior.nestedScrollConnection)
-                        .scrollEndHaptic(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(
-                        start = 20.dp,
-                        end = 20.dp,
-                        bottom = 80.dp + outerPadding.calculateBottomPadding()
-                    ),
-                    overscrollEffect = null
-                ) {
-                    if (showInitialLoading) {
-                        item(key = "initial-loading") {
-                            MiuixModuleInitialLoading()
+                if (showInitialLoading) {
+                    item(key = "initial-loading") {
+                        MiuixModuleInitialLoading()
+                    }
+                } else if (filteredModules.isEmpty()) {
+                    item(key = "empty") {
+                        BuildModuleRepoEmptyStateMiuix(
+                            totalModules = mergedModules.size,
+                            repositoryCount = state.buildModuleRepositories.size,
+                            hasQuery = searchQuery.isNotBlank(),
+                            onOpenRepositorySettings = ::openRepositorySettings
+                        )
+                    }
+                } else {
+                    items(
+                        items = filteredModules,
+                        key = { merged -> merged.module.repoUrl.trim().lowercase() }
+                    ) { merged ->
+                        val module = merged.module
+                        val supportedStages = module.buildNormalizedSupportedStages()
+                        val allStagesAdded = supportedStages.all { stage ->
+                            module.repoUrl.trim().lowercase() to stage in selectedModules
                         }
-                    } else if (filteredModules.isEmpty()) {
-                        item(key = "empty") {
-                            BuildModuleRepoEmptyStateMiuix(
-                                totalModules = mergedModules.size,
-                                repositoryCount = state.buildModuleRepositories.size,
-                                hasQuery = searchQuery.isNotBlank(),
-                                onOpenRepositorySettings = ::openRepositorySettings
-                            )
-                        }
-                    } else {
-                        items(
-                            items = filteredModules,
-                            key = { merged -> merged.module.repoUrl.trim().lowercase() }
-                        ) { merged ->
-                            val module = merged.module
-                            val supportedStages = module.buildNormalizedSupportedStages()
-                            val allStagesAdded = supportedStages.all { stage ->
-                                module.repoUrl.trim().lowercase() to stage in selectedModules
-                            }
-                            BuildModuleCardMiuix(
-                                merged = merged,
-                                allStagesAdded = allStagesAdded,
-                                onOpen = {
-                                    val url = module.homepage.ifBlank { module.repoUrl }
-                                    runCatching { uriHandler.openUri(url) }
-                                        .onFailure {
-                                            Toast.makeText(
-                                                context,
-                                                context.getString(R.string.module_repo_open_failed),
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                },
-                                onAdd = {
-                                    if (module.kind == ModuleCatalogItemKind.MODULE_SET) {
-                                        coroutineScope.launch {
-                                            val metadata = vm.checkCustomExternalModuleMetadata(module.repoUrl)
-                                            if (metadata != null) {
-                                                pendingCatalogModule = module
-                                                pendingModuleSetMetadata = metadata
-                                                selectedModuleSetChildren = metadata.children.map { it.id }
-                                                moduleSetStageSelections = metadata.children.associate { child ->
-                                                    child.id to child.recommendedStages
-                                                        .filter { it in child.supportedStages }
-                                                        .ifEmpty { listOf(child.defaultStage) }
-                                                }
+                        BuildModuleCardMiuix(
+                            merged = merged,
+                            allStagesAdded = allStagesAdded,
+                            onOpen = {
+                                val url = module.homepage.ifBlank { module.repoUrl }
+                                runCatching { uriHandler.openUri(url) }
+                                    .onFailure {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.module_repo_open_failed),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                            },
+                            onAdd = {
+                                if (module.kind == ModuleCatalogItemKind.MODULE_SET) {
+                                    coroutineScope.launch {
+                                        val metadata = vm.checkCustomExternalModuleMetadata(module.repoUrl)
+                                        if (metadata != null) {
+                                            pendingCatalogModule = module
+                                            pendingModuleSetMetadata = metadata
+                                            selectedModuleSetChildren = metadata.children.map { it.id }
+                                            moduleSetStageSelections = metadata.children.associate { child ->
+                                                child.id to child.recommendedStages
+                                                    .filter { it in child.supportedStages }
+                                                    .ifEmpty { listOf(child.defaultStage) }
                                             }
                                         }
-                                    } else {
-                                        pendingCatalogModule = module
-                                        selectedCatalogModuleStages = module.initialStageSelection(selectedModules)
                                     }
+                                } else {
+                                    pendingCatalogModule = module
+                                    selectedCatalogModuleStages = module.initialStageSelection(selectedModules)
                                 }
-                            )
-                        }
+                            }
+                        )
                     }
                 }
             }
@@ -1211,56 +1200,48 @@ private fun RuntimeModuleRepositoryScreenMiuix(
                 state.refreshingRuntimeModuleRepositoryIds.isNotEmpty() &&
                     mergedModules.isEmpty() && searchQuery.isBlank()
                 )
-            val isRefreshing = state.refreshingRuntimeModuleRepositoryIds.isNotEmpty()
-            val pullToRefreshState = rememberPullToRefreshState()
-            PullToRefresh(
-                isRefreshing = isRefreshing,
-                pullToRefreshState = pullToRefreshState,
-                onRefresh = { vm.refreshAllRuntimeModuleRepositories() },
-                modifier = Modifier.fillMaxSize()
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .overScrollVertical()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .scrollEndHaptic(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(
+                    start = 20.dp,
+                    end = 20.dp,
+                    bottom = 80.dp + outerPadding.calculateBottomPadding()
+                ),
+                overscrollEffect = null
             ) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .overScrollVertical()
-                        .nestedScroll(scrollBehavior.nestedScrollConnection)
-                        .scrollEndHaptic(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(
-                        start = 20.dp,
-                        end = 20.dp,
-                        bottom = 80.dp + outerPadding.calculateBottomPadding()
-                    ),
-                    overscrollEffect = null
-                ) {
-                    if (showInitialLoading) {
-                        item(key = "initial-loading") {
-                            MiuixModuleInitialLoading()
+                if (showInitialLoading) {
+                    item(key = "initial-loading") {
+                        MiuixModuleInitialLoading()
+                    }
+                } else if (filteredModules.isEmpty()) {
+                    item(key = "empty") {
+                        RuntimeModuleRepoEmptyStateMiuix(
+                            totalModules = mergedModules.size,
+                            repositoryCount = state.runtimeModuleRepositories.size,
+                            hasQuery = searchQuery.isNotBlank(),
+                            onOpenRepositorySettings = ::openRepositorySettings
+                        )
+                    }
+                } else {
+                    items(
+                        items = filteredModules,
+                        key = { merged ->
+                            "${merged.module.id.trim().lowercase().ifBlank { merged.module.name.trim().lowercase() }}-${merged.sources.joinToString("|")}"
                         }
-                    } else if (filteredModules.isEmpty()) {
-                        item(key = "empty") {
-                            RuntimeModuleRepoEmptyStateMiuix(
-                                totalModules = mergedModules.size,
-                                repositoryCount = state.runtimeModuleRepositories.size,
-                                hasQuery = searchQuery.isNotBlank(),
-                                onOpenRepositorySettings = ::openRepositorySettings
-                            )
-                        }
-                    } else {
-                        items(
-                            items = filteredModules,
-                            key = { merged ->
-                                "${merged.module.id.trim().lowercase().ifBlank { merged.module.name.trim().lowercase() }}-${merged.sources.joinToString("|")}"
-                            }
-                        ) { merged ->
-                            RuntimeModuleCardMiuix(
-                                merged = merged,
-                                onOpen = {
-                                    val url = merged.module.preferredOpenUrl()
-                                    if (url.isBlank()) {
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(R.string.module_repo_open_failed),
+                    ) { merged ->
+                        RuntimeModuleCardMiuix(
+                            merged = merged,
+                            onOpen = {
+                                val url = merged.module.preferredOpenUrl()
+                                if (url.isBlank()) {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.module_repo_open_failed),
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 } else {
@@ -1288,7 +1269,6 @@ private fun RuntimeModuleRepositoryScreenMiuix(
                         )
                     }
                 }
-            }
             }
         }
     }
