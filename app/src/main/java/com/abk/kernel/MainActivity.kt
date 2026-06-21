@@ -57,10 +57,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.NavigationBar as MiuixNavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem as MiuixNavigationBarItem
-import top.yukonga.miuix.kmp.blur.Backdrop
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
-import top.yukonga.miuix.kmp.blur.blur
-import top.yukonga.miuix.kmp.blur.drawBackdrop
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -106,12 +103,13 @@ import com.abk.kernel.miuix.component.showAbkMiuixSnackbar
 import com.abk.kernel.miuix.theme.AbkMiuixTheme
 import com.abk.kernel.miuix.component.FloatingTabItem
 import com.abk.kernel.miuix.component.MiuixFloatingBottomBar
+import com.abk.kernel.miuix.util.BlurredBar
+import com.abk.kernel.miuix.util.rememberBlurBackdrop
 import com.abk.kernel.ui.theme.AbkTheme
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import com.abk.kernel.ui.theme.LocalUiSurfaceAlpha
 import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
@@ -601,7 +599,7 @@ private fun AbkMainScaffold(
         drawContent()
     }
     val blurEnabledForGlass = miuixMode && state.miuixFloatingBottomBarEnabled && state.miuixLiquidGlassEnabled
-    val blurBackdrop = rememberBlurBackdrop(state.miuixBlurEnabled)
+    val blurBackdrop = rememberBlurBackdrop(state.miuixBlurEnabled, surfaceColor)
 
     // Bar slide offset (0f = visible, -1f = hidden left). Single LaunchedEffect drives it:
     //   gesture in progress   → snapTo(-[1–progress]) to follow finger
@@ -624,15 +622,22 @@ private fun AbkMainScaffold(
             lastGestureProgress.value = predictiveBackProgress
         } else {
             val target = if (childPageVisible) -1f else 0f
-            val fromGesture = lastGestureProgress.value > 0f
-            barSlideOffset.animateTo(
-                targetValue = target,
-                animationSpec = androidx.compose.animation.core.tween(
-                    durationMillis = if (fromGesture) 200 else 300,
-                    easing = androidx.compose.animation.core.FastOutSlowInEasing
+            if (miuixMode) {
+                // MIUIX mode: animate the transition
+                val fromGesture = lastGestureProgress.value > 0f
+                barSlideOffset.animateTo(
+                    targetValue = target,
+                    animationSpec = androidx.compose.animation.core.tween(
+                        durationMillis = if (fromGesture) 200 else 300,
+                        easing = androidx.compose.animation.core.FastOutSlowInEasing
+                    )
                 )
-            )
-            if (fromGesture) lastGestureProgress.value = 0f
+                if (fromGesture) lastGestureProgress.value = 0f
+            } else {
+                // MD3 mode: snap immediately without animation
+                barSlideOffset.snapTo(target)
+                lastGestureProgress.value = 0f
+            }
         }
     }
 
@@ -682,7 +687,7 @@ private fun AbkMainScaffold(
                     )
                 }
                 miuixMode -> {
-                    BlurredBar(blurBackdrop) {
+                    BlurredBar(blurBackdrop, surfaceColor) {
                         MiuixNavigationBar(
                             modifier = Modifier.fillMaxWidth(),
                             color = if (blurBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface
@@ -711,7 +716,7 @@ private fun AbkMainScaffold(
                     }
                 }
                 else -> {
-                    BlurredBar(blurBackdrop) {
+                    BlurredBar(blurBackdrop, surfaceColor) {
                         NavigationBar(
                             containerColor = if (blurBackdrop != null) Color.Transparent else uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainer),
                             tonalElevation = 0.dp
@@ -1121,30 +1126,3 @@ private val MODULE_ZIP_MIME_TYPES = setOf(
     "application/x-zip-compressed",
     "application/octet-stream"
 )
-
-@Composable
-private fun rememberBlurBackdrop(blurEnabled: Boolean): LayerBackdrop? {
-    return if (blurEnabled) {
-        rememberLayerBackdrop { drawContent() }
-    } else null
-}
-
-@Composable
-private fun BlurredBar(
-    backdrop: LayerBackdrop?,
-    content: @Composable () -> Unit,
-) {
-    if (backdrop != null) {
-        Box(
-            modifier = Modifier.drawBackdrop(
-                backdrop = backdrop,
-                shape = { RectangleShape },
-                effects = { blur(25.dp.toPx(), 25.dp.toPx()) },
-            )
-        ) {
-            content()
-        }
-    } else {
-        content()
-    }
-}
