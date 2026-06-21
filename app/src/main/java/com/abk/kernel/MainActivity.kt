@@ -461,7 +461,7 @@ private fun AbkMainScaffold(
     val childPageVisible = when (activeTab) {
         AbkTab.Build -> navIsOnSubPage || buildPlanPageVisible
         AbkTab.Modules -> navIsOnSubPage
-        AbkTab.Flash -> flashDetailPageVisible
+        AbkTab.Flash -> navIsOnSubPage || flashDetailPageVisible
         AbkTab.Settings -> navIsOnSubPage || settingsChildPageVisible
         AbkTab.RootAuth -> rootAuthDetailPageVisible
         AbkTab.RuntimeHome -> managerPatchPageVisible
@@ -884,7 +884,7 @@ private fun AbkMainScaffold(
                                                 outerPadding = contentPadding,
                                                 onRepositoryPageVisibleChange = { moduleRepositoryPageVisible = it }
                                             )
-                                            AbkTab.Flash -> FlashScreen(
+                                            AbkTab.Flash -> com.abk.kernel.miuix.ui.screens.FlashScreenMiuix(
                                                 vm = vm,
                                                 outerPadding = contentPadding,
                                                 onDetailPageVisibleChange = { flashDetailPageVisible = it }
@@ -1034,6 +1034,22 @@ private fun AbkMainScaffold(
                             }
                             entry<Route.RuntimeModuleRepoSettings> {
                                 com.abk.kernel.miuix.ui.screens.RuntimeModuleRepoSettingsScreenMiuix(vm = vm)
+                            }
+                            entry<Route.FlashWorkflowDetail> { route ->
+                                com.abk.kernel.miuix.ui.screens.flash.FlashWorkflowDetailScreenMiuix(
+                                    vm = vm,
+                                    route = route,
+                                    outerPadding = contentPadding,
+                                    onBack = { navigator.pop() }
+                                )
+                            }
+                            entry<Route.FlashPrebuiltDetail> { route ->
+                                com.abk.kernel.miuix.ui.screens.flash.FlashPrebuiltDetailScreenMiuix(
+                                    vm = vm,
+                                    route = route,
+                                    outerPadding = contentPadding,
+                                    onBack = { navigator.pop() }
+                                )
                             }
                         }
                     )
