@@ -831,9 +831,14 @@ private fun AbkMainScaffold(
                                         pageCount = { visibleTabs.size }
                                     )
 
-                                    // Sync pagerState -> selectedTab
+                                    // Flag to suppress pagerState -> selectedTab sync
+                                    // during programmatic scrolling (prevents feedback loop).
+                                    var isProgrammaticScroll by remember { mutableStateOf(false) }
+
+                                    // Sync pagerState -> selectedTab (only during user swipe)
                                     LaunchedEffect(pagerState.currentPage) {
-                                        if (pagerState.currentPage in visibleTabs.indices) {
+                                        if (!isProgrammaticScroll &&
+                                            pagerState.currentPage in visibleTabs.indices) {
                                             selectedTab = visibleTabs[pagerState.currentPage]
                                         }
                                     }
@@ -842,7 +847,12 @@ private fun AbkMainScaffold(
                                     LaunchedEffect(activeTab) {
                                         val index = visibleTabs.indexOf(activeTab)
                                         if (index >= 0 && pagerState.currentPage != index) {
-                                            pagerState.animateScrollToPage(index)
+                                            isProgrammaticScroll = true
+                                            try {
+                                                pagerState.animateScrollToPage(index)
+                                            } finally {
+                                                isProgrammaticScroll = false
+                                            }
                                         }
                                     }
 
