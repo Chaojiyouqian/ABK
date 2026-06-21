@@ -847,19 +847,20 @@ private fun BuildModuleStageSelectionDialogMiuix(
             Spacer(Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
                     text = stringResource(R.string.cancel),
+                    modifier = Modifier.weight(1f),
                     onClick = onDismiss
                 )
-                Button(
-                    onClick = onAddSelected,
+                TextButton(
+                    text = stringResource(R.string.module_repo_add_selected),
+                    modifier = Modifier.weight(1f),
                     enabled = effectiveStages.isNotEmpty(),
-                    colors = ButtonDefaults.buttonColorsPrimary()
-                ) {
-                    Text(stringResource(R.string.module_repo_add_selected))
-                }
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    onClick = onAddSelected
+                )
             }
         }
     }
