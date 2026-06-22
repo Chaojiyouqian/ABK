@@ -574,13 +574,15 @@ private fun AbkMainScaffold(
         }
     }
 
+    val pressAgainExitLabel = stringResource(R.string.press_again_exit)
+
     fun handleTopLevelBack() {
         val now = System.currentTimeMillis()
         if (now - lastBackAt <= EXIT_BACK_INTERVAL_MS) {
             context.findActivity()?.finish()
         } else {
             lastBackAt = now
-            Toast.makeText(context, context.getString(R.string.press_again_exit), Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, pressAgainExitLabel, Toast.LENGTH_SHORT).show()
         }
     }
 
