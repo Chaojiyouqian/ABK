@@ -56,7 +56,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -89,7 +88,6 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import top.yukonga.miuix.kmp.window.WindowDialog
 
 /**
  * MIUIX-styled settings screen for ABK.
@@ -541,41 +539,18 @@ fun SettingsScreenMiuix(
                                         val selectedIndex = if (options.isNotEmpty()) {
                                             item.selectedIndex.coerceIn(0, options.lastIndex)
                                         } else 0
-                                        val selectedLabel = options.getOrNull(selectedIndex).orEmpty()
-                                        var showModeDialog by remember { mutableStateOf(false) }
-                                        ArrowPreference(
+                                        OverlayDropdownPreference(
                                             title = item.title,
-                                            summary = selectedLabel,
+                                            summary = item.subtitle,
                                             startAction = { Icon(managerSettingIcon(item.id), contentDescription = null, tint = iconTint) },
-                                            onClick = if (item.enabled && !actionInFlight) {
-                                                { showModeDialog = true }
-                                            } else null
-                                        )
-                                        if (showModeDialog && options.isNotEmpty()) {
-                                            WindowDialog(
-                                                show = true,
-                                                title = item.title,
-                                                onDismissRequest = { showModeDialog = false }
-                                            ) {
-                                                androidx.compose.foundation.layout.Column(
-                                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
-                                                    options.forEachIndexed { index, option ->
-                                                        val isSelected = index == selectedIndex
-                                                        ArrowPreference(
-                                                            title = option,
-                                                            summary = if (isSelected) "✓" else null,
-                                                            onClick = {
-                                                                if (!isSelected) {
-                                                                    vm.setManagerSettingMode(item.id, index)
-                                                                }
-                                                                showModeDialog = false
-                                                            }
-                                                        )
-                                                    }
+                                            items = options,
+                                            selectedIndex = selectedIndex,
+                                            onSelectedIndexChange = { index ->
+                                                if (item.enabled && !actionInFlight) {
+                                                    vm.setManagerSettingMode(item.id, index)
                                                 }
                                             }
-                                        }
+                                        )
                                     }
                                 }
                             }
@@ -702,20 +677,6 @@ private fun SectionTitle(title: String) {
         modifier = Modifier.padding(start = 4.dp, top = 8.dp)
     )
 }
-
-@Composable
-private fun SectionSubLabel(label: String) {
-    top.yukonga.miuix.kmp.basic.Text(
-        text = label,
-        style = MiuixTheme.textStyles.body2,
-        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        textAlign = TextAlign.Center
-    )
-}
-
 
 
 
