@@ -1007,7 +1007,7 @@ private fun AbkMainScaffold(
                                 )
                             }
                             entry<Route.AppProfileTemplates> {
-                                // TODO(Phase A.2): Implement AppProfileTemplates screen
+                                com.abk.kernel.miuix.ui.screens.AppProfileTemplatesScreenMiuix(vm = vm)
                             }
                             entry<Route.ManagerTools> {
                                 com.abk.kernel.miuix.ui.screens.ManagerToolsScreenMiuix(vm = vm)
