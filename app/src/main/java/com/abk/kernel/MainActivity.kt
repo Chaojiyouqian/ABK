@@ -893,7 +893,7 @@ private fun AbkMainScaffold(
                                                 onSwitchToClassic = { vm.setRuntimeNavigationEnabled(false) },
                                                 onManagerPatchPageVisibleChange = { managerPatchPageVisible = it }
                                             )
-                                            AbkTab.InstalledModules -> InstalledModulesScreen(
+                                            AbkTab.InstalledModules -> com.abk.kernel.miuix.ui.screens.InstalledModulesScreenMiuix(
                                                 vm = vm,
                                                 outerPadding = contentPadding,
                                                 pendingModuleInstallUri = pendingModuleInstallUri,
