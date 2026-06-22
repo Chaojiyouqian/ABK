@@ -101,7 +101,7 @@ fun RuntimeHomeScreen(
     val motionScheme = MaterialTheme.motionScheme
 
     LaunchedEffect(state.runtimeNavigationEnabled, state.rootGranted) {
-        if (state.runtimeNavigationEnabled) vm.refreshAbkRuntimeStatus()
+        if (state.runtimeNavigationEnabled && state.rootGranted) vm.refreshAbkRuntimeStatus()
     }
 
     fun closeManagerPatchPage() {
@@ -372,7 +372,7 @@ fun InstalledModulesScreen(
     }
 
     LaunchedEffect(state.runtimeNavigationEnabled, state.rootGranted) {
-        if (state.runtimeNavigationEnabled) vm.refreshAbkRuntimeStatus()
+        if (state.runtimeNavigationEnabled && state.rootGranted) vm.refreshAbkRuntimeStatus()
     }
 
     Scaffold(

@@ -174,7 +174,9 @@ fun InstalledModulesScreenMiuix(
 
     val showEmptyState by remember {
         derivedStateOf {
-            modules.isEmpty() && !state.abkRuntimeLoading
+            state.abkRuntimeStatus != null &&
+                state.abkRuntimeError == null &&
+                modules.isEmpty()
         }
     }
 
@@ -329,7 +331,7 @@ fun InstalledModulesScreenMiuix(
     }
 
     LaunchedEffect(state.runtimeNavigationEnabled, state.rootGranted) {
-        if (state.runtimeNavigationEnabled) vm.refreshAbkRuntimeStatus()
+        if (state.runtimeNavigationEnabled && state.rootGranted) vm.refreshAbkRuntimeStatus()
     }
 
     val scrollBehavior = MiuixScrollBehavior()
@@ -417,7 +419,7 @@ fun InstalledModulesScreenMiuix(
                 searchBarTopPadding = dynamicTopPadding,
             ) {
                 val layoutDirection = LocalLayoutDirection.current
-                if (groupedModules.isEmpty() && !state.abkRuntimeLoading) {
+                if (state.abkRuntimeStatus != null && state.abkRuntimeError == null && groupedModules.isEmpty()) {
                     EmptyModulesStateView(
                         innerPadding = PaddingValues(0.dp),
                         bottomPadding = outerPadding.calculateBottomPadding(),
