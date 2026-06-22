@@ -281,12 +281,7 @@ fun InstalledModulesScreenMiuix(
 
     fun launchModulePickerWithPermissionCheck() {
         if (installRunning) return
-        if (hasRuntimeModuleFileAccess()) {
-            modulePicker.launch(MODULE_INSTALL_MIME_TYPES)
-        } else {
-            resumeModulePickerAfterPermission = true
-            showAllFilesAccessPrompt = true
-        }
+        modulePicker.launch(MODULE_INSTALL_MIME_TYPES)
     }
 
     fun openAllFilesAccessSettings() {
