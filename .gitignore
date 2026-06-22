@@ -68,6 +68,7 @@ node_modules/
 # Other
 .ace-tool/
 AGENTS.md
+docs/superpowers/
 web/serve.sh
 .omc/
 .omo/
