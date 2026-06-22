@@ -744,6 +744,13 @@ jobs:
 
             echo "克隆自定义外部模块 #$index ($stage/$entry_kind): $repo_url"
             git clone --depth 1 "$repo_url" "$module_dir"
+            echo "external module checkout #$index:"
+            echo "  repo_url: $repo_url"
+            echo "  module_dir: $module_dir"
+            echo "  head_sha: $(git -C "$module_dir" rev-parse HEAD)"
+            echo "  branch: $(git -C "$module_dir" branch --show-current || true)"
+            echo "  origin: $(git -C "$module_dir" remote get-url origin)"
+            echo "  head_log: $(git -C "$module_dir" log -1 --oneline)"
             printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
               "$stage" \
               "$module_dir" \
@@ -2873,6 +2880,15 @@ jobs:
             echo "::group::执行自定义外部模块 [$stage] $repo_url"
             (
               cd "$module_dir"
+              echo "external module execution context:"
+              echo "  repo_url: $repo_url"
+              echo "  module_dir: $module_dir"
+              echo "  entry_kind: ${entry_kind:-module}"
+              echo "  child_id: ${child_id:-}"
+              echo "  head_sha: $(git rev-parse HEAD)"
+              echo "  branch: $(git branch --show-current || true)"
+              echo "  origin: $(git remote get-url origin)"
+              echo "  head_log: $(git log -1 --oneline)"
               export ABK_MODULE_ENTRY_KIND="${entry_kind:-module}"
               export ABK_MODULE_GROUP_REPO_URL="${group_repo_url:-}"
               export ABK_MODULE_CHILD_ID="${child_id:-}"
