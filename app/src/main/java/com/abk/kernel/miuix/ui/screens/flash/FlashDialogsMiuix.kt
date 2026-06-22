@@ -39,6 +39,8 @@ import com.abk.kernel.ui.screens.flash.parameterDisplayValue
 import com.abk.kernel.ui.screens.flash.parsePrebuiltGkiParameterSummary
 import com.abk.kernel.ui.screens.flash.releaseDateLabel
 import com.abk.kernel.ui.screens.flash.WorkflowArtifactGroup
+import com.abk.kernel.miuix.ui.screens.flash.common.FlashTerminalBgShape
+import com.abk.kernel.miuix.ui.screens.flash.common.MiuixConfirmDialog
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Checkbox
@@ -59,39 +61,14 @@ internal fun MiuixFlashConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    WindowDialog(
-        show = true,
+    MiuixConfirmDialog(
         title = stringResource(R.string.flash_confirm),
-        onDismissRequest = onDismiss
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = stringResource(R.string.flash_confirm_msg),
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(
-                    modifier = Modifier.weight(1f),
-                    text = stringResource(R.string.cancel),
-                    onClick = onDismiss
-                )
-                TextButton(
-                    modifier = Modifier.weight(1f),
-                    text = stringResource(R.string.flash_confirm),
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                    onClick = onConfirm
-                )
-            }
-        }
-    }
+        message = stringResource(R.string.flash_confirm_msg),
+        confirmBtnText = stringResource(R.string.flash_confirm),
+        confirmBtnColor = null,
+        onConfirm = onConfirm,
+        onDismiss = onDismiss
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,39 +80,14 @@ internal fun MiuixInstallManagerConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    WindowDialog(
-        show = true,
+    MiuixConfirmDialog(
         title = stringResource(R.string.flash_confirm_install_manager),
-        onDismissRequest = onDismiss
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = stringResource(R.string.flash_confirm_install_manager_msg),
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(
-                    modifier = Modifier.weight(1f),
-                    text = stringResource(R.string.cancel),
-                    onClick = onDismiss
-                )
-                TextButton(
-                    modifier = Modifier.weight(1f),
-                    text = stringResource(R.string.flash_confirm_install_manager),
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                    onClick = onConfirm
-                )
-            }
-        }
-    }
+        message = stringResource(R.string.flash_confirm_install_manager_msg),
+        confirmBtnText = stringResource(R.string.flash_confirm_install_manager),
+        confirmBtnColor = null,
+        onConfirm = onConfirm,
+        onDismiss = onDismiss
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -147,41 +99,14 @@ internal fun MiuixCancelBuildConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    WindowDialog(
-        show = true,
+    MiuixConfirmDialog(
         title = stringResource(R.string.flash_cancel_confirm_title),
-        onDismissRequest = onDismiss
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = stringResource(R.string.flash_cancel_confirm_msg),
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(
-                    modifier = Modifier.weight(1f),
-                    text = stringResource(R.string.cancel),
-                    onClick = onDismiss
-                )
-                TextButton(
-                    modifier = Modifier.weight(1f),
-                    text = stringResource(R.string.flash_cancel_confirm_yes),
-                    colors = ButtonDefaults.textButtonColors(
-                        textColor = MiuixTheme.colorScheme.error
-                    ),
-                    onClick = onConfirm
-                )
-            }
-        }
-    }
+        message = stringResource(R.string.flash_cancel_confirm_msg),
+        confirmBtnText = stringResource(R.string.flash_cancel_confirm_yes),
+        confirmBtnColor = MiuixTheme.colorScheme.error,
+        onConfirm = onConfirm,
+        onDismiss = onDismiss
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -194,41 +119,14 @@ internal fun MiuixDeleteFileDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    WindowDialog(
-        show = true,
+    MiuixConfirmDialog(
         title = stringResource(R.string.flash_delete_file),
-        onDismissRequest = onDismiss
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = stringResource(R.string.flash_delete_file_msg, artifact.name),
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(
-                    modifier = Modifier.weight(1f),
-                    text = stringResource(R.string.cancel),
-                    onClick = onDismiss
-                )
-                TextButton(
-                    modifier = Modifier.weight(1f),
-                    text = stringResource(R.string.delete),
-                    colors = ButtonDefaults.textButtonColors(
-                        textColor = MiuixTheme.colorScheme.error
-                    ),
-                    onClick = onConfirm
-                )
-            }
-        }
-    }
+        message = stringResource(R.string.flash_delete_file_msg, artifact.name),
+        confirmBtnText = stringResource(R.string.delete),
+        confirmBtnColor = MiuixTheme.colorScheme.error,
+        onConfirm = onConfirm,
+        onDismiss = onDismiss
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -554,7 +452,7 @@ internal fun MiuixTerminalDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 190.dp, max = 360.dp)
-                            .background(darkBg, RoundedCornerShape(8.dp))
+                            .background(darkBg, FlashTerminalBgShape)
                             .verticalScroll(terminalScroll)
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp)

@@ -1,9 +1,6 @@
 package com.abk.kernel.miuix.ui.screens.flash
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -57,6 +54,7 @@ import com.abk.kernel.ui.screens.flash.sanitizePrebuiltFilter
 import com.abk.kernel.utils.DownloadUtils
 import com.abk.kernel.utils.RootUtils
 import com.abk.kernel.viewmodel.MainViewModel
+import com.abk.kernel.miuix.ui.screens.flash.common.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -114,11 +112,7 @@ fun FlashPrebuiltDetailScreenMiuix(
     var showFlashConfirm by remember { mutableStateOf(false) }
     var showInstallConfirm by remember { mutableStateOf(false) }
 
-    var showTerminal by remember { mutableStateOf(false) }
-    var terminalTitle by remember { mutableStateOf("") }
-    var terminalRunning by remember { mutableStateOf(false) }
-    var terminalSuccess by remember { mutableStateOf<Boolean?>(null) }
-    var terminalLog by remember { mutableStateOf<List<String>>(emptyList()) }
+    val terminal = rememberFlashTerminalState(context, scope)
 
     LaunchedEffect(release) {
         val r = release ?: return@LaunchedEffect
@@ -129,16 +123,8 @@ fun FlashPrebuiltDetailScreenMiuix(
 
     // ── Local helpers ────────────────────────────────────────────────────
 
-    fun appendLine(line: String) {
-        scope.launch(Dispatchers.Main.immediate) {
-            terminalLog = terminalLog + line
-        }
-    }
-
     fun copyPath(item: DownloadedArtifact) {
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText(item.name, item.filePath))
-        Toast.makeText(context, context.getString(R.string.flash_copy_path_done), Toast.LENGTH_SHORT).show()
+        copyArtifactPath(context, item)
     }
 
     fun requestFlash(item: DownloadedArtifact) {
@@ -148,65 +134,57 @@ fun FlashPrebuiltDetailScreenMiuix(
 
     fun startFlash(item: DownloadedArtifact) {
         if (!state.rootGranted) {
-            terminalTitle = context.getString(R.string.flash_root_unauthorized)
-            terminalRunning = false
-            terminalSuccess = false
-            terminalLog = listOf(
-                context.getString(R.string.flash_partial_files_only),
-                context.getString(R.string.flash_grant_root_flash)
+            terminal.showFailure(
+                context.getString(R.string.flash_root_unauthorized),
+                listOf(
+                    context.getString(R.string.flash_partial_files_only),
+                    context.getString(R.string.flash_grant_root_flash)
+                )
             )
-            showTerminal = true
             return
         }
-        terminalTitle = context.getString(R.string.flash_operation_flash_boot)
-        terminalRunning = true
-        terminalSuccess = null
-        terminalLog = listOf(
-            "$ flash ${item.name}",
-            "file: ${item.filePath}",
-            "",
-            context.getString(R.string.flash_wait_root_shell)
-        )
-        showTerminal = true
         scope.launch {
-            val result = runCatching {
-                withContext(Dispatchers.IO) {
-                    val prepared = DownloadUtils.prepareDownloadedArtifact(context, item)
-                    try {
-                        if (prepared.cleanupDir != null) {
-                            appendLine("[ABK] Extracted to cache")
-                            appendLine("[ABK] Payload: ${prepared.file.absolutePath}")
+            terminal.executeRootOp(
+                title = context.getString(R.string.flash_operation_flash_boot),
+                canReboot = true
+            ) {
+                appendLine("$ flash ${item.name}")
+                appendLine("file: ${item.filePath}")
+                appendLine("")
+                appendLine(context.getString(R.string.flash_wait_root_shell))
+                val result = runCatching {
+                    withContext(Dispatchers.IO) {
+                        val prepared = DownloadUtils.prepareDownloadedArtifact(context, item)
+                        try {
+                            if (prepared.cleanupDir != null) {
+                                appendLine("[ABK] Extracted to cache")
+                                appendLine("[ABK] Payload: ${prepared.file.absolutePath}")
+                            }
+                            when (prepared.resolvedType ?: item.type) {
+                                ArtifactType.KERNEL_IMG ->
+                                    RootUtils.flashImage(prepared.file.absolutePath) { line -> appendLine(line) }
+                                ArtifactType.ANYKERNEL3 ->
+                                    RootUtils.flashAnyKernel3(context, prepared.file.absolutePath) { line -> appendLine(line) }
+                                ArtifactType.SUSFS_MODULE ->
+                                    RootUtils.installModule(prepared.file.absolutePath) { line -> appendLine(line) }
+                                ArtifactType.KSU_MANAGER ->
+                                    RootUtils.installApk(context, prepared.file.absolutePath) { line -> appendLine(line) }
+                                else ->
+                                    RootUtils.ShellResult(false, listOf("unsupported: ${item.type}"))
+                            }
+                        } finally {
+                            prepared.cleanupDir?.deleteRecursively()
                         }
-                        when (prepared.resolvedType ?: item.type) {
-                            ArtifactType.KERNEL_IMG ->
-                                RootUtils.flashImage(prepared.file.absolutePath, onOutput = ::appendLine)
-                            ArtifactType.ANYKERNEL3 ->
-                                RootUtils.flashAnyKernel3(context, prepared.file.absolutePath, onOutput = ::appendLine)
-                            ArtifactType.SUSFS_MODULE ->
-                                RootUtils.installModule(prepared.file.absolutePath, ::appendLine)
-                            ArtifactType.KSU_MANAGER ->
-                                RootUtils.installApk(context, prepared.file.absolutePath, ::appendLine)
-                            else ->
-                                RootUtils.ShellResult(false, listOf("unsupported: ${item.type}"))
-                        }
-                    } finally {
-                        prepared.cleanupDir?.deleteRecursively()
                     }
+                }.getOrElse { error ->
+                    RootUtils.ShellResult(false, listOf(error.message ?: error::class.java.simpleName))
                 }
-            }.getOrElse { error ->
-                RootUtils.ShellResult(false, listOf(error.message ?: error::class.java.simpleName))
-            }
-            terminalRunning = false
-            terminalSuccess = result.success
-            terminalLog = listOf(
-                "$ flash ${item.name}",
-                "file: ${item.filePath}",
-                ""
-            ) + result.output.ifEmpty {
-                listOf(
-                    if (result.success) context.getString(R.string.flash_command_done_no_output)
-                    else context.getString(R.string.flash_command_failed_no_log)
-                )
+                if (result.output.isEmpty()) {
+                    appendLine(if (result.success) context.getString(R.string.flash_command_done_no_output) else context.getString(R.string.flash_command_failed_no_log))
+                } else {
+                    result.output.forEach { line -> appendLine(line) }
+                }
+                RootResult(result.success, "")
             }
         }
     }
@@ -218,54 +196,46 @@ fun FlashPrebuiltDetailScreenMiuix(
 
     fun installManager(item: DownloadedArtifact) {
         if (!state.rootGranted) {
-            terminalTitle = context.getString(R.string.flash_root_unauthorized)
-            terminalRunning = false
-            terminalSuccess = false
-            terminalLog = listOf(
-                context.getString(R.string.flash_partial_files_only),
-                context.getString(R.string.flash_grant_root_install_manager)
+            terminal.showFailure(
+                context.getString(R.string.flash_root_unauthorized),
+                listOf(
+                    context.getString(R.string.flash_partial_files_only),
+                    context.getString(R.string.flash_grant_root_install_manager)
+                )
             )
-            showTerminal = true
             return
         }
-        terminalTitle = context.getString(R.string.flash_install_manager_apk)
-        terminalRunning = true
-        terminalSuccess = null
-        terminalLog = listOf(
-            "$ pm install -r ${item.name}",
-            "file: ${item.filePath}",
-            "",
-            context.getString(R.string.flash_wait_root_shell)
-        )
-        showTerminal = true
         scope.launch {
-            val result = runCatching {
-                withContext(Dispatchers.IO) {
-                    val prepared = DownloadUtils.prepareDownloadedArtifact(context, item)
-                    try {
-                        if (prepared.cleanupDir != null) {
-                            appendLine("[ABK] Extracted to cache")
-                            appendLine("[ABK] Payload: ${prepared.file.absolutePath}")
+            terminal.executeRootOp(
+                title = context.getString(R.string.flash_install_manager_apk),
+                canReboot = false
+            ) {
+                appendLine("$ pm install -r ${item.name}")
+                appendLine("file: ${item.filePath}")
+                appendLine("")
+                appendLine(context.getString(R.string.flash_wait_root_shell))
+                val result = runCatching {
+                    withContext(Dispatchers.IO) {
+                        val prepared = DownloadUtils.prepareDownloadedArtifact(context, item)
+                        try {
+                            if (prepared.cleanupDir != null) {
+                                appendLine("[ABK] Extracted to cache")
+                                appendLine("[ABK] Payload: ${prepared.file.absolutePath}")
+                            }
+                            RootUtils.installApk(context, prepared.file.absolutePath) { line -> appendLine(line) }
+                        } finally {
+                            prepared.cleanupDir?.deleteRecursively()
                         }
-                        RootUtils.installApk(context, prepared.file.absolutePath, ::appendLine)
-                    } finally {
-                        prepared.cleanupDir?.deleteRecursively()
                     }
+                }.getOrElse { error ->
+                    RootUtils.ShellResult(false, listOf(error.message ?: error::class.java.simpleName))
                 }
-            }.getOrElse { error ->
-                RootUtils.ShellResult(false, listOf(error.message ?: error::class.java.simpleName))
-            }
-            terminalRunning = false
-            terminalSuccess = result.success
-            terminalLog = listOf(
-                "$ pm install -r ${item.name}",
-                "file: ${item.filePath}",
-                ""
-            ) + result.output.ifEmpty {
-                listOf(
-                    if (result.success) context.getString(R.string.flash_command_done_no_output)
-                    else context.getString(R.string.flash_command_failed_no_log)
-                )
+                if (result.output.isEmpty()) {
+                    appendLine(if (result.success) context.getString(R.string.flash_command_done_no_output) else context.getString(R.string.flash_command_failed_no_log))
+                } else {
+                    result.output.forEach { line -> appendLine(line) }
+                }
+                RootResult(result.success, "")
             }
         }
     }
@@ -442,23 +412,11 @@ fun FlashPrebuiltDetailScreenMiuix(
         )
     }
 
-    if (showTerminal) {
-        MiuixTerminalDialog(
-            title = terminalTitle,
-            running = terminalRunning,
-            success = terminalSuccess,
-            onClose = {
-                showTerminal = false
-                terminalLog = emptyList()
-            },
-            onReboot = if (terminalSuccess == true) {
-                { scope.launch { RootUtils.reboot() } }
-            } else {
-                null
-            },
-            terminalLog = terminalLog
-        )
-    }
+    TerminalDialogFromState(
+        state = terminal,
+        canReboot = true,
+        onReboot = { scope.launch { RootUtils.reboot() } }
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -694,13 +652,9 @@ private fun MiuixPrebuiltAssetCard(
             when {
                 progress != null -> {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        LinearProgressIndicator(
-                            modifier = Modifier.fillMaxWidth(),
+                        MiuixThemedLinearProgress(
                             progress = (progress / 100f).coerceIn(0f, 1f),
-                            colors = ProgressIndicatorDefaults.progressIndicatorColors(
-                                foregroundColor = MiuixTheme.colorScheme.primary,
-                                backgroundColor = MiuixTheme.colorScheme.surface
-                            )
+                            modifier = Modifier.fillMaxWidth()
                         )
                         Text(
                             text = stringResource(R.string.flash_download_progress, progress),

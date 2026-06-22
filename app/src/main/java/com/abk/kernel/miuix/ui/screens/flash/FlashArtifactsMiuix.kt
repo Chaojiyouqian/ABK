@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Cancel
@@ -42,7 +41,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.abk.kernel.R
 import com.abk.kernel.data.model.ActiveDownloadTask
 import com.abk.kernel.data.model.ArtifactCategory
@@ -62,9 +60,9 @@ import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
-import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.abk.kernel.miuix.ui.screens.flash.common.*
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal helpers (mirror FlashRouting/FlashFilter functions kept internal)
@@ -147,9 +145,9 @@ fun MiuixTagChip(
     maxWidth: androidx.compose.ui.unit.Dp = 160.dp
 ) {
     val bgColor = if (primary) {
-        MiuixTheme.colorScheme.primary.copy(alpha = 0.12f)
+        MiuixTheme.colorScheme.primary.copy(alpha = FlashChipBgAlpha)
     } else {
-        MiuixTheme.colorScheme.secondary.copy(alpha = 0.12f)
+        MiuixTheme.colorScheme.secondary.copy(alpha = FlashChipBgAlpha)
     }
     val contentColor = if (primary) {
         MiuixTheme.colorScheme.primary
@@ -161,7 +159,7 @@ fun MiuixTagChip(
             .widthIn(max = maxWidth)
             .background(
                 color = bgColor,
-                shape = RoundedCornerShape(5.dp)
+                shape = FlashTagChipShape
             )
             .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
@@ -169,7 +167,7 @@ fun MiuixTagChip(
             text = label,
             style = MiuixTheme.textStyles.body2,
             color = contentColor,
-            fontSize = 11.sp,
+            fontSize = FlashChipFontSize,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -189,8 +187,8 @@ private fun MiuixPillChip(
     Row(
         modifier = modifier
             .background(
-                color = color.copy(alpha = 0.14f),
-                shape = RoundedCornerShape(50)
+                color = color.copy(alpha = FlashPillChipBgAlpha),
+                shape = FlashPillChipShape
             )
             .padding(horizontal = 8.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -198,7 +196,7 @@ private fun MiuixPillChip(
         Text(
             text = label,
             style = MiuixTheme.textStyles.body2,
-            fontSize = 11.sp,
+            fontSize = FlashChipFontSize,
             fontWeight = FontWeight.Medium,
             color = color,
             maxLines = 1,
@@ -236,7 +234,7 @@ fun MiuixDownloadedOutputRow(
                 imageVector = Icons.Default.CheckCircle,
                 contentDescription = null,
                 tint = MiuixTheme.colorScheme.primary,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(FlashStatusIconSize)
             )
             Column(Modifier.weight(1f)) {
                 Text(
@@ -277,12 +275,12 @@ fun MiuixDownloadedOutputRow(
                     Icon(
                         imageVector = Icons.Default.InstallMobile,
                         contentDescription = null,
-                        modifier = Modifier.size(15.dp)
+                        modifier = Modifier.size(FlashButtonIconSize)
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
                         text = stringResource(R.string.flash_install),
-                        fontSize = 12.sp
+                        fontSize = FlashCompactButtonFontSize
                     )
                 }
             } else {
@@ -297,12 +295,12 @@ fun MiuixDownloadedOutputRow(
                     Icon(
                         imageVector = Icons.Default.ContentCopy,
                         contentDescription = null,
-                        modifier = Modifier.size(15.dp)
+                        modifier = Modifier.size(FlashButtonIconSize)
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
                         text = stringResource(R.string.flash_copy_path),
-                        fontSize = 12.sp
+                        fontSize = FlashCompactButtonFontSize
                     )
                 }
             }
@@ -337,12 +335,12 @@ fun MiuixDownloadedOutputRow(
                                     Icons.Default.FlashOn
                                 },
                                 contentDescription = null,
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(FlashButtonIconSize)
                             )
                             Spacer(Modifier.width(4.dp))
                             Text(
                                 text = stringResource(miuixFlashButtonLabelRes(artifact.type)),
-                                fontSize = 12.sp
+                                fontSize = FlashCompactButtonFontSize
                             )
                         }
                     }
@@ -400,7 +398,7 @@ fun MiuixArtifactSourceCard(
                     imageVector = miuixArtifactIcon(type),
                     contentDescription = null,
                     tint = MiuixTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(FlashCardHeaderIconSize)
                 )
                 Column(
                     modifier = Modifier.weight(1f),
@@ -432,10 +430,7 @@ fun MiuixArtifactSourceCard(
                         LinearProgressIndicator(
                             modifier = Modifier.fillMaxWidth(),
                             progress = (progress / 100f).coerceIn(0f, 1f),
-                            colors = ProgressIndicatorDefaults.progressIndicatorColors(
-                                foregroundColor = MiuixTheme.colorScheme.primary,
-                                backgroundColor = MiuixTheme.colorScheme.surface
-                            )
+                    colors = flashProgressColors()
                         )
                         Text(
                             text = stringResource(R.string.flash_download_progress, progress),
@@ -457,12 +452,12 @@ fun MiuixArtifactSourceCard(
                                     Icon(
                                         imageVector = Icons.Default.Cancel,
                                         contentDescription = null,
-                                        modifier = Modifier.size(15.dp)
+                                        modifier = Modifier.size(FlashButtonIconSize)
                                     )
                                     Spacer(Modifier.width(6.dp))
                                     Text(
                                         text = stringResource(R.string.flash_cancel_download),
-                                        fontSize = 12.sp
+                                        fontSize = FlashCompactButtonFontSize
                                     )
                                 }
                             }
@@ -492,12 +487,12 @@ fun MiuixArtifactSourceCard(
                                         Icon(
                                             imageVector = Icons.Default.Cancel,
                                             contentDescription = null,
-                                            modifier = Modifier.size(15.dp)
+                                            modifier = Modifier.size(FlashButtonIconSize)
                                         )
                                         Spacer(Modifier.width(6.dp))
                                         Text(
                                             text = stringResource(R.string.flash_stop_auto_download),
-                                            fontSize = 12.sp
+                                            fontSize = FlashCompactButtonFontSize
                                         )
                                     }
                                 }
@@ -515,7 +510,7 @@ fun MiuixArtifactSourceCard(
                             Icon(
                                 imageVector = Icons.Default.Download,
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(FlashStatusIconSize)
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(text = stringResource(R.string.flash_download))
@@ -574,7 +569,7 @@ fun MiuixLocalOnlyArtifactCard(
                     imageVector = miuixArtifactIcon(artifact.type),
                     contentDescription = null,
                     tint = MiuixTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(FlashCardHeaderIconSize)
                 )
                 Column(
                     modifier = Modifier.weight(1f),
@@ -656,7 +651,7 @@ fun MiuixWorkflowCategorySection(
                 imageVector = miuixCategoryIcon(category),
                 contentDescription = null,
                 tint = MiuixTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(FlashMediumIconSize)
             )
             Text(
                 text = stringResource(miuixCategoryLabelRes(category)),
@@ -727,7 +722,7 @@ private fun MiuixCategoryProgressPlaceholder() {
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(FlashCardHeaderIconSize),
                     progress = null,
                     size = 20.dp,
                     strokeWidth = 2.dp
@@ -744,10 +739,7 @@ private fun MiuixCategoryProgressPlaceholder() {
             LinearProgressIndicator(
                 modifier = Modifier.fillMaxWidth(),
                 progress = null,
-                colors = ProgressIndicatorDefaults.progressIndicatorColors(
-                    foregroundColor = MiuixTheme.colorScheme.primary,
-                    backgroundColor = MiuixTheme.colorScheme.surface
-                )
+                colors = flashProgressColors()
             )
         }
     }
@@ -786,7 +778,7 @@ fun MiuixWorkflowDownloadManagementCard(
                     imageVector = Icons.Default.Download,
                     contentDescription = null,
                     tint = MiuixTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(FlashCardHeaderIconSize)
                 )
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -831,7 +823,7 @@ fun MiuixWorkflowDownloadManagementCard(
                         ) {
                             Text(
                                 text = stringResource(R.string.flash_stop_auto_download),
-                                fontSize = 12.sp
+                                fontSize = FlashCompactButtonFontSize
                             )
                         }
                     }
@@ -881,10 +873,7 @@ fun MiuixWorkflowDownloadManagementCard(
                     LinearProgressIndicator(
                         modifier = Modifier.fillMaxWidth(),
                         progress = (task.progress / 100f).coerceIn(0f, 1f),
-                        colors = ProgressIndicatorDefaults.progressIndicatorColors(
-                            foregroundColor = MiuixTheme.colorScheme.primary,
-                            backgroundColor = MiuixTheme.colorScheme.surface
-                        )
+                        colors = flashProgressColors()
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -905,7 +894,7 @@ fun MiuixWorkflowDownloadManagementCard(
                         ) {
                             Text(
                                 text = stringResource(R.string.flash_cancel_download),
-                                fontSize = 12.sp
+                                fontSize = FlashCompactButtonFontSize
                             )
                         }
                     }
@@ -992,7 +981,7 @@ internal fun MiuixWorkflowRunCard(
             ) {
                 if (active) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(FlashRunStatusIconSize),
                         progress = null,
                         size = 22.dp,
                         strokeWidth = 2.dp
@@ -1002,14 +991,14 @@ internal fun MiuixWorkflowRunCard(
                         imageVector = Icons.Default.Error,
                         contentDescription = null,
                         tint = MiuixTheme.colorScheme.error,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(FlashRunStatusIconSize)
                     )
                 } else {
                     Icon(
                         imageVector = Icons.Default.FolderSpecial,
                         contentDescription = null,
                         tint = MiuixTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(FlashRunStatusIconSize)
                     )
                 }
                 Column(
@@ -1045,7 +1034,7 @@ internal fun MiuixWorkflowRunCard(
                     IconButton(onClick = onCancel, enabled = !cancelling) {
                         if (cancelling) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(FlashCardHeaderIconSize),
                                 progress = null,
                                 size = 20.dp,
                                 strokeWidth = 2.dp
