@@ -89,6 +89,7 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import top.yukonga.miuix.kmp.window.WindowDialog
 
 /**
  * MIUIX-styled settings screen for ABK.
@@ -534,24 +535,46 @@ fun SettingsScreenMiuix(
                                         }
                                     )
                                     ManagerSettingKind.MODE -> {
-                                        // MODE: show options as selectable SuperArrow rows
                                         val options = item.options
                                             .map { it.trim() }
                                             .filter { it.isNotBlank() }
                                         val selectedIndex = if (options.isNotEmpty()) {
                                             item.selectedIndex.coerceIn(0, options.lastIndex)
                                         } else 0
-                                        SectionSubLabel(item.title)
-                                        options.forEachIndexed { index, option ->
-                                            val selected = index == selectedIndex
-                                            ArrowPreference(
-                                                title = option,
-                                                summary = if (selected) "✓" else null,
-                                                startAction = { Icon(managerSettingIcon(item.id), contentDescription = null, tint = iconTint) },
-                                                onClick = if (item.enabled && !actionInFlight && index != selectedIndex) {
-                                                    { vm.setManagerSettingMode(item.id, index) }
-                                                } else null
-                                            )
+                                        val selectedLabel = options.getOrNull(selectedIndex).orEmpty()
+                                        var showModeDialog by remember { mutableStateOf(false) }
+                                        ArrowPreference(
+                                            title = item.title,
+                                            summary = selectedLabel,
+                                            startAction = { Icon(managerSettingIcon(item.id), contentDescription = null, tint = iconTint) },
+                                            onClick = if (item.enabled && !actionInFlight) {
+                                                { showModeDialog = true }
+                                            } else null
+                                        )
+                                        if (showModeDialog && options.isNotEmpty()) {
+                                            WindowDialog(
+                                                show = true,
+                                                title = item.title,
+                                                onDismissRequest = { showModeDialog = false }
+                                            ) {
+                                                androidx.compose.foundation.layout.Column(
+                                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    options.forEachIndexed { index, option ->
+                                                        val isSelected = index == selectedIndex
+                                                        ArrowPreference(
+                                                            title = option,
+                                                            summary = if (isSelected) "✓" else null,
+                                                            onClick = {
+                                                                if (!isSelected) {
+                                                                    vm.setManagerSettingMode(item.id, index)
+                                                                }
+                                                                showModeDialog = false
+                                                            }
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
