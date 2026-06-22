@@ -16,8 +16,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.ContentTransform
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -57,7 +55,6 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.NavigationBar as MiuixNavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem as MiuixNavigationBarItem
-import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -86,7 +83,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.abk.kernel.ui.components.AppBackgroundHost
 import com.abk.kernel.ui.components.AbkSnackbarHost
-import com.abk.kernel.ui.components.animateBottomNavForChildPage
 import com.abk.kernel.ui.components.showAbkSnackbar
 import com.abk.kernel.extensions.AbkExtensionBootstrapActivity
 import com.abk.kernel.ui.screens.BuildScreen
@@ -1012,7 +1008,7 @@ private fun AbkMainScaffold(
                                 // TODO(Phase A.2): Implement AppProfileTemplates screen
                             }
                             entry<Route.ManagerTools> {
-                                // TODO(Phase A.2): Implement ManagerTools screen
+                                com.abk.kernel.miuix.ui.screens.ManagerToolsScreenMiuix(vm = vm)
                             }
                             entry<Route.About> {
                                 com.abk.kernel.miuix.ui.screens.AboutScreenMiuix()
