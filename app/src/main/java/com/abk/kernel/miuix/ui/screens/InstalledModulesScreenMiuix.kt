@@ -46,13 +46,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.UploadFile
-import androidx.compose.material.icons.filled.Web
+import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -85,8 +86,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.abk.kernel.R
 import com.abk.kernel.data.model.AbkRuntimeModule
-import com.abk.kernel.miuix.util.BlurredBar
-import com.abk.kernel.miuix.util.rememberBlurBackdrop
 import com.abk.kernel.ui.screens.MODULE_INSTALL_MIME_TYPES
 import com.abk.kernel.ui.screens.RuntimeModuleDisplayGroup
 import com.abk.kernel.ui.screens.canUninstallRuntimeModule
@@ -101,6 +100,8 @@ import com.abk.kernel.ui.screens.typeOrder
 import com.abk.kernel.ui.webui.ModuleWebUiActivity
 import com.abk.kernel.utils.RootUtils
 import com.abk.kernel.viewmodel.MainViewModel
+import com.abk.kernel.miuix.util.BlurredBar
+import com.abk.kernel.miuix.util.rememberBlurBackdrop
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -122,6 +123,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
@@ -154,7 +156,6 @@ fun InstalledModulesScreenMiuix(
             .filter { it.matchesRuntimeModuleQuery(query) }
             .sortedWith(
                 compareBy<AbkRuntimeModule> { it.typeOrder() }
-                    .thenBy { !it.enabled }
                     .thenBy { it.displayName().lowercase() }
             )
     }
@@ -321,6 +322,7 @@ fun InstalledModulesScreenMiuix(
     }
 
     val scrollBehavior = MiuixScrollBehavior()
+
     val surfaceColor = MiuixTheme.colorScheme.surface
     val backdrop = rememberBlurBackdrop(state.miuixBlurEnabled, surfaceColor)
     val barColor = if (backdrop != null) Color.Transparent else surfaceColor
@@ -370,8 +372,13 @@ fun InstalledModulesScreenMiuix(
     ) { innerPadding ->
         val layoutDirection = LocalLayoutDirection.current
 
-        if (showEmptyState) {
-            EmptyModulesStateView(
+        Box(
+            modifier = Modifier.then(
+                if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
+            )
+        ) {
+            if (showEmptyState) {
+                EmptyModulesStateView(
                 innerPadding = innerPadding,
                 bottomPadding = outerPadding.calculateBottomPadding(),
                 layoutDirection = layoutDirection,
@@ -400,12 +407,14 @@ fun InstalledModulesScreenMiuix(
                         Intent(context, ModuleWebUiActivity::class.java)
                             .putExtra(ModuleWebUiActivity.EXTRA_MODULE_ID, module.id)
                             .putExtra(ModuleWebUiActivity.EXTRA_MODULE_NAME, module.displayName())
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
                 },
                 onRequestUninstall = { module -> uninstallTarget = module },
                 onRunAction = { moduleId -> vm.runRuntimeModuleAction(moduleId) },
                 onSetEnabled = { moduleId, enabled -> vm.setAbkRuntimeModuleEnabled(moduleId, enabled) }
             )
+        }
         }
     }
 
@@ -782,9 +791,10 @@ private fun ModuleListContent(
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     label = stringResource(R.string.runtime_installed_modules_title),
+                    useLabelAsPlaceholder = true,
                     leadingIcon = {
                         Icon(
-                            imageVector = Icons.Filled.Search,
+                            imageVector = Icons.Rounded.Search,
                             contentDescription = null,
                             tint = MiuixTheme.colorScheme.onSurfaceVariantSummary
                         )
@@ -995,7 +1005,7 @@ private fun InstalledModuleCardMiuix(
                 ) {
                     Icon(
                         modifier = Modifier.size(20.dp),
-                        imageVector = Icons.Filled.Settings,
+                        imageVector = Icons.Rounded.Settings,
                         tint = actionIconTint,
                         contentDescription = stringResource(R.string.runtime_run_action)
                     )
@@ -1015,7 +1025,7 @@ private fun InstalledModuleCardMiuix(
                 ) {
                     Icon(
                         modifier = Modifier.size(20.dp),
-                        imageVector = Icons.Filled.Web,
+                        imageVector = Icons.Rounded.Code,
                         tint = actionIconTint,
                         contentDescription = stringResource(R.string.runtime_open_webui)
                     )
@@ -1025,14 +1035,6 @@ private fun InstalledModuleCardMiuix(
             Spacer(Modifier.weight(1f))
 
             if (canUninstall) {
-                if (actionInFlight) {
-                    LinearProgressIndicator(
-                        modifier = Modifier
-                            .size(20.dp)
-                            .align(Alignment.CenterVertically),
-                        progress = null
-                    )
-                }
                 IconButton(
                     minHeight = 35.dp,
                     minWidth = 35.dp,
@@ -1045,7 +1047,7 @@ private fun InstalledModuleCardMiuix(
                     ) {
                         Icon(
                             modifier = Modifier.size(20.dp),
-                            imageVector = if (module.remove) Icons.Filled.RestartAlt else Icons.Filled.Delete,
+                            imageVector = if (module.remove) Icons.Rounded.Refresh else Icons.Rounded.Delete,
                             tint = actionIconTint,
                             contentDescription = null
                         )
@@ -1091,7 +1093,7 @@ private fun EmptyModulesStateView(
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
-                imageVector = Icons.Filled.Extension,
+                imageVector = Icons.Rounded.Extension,
                 contentDescription = null,
                 tint = MiuixTheme.colorScheme.primary.copy(alpha = 0.6f),
                 modifier = Modifier
