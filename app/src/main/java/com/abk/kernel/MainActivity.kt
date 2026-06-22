@@ -194,7 +194,7 @@ class MainActivity : ComponentActivity() {
                     when {
                         !state.termsLoaded -> Surface(
                             modifier = Modifier.fillMaxSize(),
-                            color = androidx.compose.material3.MaterialTheme.colorScheme.surface
+                            color = MaterialTheme.colorScheme.surface
                         ) {}
                         !state.termsAccepted -> TermsAgreementDialog(
                             onAccept = vm::acceptTerms,
@@ -467,7 +467,7 @@ private fun AbkMainScaffold(
     // downstream composable (e.g., bottom bar graphicsLayer) can read the latest
     // gesture state and recompose when it changes.
     var gestureState: NavigationEventState<SceneInfo<NavKey>>? by remember {
-        mutableStateOf<NavigationEventState<SceneInfo<NavKey>>?>(null)
+        mutableStateOf(null)
     }
     val snackbarHostState = remember { SnackbarHostState() }
     val miuixSnackbarHostState = remember {
