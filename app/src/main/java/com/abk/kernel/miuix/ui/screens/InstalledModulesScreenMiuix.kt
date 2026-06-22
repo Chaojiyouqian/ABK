@@ -130,7 +130,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -467,7 +467,7 @@ fun InstalledModulesScreenMiuix(
     }
 
     if (state.abkRuntimeModuleActionTitle != null) {
-        OverlayDialog(
+        WindowDialog(
             show = true,
             title = state.abkRuntimeModuleActionTitle,
             onDismissRequest = { vm.dismissRuntimeModuleActionOutput() }
@@ -486,21 +486,21 @@ fun InstalledModulesScreenMiuix(
                     style = MiuixTheme.textStyles.body2,
                     color = MiuixTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.height(16.dp))
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.padding(top = 12.dp)
                 ) {
                     TextButton(
                         text = stringResource(R.string.close),
-                        onClick = { vm.dismissRuntimeModuleActionOutput() }
+                        onClick = { vm.dismissRuntimeModuleActionOutput() },
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
         }
     }
 
-    OverlayDialog(
+    WindowDialog(
         show = showAllFilesAccessPrompt,
         title = stringResource(R.string.runtime_file_access_required),
         onDismissRequest = {
@@ -519,22 +519,22 @@ fun InstalledModulesScreenMiuix(
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 style = MiuixTheme.textStyles.body2
             )
-            Spacer(modifier = Modifier.height(16.dp))
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(
-                    onClick = { openAllFilesAccessSettings() },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(stringResource(R.string.runtime_grant_permission))
-                }
-                Spacer(modifier = Modifier.width(12.dp))
                 TextButton(
                     text = stringResource(R.string.runtime_system_picker),
                     onClick = { launchModulePickerFallback() },
                     modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(20.dp))
+                TextButton(
+                    text = stringResource(R.string.runtime_grant_permission),
+                    onClick = { openAllFilesAccessSettings() },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.textButtonColorsPrimary()
                 )
             }
         }
@@ -542,7 +542,7 @@ fun InstalledModulesScreenMiuix(
 
     pendingInstallUri?.let { uri ->
         val uriDisplayName = remember(context, uri) { runtimeModuleUriDisplayName(context, uri) }
-        OverlayDialog(
+        WindowDialog(
             show = true,
             title = stringResource(R.string.runtime_confirm_flash_module),
             onDismissRequest = { if (!installRunning) pendingInstallUri = null }
@@ -569,15 +569,16 @@ fun InstalledModulesScreenMiuix(
                     style = MiuixTheme.textStyles.body2,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                 )
-                Spacer(modifier = Modifier.height(16.dp))
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     TextButton(
                         text = stringResource(R.string.cancel),
-                        onClick = { if (!installRunning) pendingInstallUri = null }
+                        onClick = { if (!installRunning) pendingInstallUri = null },
+                        modifier = Modifier.weight(1f)
                     )
+                    Spacer(modifier = Modifier.width(20.dp))
                     TextButton(
                         text = stringResource(R.string.runtime_confirm_flash),
                         onClick = {
@@ -586,6 +587,7 @@ fun InstalledModulesScreenMiuix(
                                 installModuleFromUri(uri)
                             }
                         },
+                        modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.textButtonColorsPrimary()
                     )
                 }
@@ -595,70 +597,38 @@ fun InstalledModulesScreenMiuix(
 
     uninstallTarget?.let { module ->
         val pending = !module.remove
-        val dialogTitle = if (pending) {
-            stringResource(R.string.runtime_confirm_uninstall_module)
-        } else {
-            stringResource(R.string.runtime_revoke_uninstall_module)
-        }
-        val dialogMessage = if (pending) {
-            stringResource(R.string.runtime_confirm_uninstall_module_desc)
-        } else {
-            stringResource(R.string.runtime_revoke_uninstall_module_desc)
-        }
-        val actionLabel = if (pending) {
-            stringResource(R.string.runtime_uninstall)
-        } else {
-            stringResource(R.string.runtime_revoke)
-        }
-        OverlayDialog(
+        WindowDialog(
             show = true,
-            title = dialogTitle,
+            title = stringResource(R.string.runtime_uninstall),
             onDismissRequest = { uninstallTarget = null }
         ) {
             Column {
                 Text(
-                    text = module.displayName(),
-                    style = MiuixTheme.textStyles.subtitle,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    text = if (pending) {
+                        String.format("确定要卸载模块 \"%s\" 吗？", module.displayName())
+                    } else {
+                        String.format("确定要撤销模块 \"%s\" 的卸载标记吗？", module.displayName())
+                    },
+                    color = MiuixTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = module.id,
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = dialogMessage,
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                )
-                Spacer(modifier = Modifier.height(16.dp))
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     TextButton(
                         text = stringResource(R.string.cancel),
-                        onClick = { uninstallTarget = null }
+                        onClick = { uninstallTarget = null },
+                        modifier = Modifier.weight(1f)
                     )
+                    Spacer(modifier = Modifier.width(20.dp))
                     TextButton(
-                        text = actionLabel,
+                        text = if (pending) stringResource(R.string.runtime_uninstall) else stringResource(R.string.runtime_revoke),
                         onClick = {
                             vm.setAbkRuntimeModulePendingUninstall(module.id, !module.remove)
                             uninstallTarget = null
                         },
-                        colors = if (pending) {
-                            ButtonDefaults.textButtonColors(
-                                color = MiuixTheme.colorScheme.error
-                            )
-                        } else {
-                            ButtonDefaults.textButtonColorsPrimary()
-                        }
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.textButtonColorsPrimary()
                     )
                 }
             }
@@ -678,7 +648,7 @@ fun InstalledModulesScreenMiuix(
             terminalScroll.animateScrollTo(terminalScroll.maxValue)
         }
 
-        OverlayDialog(
+        WindowDialog(
             show = true,
             title = if (installRunning) {
                 stringResource(R.string.runtime_installing_module)
@@ -723,27 +693,30 @@ fun InstalledModulesScreenMiuix(
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(16.dp))
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     if (installRunning) {
                         TextButton(
                             text = stringResource(R.string.runtime_running),
                             onClick = {},
-                            enabled = false
+                            enabled = false,
+                            modifier = Modifier.weight(1f)
                         )
                     } else {
                         TextButton(
                             text = stringResource(R.string.close),
-                            onClick = { installDialogVisible = false }
+                            onClick = { installDialogVisible = false },
+                            modifier = Modifier.weight(1f)
                         )
                         if (installSuccess == true) {
+                            Spacer(modifier = Modifier.width(20.dp))
                             Button(
                                 onClick = {
                                     scope.launch(Dispatchers.IO) { RootUtils.reboot() }
                                 },
+                                modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(
                                     color = MiuixTheme.colorScheme.error,
                                     contentColor = Color.White
