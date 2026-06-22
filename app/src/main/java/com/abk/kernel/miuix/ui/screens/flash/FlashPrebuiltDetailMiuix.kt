@@ -70,7 +70,6 @@ import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
@@ -524,14 +523,12 @@ private fun MiuixPrebuiltReleaseInfoCard(
                     primary = false
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.End
+            Button(
+                onClick = onParameterClick,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors()
             ) {
-                TextButton(
-                    text = stringResource(R.string.flash_parameter_details),
-                    onClick = onParameterClick
-                )
+                Text(stringResource(R.string.flash_parameter_details))
             }
         }
     }

@@ -35,7 +35,6 @@ import com.abk.kernel.R
 import com.abk.kernel.data.model.BuildParameterSummary
 import com.abk.kernel.data.model.DownloadedArtifact
 import com.abk.kernel.data.model.PrebuiltGkiRelease
-import com.abk.kernel.ui.screens.flash.ParameterSummarySections
 import com.abk.kernel.ui.screens.flash.parameterDisplayValue
 import com.abk.kernel.ui.screens.flash.parsePrebuiltGkiParameterSummary
 import com.abk.kernel.ui.screens.flash.releaseDateLabel
@@ -422,7 +421,7 @@ internal fun MiuixBuildParameterSummaryDialog(
                         )
                         MiuixParameterRow(stringResource(R.string.flash_title_label), summary.runTitle)
                     }
-                    ParameterSummarySections(summary)
+                    MiuixParameterSummarySections(summary)
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
@@ -486,7 +485,7 @@ internal fun MiuixPrebuiltParameterSummaryDialog(
                         )
                     }
                     if (summary != null) {
-                        ParameterSummarySections(summary)
+                        MiuixParameterSummarySections(summary)
                     } else {
                         Text(
                             text = stringResource(R.string.flash_release_no_matrix),
@@ -616,6 +615,51 @@ internal fun MiuixTerminalDialog(
 // Internal MIUIX-styled parameter display helpers (avoids MaterialTheme dependency
 // from the MD3 ParameterSection/ParameterRow in FlashDialogs.kt)
 // ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun MiuixParameterSummarySections(summary: BuildParameterSummary) {
+    MiuixParameterSection(stringResource(R.string.flash_version_params)) {
+        MiuixParameterRow(stringResource(R.string.build_android_version), summary.androidVersion)
+        MiuixParameterRow(stringResource(R.string.build_kernel_version), summary.kernelVersion)
+        MiuixParameterRow(stringResource(R.string.build_sub_level), summary.subLevel)
+        MiuixParameterRow(stringResource(R.string.runtime_patch_level), summary.osPatchLevel)
+        MiuixParameterRow(stringResource(R.string.flash_build_time), summary.buildTime)
+    }
+    MiuixParameterSection("KernelSU") {
+        MiuixParameterRow(stringResource(R.string.flash_ksu_variant), summary.ksuVariant)
+        MiuixParameterRow(stringResource(R.string.flash_ksu_branch), summary.ksuBranch)
+        MiuixParameterRow(stringResource(R.string.flash_susfs_status), summary.susfsEnabled)
+    }
+    MiuixParameterSection(stringResource(R.string.flash_patches_features)) {
+        MiuixParameterRow(stringResource(R.string.flash_zram), summary.zramEnabled)
+        MiuixParameterRow(stringResource(R.string.flash_zram_full_algo), summary.zramFullAlgo)
+        MiuixParameterRow(stringResource(R.string.flash_zram_extra_algos), summary.zramExtraAlgos)
+        MiuixParameterRow(stringResource(R.string.flash_bbg_patch), summary.bbgEnabled)
+        MiuixParameterRow("DDK LSM", summary.ddkLsm)
+        MiuixParameterRow(stringResource(R.string.flash_ntsync_patch), summary.ntsyncEnabled)
+        MiuixParameterRow(
+            stringResource(R.string.runtime_feature_networking),
+            summary.networkingEnabled
+        )
+        MiuixParameterRow(stringResource(R.string.flash_kpm_feature), summary.kpmEnabled)
+        MiuixParameterRow(stringResource(R.string.flash_kpm_password), summary.kpmPassword)
+        MiuixParameterRow("Re-Kernel", summary.reKernelEnabled)
+        MiuixParameterRow(
+            stringResource(R.string.runtime_virtualization),
+            summary.virtualizationSupport
+        )
+        MiuixParameterRow(stringResource(R.string.flash_custom_injection), summary.customInjection)
+        MiuixParameterRow("Stock Config", summary.stockConfig)
+    }
+    val extraRows = summary.extraRows.orEmpty()
+    if (extraRows.isNotEmpty()) {
+        MiuixParameterSection(stringResource(R.string.flash_extra_info)) {
+            extraRows.forEach { (label, value) ->
+                MiuixParameterRow(label, value)
+            }
+        }
+    }
+}
 
 @Composable
 private fun MiuixParameterSection(
