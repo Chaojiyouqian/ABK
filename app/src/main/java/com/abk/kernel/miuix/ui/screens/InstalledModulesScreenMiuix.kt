@@ -47,7 +47,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Refresh
@@ -130,8 +130,6 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -341,17 +339,7 @@ fun InstalledModulesScreenMiuix(
                     TopAppBar(
                         color = barColor,
                         title = stringResource(R.string.runtime_installed_modules_title),
-                        actions = {
-                            IconButton(
-                                onClick = { vm.refreshAbkRuntimeStatus() }
-                            ) {
-                                Icon(
-                                    imageVector = MiuixIcons.Refresh,
-                                    contentDescription = stringResource(R.string.runtime_refresh_installed_modules),
-                                    tint = MiuixTheme.colorScheme.onBackground
-                                )
-                            }
-                        },
+                        actions = {},
                         scrollBehavior = scrollBehavior,
                         bottomContent = {
                             Box(
@@ -393,10 +381,10 @@ fun InstalledModulesScreenMiuix(
                     onClick = { launchModulePickerWithPermissionCheck() },
                     content = {
                         Icon(
-                            imageVector = Icons.Filled.UploadFile,
+                            imageVector = Icons.Rounded.Add,
                             contentDescription = stringResource(R.string.runtime_install_module),
                             tint = Color.White,
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(40.dp)
                         )
                     }
                 )
@@ -410,7 +398,6 @@ fun InstalledModulesScreenMiuix(
             ) {
                 val layoutDirection = LocalLayoutDirection.current
                 ModuleListContent(
-                    abkRuntimeLoading = state.abkRuntimeLoading,
                     abkRuntimeError = state.abkRuntimeError,
                     abkRuntimeStatus = state.abkRuntimeStatus,
                     hasNativeManagerPermission = state.hasNativeManagerPermission,
@@ -452,7 +439,6 @@ fun InstalledModulesScreenMiuix(
                 )
             ) {
                 ModuleListContent(
-                    abkRuntimeLoading = state.abkRuntimeLoading,
                     abkRuntimeError = state.abkRuntimeError,
                     abkRuntimeStatus = state.abkRuntimeStatus,
                     hasNativeManagerPermission = state.hasNativeManagerPermission,
@@ -786,7 +772,6 @@ fun InstalledModulesScreenMiuix(
 
 @Composable
 private fun ModuleListContent(
-    abkRuntimeLoading: Boolean,
     abkRuntimeError: String?,
     abkRuntimeStatus: AbkRuntimeStatus?,
     hasNativeManagerPermission: Boolean,
@@ -852,17 +837,6 @@ private fun ModuleListContent(
             ),
             overscrollEffect = null,
         ) {
-
-            if (abkRuntimeLoading) {
-                item {
-                    LinearProgressIndicator(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        progress = null
-                    )
-                }
-            }
 
             abkRuntimeError?.let { error ->
                 item {
