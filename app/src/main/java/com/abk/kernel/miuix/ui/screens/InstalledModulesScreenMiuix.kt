@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,7 +53,6 @@ import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -67,13 +67,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -86,6 +91,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.abk.kernel.R
 import com.abk.kernel.data.model.AbkRuntimeModule
+import com.abk.kernel.miuix.component.SearchBarFake
+import com.abk.kernel.miuix.component.SearchBox
+import com.abk.kernel.miuix.component.SearchPager
+import com.abk.kernel.miuix.component.SearchStatus
 import com.abk.kernel.ui.screens.MODULE_INSTALL_MIME_TYPES
 import com.abk.kernel.ui.screens.RuntimeModuleDisplayGroup
 import com.abk.kernel.ui.screens.canUninstallRuntimeModule
@@ -120,7 +129,6 @@ import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
@@ -141,7 +149,9 @@ fun InstalledModulesScreenMiuix(
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var query by rememberSaveable { mutableStateOf("") }
+    val density = LocalDensity.current
+    val label = stringResource(R.string.runtime_installed_modules_title)
+    var searchStatus by remember { mutableStateOf(SearchStatus(label)) }
     var pendingInstallUri by remember { mutableStateOf<Uri?>(null) }
     var installDialogVisible by remember { mutableStateOf(false) }
     var installRunning by remember { mutableStateOf(false) }
@@ -151,6 +161,7 @@ fun InstalledModulesScreenMiuix(
     var resumeModulePickerAfterPermission by remember { mutableStateOf(false) }
     var uninstallTarget by remember { mutableStateOf<AbkRuntimeModule?>(null) }
 
+    val query = searchStatus.searchText
     val modules = remember(state.abkRuntimeStatus?.modules, query) {
         state.abkRuntimeStatus?.modules.orEmpty()
             .filter { it.matchesRuntimeModuleQuery(query) }
@@ -323,6 +334,10 @@ fun InstalledModulesScreenMiuix(
 
     val scrollBehavior = MiuixScrollBehavior()
 
+    val dynamicTopPadding by remember {
+        derivedStateOf { 12.dp * (1f - scrollBehavior.state.collapsedFraction) }
+    }
+
     val surfaceColor = MiuixTheme.colorScheme.surface
     val backdrop = rememberBlurBackdrop(state.miuixBlurEnabled, surfaceColor)
     val barColor = if (backdrop != null) Color.Transparent else surfaceColor
@@ -330,22 +345,49 @@ fun InstalledModulesScreenMiuix(
     Scaffold(
         topBar = {
             BlurredBar(backdrop, surfaceColor) {
-                TopAppBar(
-                    color = barColor,
-                    title = stringResource(R.string.runtime_installed_modules_title),
-                    actions = {
-                        IconButton(
-                            onClick = { vm.refreshAbkRuntimeStatus() }
-                        ) {
-                            Icon(
-                                imageVector = MiuixIcons.Refresh,
-                                contentDescription = stringResource(R.string.runtime_refresh_installed_modules),
-                                tint = MiuixTheme.colorScheme.onBackground
-                            )
+                searchStatus.TopAppBarAnim(backgroundColor = barColor) {
+                    TopAppBar(
+                        color = barColor,
+                        title = stringResource(R.string.runtime_installed_modules_title),
+                        actions = {
+                            IconButton(
+                                onClick = { vm.refreshAbkRuntimeStatus() }
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Refresh,
+                                    contentDescription = stringResource(R.string.runtime_refresh_installed_modules),
+                                    tint = MiuixTheme.colorScheme.onBackground
+                                )
+                            }
+                        },
+                        scrollBehavior = scrollBehavior,
+                        bottomContent = {
+                            Box(
+                                modifier = Modifier
+                                    .alpha(if (searchStatus.isCollapsed()) 1f else 0f)
+                                    .onGloballyPositioned { coordinates ->
+                                        with(density) {
+                                            val newOffsetY = coordinates.positionInWindow().y.toDp()
+                                            searchStatus = searchStatus.copy(offsetY = newOffsetY)
+                                        }
+                                    }
+                                    .then(
+                                        if (searchStatus.isCollapsed()) {
+                                            Modifier.pointerInput(Unit) {
+                                                detectTapGestures {
+                                                    searchStatus = searchStatus.copy(
+                                                        current = SearchStatus.Status.EXPANDING
+                                                    )
+                                                }
+                                            }
+                                        } else Modifier
+                                    )
+                            ) {
+                                SearchBarFake(searchStatus.label, dynamicTopPadding)
+                            }
                         }
-                    },
-                    scrollBehavior = scrollBehavior
-                )
+                    )
+                }
             }
         },
         floatingActionButton = {
@@ -368,53 +410,100 @@ fun InstalledModulesScreenMiuix(
                 )
             }
         },
+        popupHost = {
+            searchStatus.SearchPager(
+                onSearchStatusChange = { searchStatus = it },
+                defaultResult = {},
+                searchBarTopPadding = dynamicTopPadding,
+            ) {
+                val layoutDirection = LocalLayoutDirection.current
+                if (groupedModules.isEmpty() && !state.abkRuntimeLoading) {
+                    EmptyModulesStateView(
+                        innerPadding = PaddingValues(0.dp),
+                        bottomPadding = outerPadding.calculateBottomPadding(),
+                        layoutDirection = layoutDirection,
+                        hasModules = state.abkRuntimeStatus?.modules.orEmpty().isNotEmpty(),
+                        query = query
+                    )
+                } else {
+                    ModuleListContent(
+                        abkRuntimeLoading = state.abkRuntimeLoading,
+                        abkRuntimeError = state.abkRuntimeError,
+                        hasNativeManagerPermission = state.hasNativeManagerPermission,
+                        abkRuntimeModuleActionId = state.abkRuntimeModuleActionId,
+                        vm = vm,
+                        groupedModules = groupedModules,
+                        query = query,
+                        scrollBehavior = scrollBehavior,
+                        nestedScrollConnection = nestedScrollConnection,
+                        listState = listState,
+                        innerPadding = PaddingValues(0.dp),
+                        bottomPadding = outerPadding.calculateBottomPadding(),
+                        layoutDirection = layoutDirection,
+                        context = context,
+                        onOpenWebUi = { module ->
+                            context.startActivity(
+                                Intent(context, ModuleWebUiActivity::class.java)
+                                    .putExtra(ModuleWebUiActivity.EXTRA_MODULE_ID, module.id)
+                                    .putExtra(ModuleWebUiActivity.EXTRA_MODULE_NAME, module.displayName())
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        },
+                        onRequestUninstall = { module -> uninstallTarget = module },
+                        onRunAction = { moduleId -> vm.runRuntimeModuleAction(moduleId) },
+                        onSetEnabled = { moduleId, enabled -> vm.setAbkRuntimeModuleEnabled(moduleId, enabled) }
+                    )
+                }
+            }
+        },
         contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal)
     ) { innerPadding ->
         val layoutDirection = LocalLayoutDirection.current
 
-        Box(
-            modifier = Modifier.then(
-                if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
-            )
-        ) {
-            if (showEmptyState) {
-                EmptyModulesStateView(
-                innerPadding = innerPadding,
-                bottomPadding = outerPadding.calculateBottomPadding(),
-                layoutDirection = layoutDirection,
-                hasModules = state.abkRuntimeStatus?.modules.orEmpty().isNotEmpty(),
-                query = query
-            )
-        } else {
-            ModuleListContent(
-                abkRuntimeLoading = state.abkRuntimeLoading,
-                abkRuntimeError = state.abkRuntimeError,
-                hasNativeManagerPermission = state.hasNativeManagerPermission,
-                abkRuntimeModuleActionId = state.abkRuntimeModuleActionId,
-                vm = vm,
-                groupedModules = groupedModules,
-                query = query,
-                onQueryChange = { query = it },
-                scrollBehavior = scrollBehavior,
-                nestedScrollConnection = nestedScrollConnection,
-                listState = listState,
-                innerPadding = innerPadding,
-                bottomPadding = outerPadding.calculateBottomPadding(),
-                layoutDirection = layoutDirection,
-                context = context,
-                onOpenWebUi = { module ->
-                    context.startActivity(
-                        Intent(context, ModuleWebUiActivity::class.java)
-                            .putExtra(ModuleWebUiActivity.EXTRA_MODULE_ID, module.id)
-                            .putExtra(ModuleWebUiActivity.EXTRA_MODULE_NAME, module.displayName())
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        searchStatus.SearchBox {
+            Box(
+                modifier = Modifier.then(
+                    if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
+                )
+            ) {
+                if (showEmptyState) {
+                    EmptyModulesStateView(
+                        innerPadding = innerPadding,
+                        bottomPadding = outerPadding.calculateBottomPadding(),
+                        layoutDirection = layoutDirection,
+                        hasModules = state.abkRuntimeStatus?.modules.orEmpty().isNotEmpty(),
+                        query = query
                     )
-                },
-                onRequestUninstall = { module -> uninstallTarget = module },
-                onRunAction = { moduleId -> vm.runRuntimeModuleAction(moduleId) },
-                onSetEnabled = { moduleId, enabled -> vm.setAbkRuntimeModuleEnabled(moduleId, enabled) }
-            )
-        }
+                } else {
+                    ModuleListContent(
+                        abkRuntimeLoading = state.abkRuntimeLoading,
+                        abkRuntimeError = state.abkRuntimeError,
+                        hasNativeManagerPermission = state.hasNativeManagerPermission,
+                        abkRuntimeModuleActionId = state.abkRuntimeModuleActionId,
+                        vm = vm,
+                        groupedModules = groupedModules,
+                        query = query,
+                        scrollBehavior = scrollBehavior,
+                        nestedScrollConnection = nestedScrollConnection,
+                        listState = listState,
+                        innerPadding = innerPadding,
+                        bottomPadding = outerPadding.calculateBottomPadding(),
+                        layoutDirection = layoutDirection,
+                        context = context,
+                        onOpenWebUi = { module ->
+                            context.startActivity(
+                                Intent(context, ModuleWebUiActivity::class.java)
+                                    .putExtra(ModuleWebUiActivity.EXTRA_MODULE_ID, module.id)
+                                    .putExtra(ModuleWebUiActivity.EXTRA_MODULE_NAME, module.displayName())
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        },
+                        onRequestUninstall = { module -> uninstallTarget = module },
+                        onRunAction = { moduleId -> vm.runRuntimeModuleAction(moduleId) },
+                        onSetEnabled = { moduleId, enabled -> vm.setAbkRuntimeModuleEnabled(moduleId, enabled) }
+                    )
+                }
+            }
         }
     }
 
@@ -726,7 +815,6 @@ private fun ModuleListContent(
     vm: MainViewModel,
     groupedModules: List<RuntimeModuleDisplayGroup>,
     query: String,
-    onQueryChange: (String) -> Unit,
     scrollBehavior: top.yukonga.miuix.kmp.basic.ScrollBehavior,
     nestedScrollConnection: NestedScrollConnection,
     listState: LazyListState,
@@ -783,24 +871,6 @@ private fun ModuleListContent(
             ),
             overscrollEffect = null,
         ) {
-            item {
-                TextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    label = stringResource(R.string.runtime_installed_modules_title),
-                    useLabelAsPlaceholder = true,
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Rounded.Search,
-                            contentDescription = null,
-                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                        )
-                    }
-                )
-            }
 
             if (abkRuntimeLoading) {
                 item {
