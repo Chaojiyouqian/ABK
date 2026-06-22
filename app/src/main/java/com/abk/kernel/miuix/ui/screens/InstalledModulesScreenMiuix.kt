@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -51,7 +50,6 @@ import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
@@ -83,7 +81,6 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
@@ -91,6 +88,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.abk.kernel.R
 import com.abk.kernel.data.model.AbkRuntimeModule
+import com.abk.kernel.data.model.AbkRuntimeStatus
 import com.abk.kernel.miuix.component.SearchBarFake
 import com.abk.kernel.miuix.component.SearchBox
 import com.abk.kernel.miuix.component.SearchPager
@@ -171,14 +169,6 @@ fun InstalledModulesScreenMiuix(
             )
     }
     val groupedModules = remember(modules) { groupRuntimeModulesForDisplay(modules) }
-
-    val showEmptyState by remember {
-        derivedStateOf {
-            state.abkRuntimeStatus != null &&
-                state.abkRuntimeError == null &&
-                modules.isEmpty()
-        }
-    }
 
     val scrollDistance = remember { mutableFloatStateOf(0f) }
     var fabVisible by remember { mutableStateOf(true) }
@@ -419,43 +409,36 @@ fun InstalledModulesScreenMiuix(
                 searchBarTopPadding = dynamicTopPadding,
             ) {
                 val layoutDirection = LocalLayoutDirection.current
-                if (state.abkRuntimeStatus != null && state.abkRuntimeError == null && groupedModules.isEmpty()) {
-                    EmptyModulesStateView(
-                        innerPadding = PaddingValues(0.dp),
-                        bottomPadding = outerPadding.calculateBottomPadding(),
-                        layoutDirection = layoutDirection,
-                        hasModules = state.abkRuntimeStatus?.modules.orEmpty().isNotEmpty(),
-                        query = query
-                    )
-                } else {
-                    ModuleListContent(
-                        abkRuntimeLoading = state.abkRuntimeLoading,
-                        abkRuntimeError = state.abkRuntimeError,
-                        hasNativeManagerPermission = state.hasNativeManagerPermission,
-                        abkRuntimeModuleActionId = state.abkRuntimeModuleActionId,
-                        vm = vm,
-                        groupedModules = groupedModules,
-                        query = query,
-                        scrollBehavior = scrollBehavior,
-                        nestedScrollConnection = nestedScrollConnection,
-                        listState = listState,
-                        innerPadding = PaddingValues(0.dp),
-                        bottomPadding = outerPadding.calculateBottomPadding(),
-                        layoutDirection = layoutDirection,
-                        context = context,
-                        onOpenWebUi = { module ->
-                            context.startActivity(
-                                Intent(context, ModuleWebUiActivity::class.java)
-                                    .putExtra(ModuleWebUiActivity.EXTRA_MODULE_ID, module.id)
-                                    .putExtra(ModuleWebUiActivity.EXTRA_MODULE_NAME, module.displayName())
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            )
-                        },
-                        onRequestUninstall = { module -> uninstallTarget = module },
-                        onRunAction = { moduleId -> vm.runRuntimeModuleAction(moduleId) },
-                        onSetEnabled = { moduleId, enabled -> vm.setAbkRuntimeModuleEnabled(moduleId, enabled) }
-                    )
-                }
+                ModuleListContent(
+                    abkRuntimeLoading = state.abkRuntimeLoading,
+                    abkRuntimeError = state.abkRuntimeError,
+                    abkRuntimeStatus = state.abkRuntimeStatus,
+                    hasNativeManagerPermission = state.hasNativeManagerPermission,
+                    abkRuntimeModuleActionId = state.abkRuntimeModuleActionId,
+                    vm = vm,
+                    groupedModules = groupedModules,
+                    query = query,
+                    showEmptyMessage = state.abkRuntimeStatus != null && groupedModules.isEmpty() && query.isBlank(),
+                    showNoMatchMessage = state.abkRuntimeStatus != null && groupedModules.isEmpty() && query.isNotBlank(),
+                    scrollBehavior = scrollBehavior,
+                    nestedScrollConnection = nestedScrollConnection,
+                    listState = listState,
+                    innerPadding = PaddingValues(0.dp),
+                    bottomPadding = outerPadding.calculateBottomPadding(),
+                    layoutDirection = layoutDirection,
+                    context = context,
+                    onOpenWebUi = { module ->
+                        context.startActivity(
+                            Intent(context, ModuleWebUiActivity::class.java)
+                                .putExtra(ModuleWebUiActivity.EXTRA_MODULE_ID, module.id)
+                                .putExtra(ModuleWebUiActivity.EXTRA_MODULE_NAME, module.displayName())
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    },
+                    onRequestUninstall = { module -> uninstallTarget = module },
+                    onRunAction = { moduleId -> vm.runRuntimeModuleAction(moduleId) },
+                    onSetEnabled = { moduleId, enabled -> vm.setAbkRuntimeModuleEnabled(moduleId, enabled) }
+                )
             }
         },
         contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal)
@@ -468,43 +451,36 @@ fun InstalledModulesScreenMiuix(
                     if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
                 )
             ) {
-                if (showEmptyState) {
-                    EmptyModulesStateView(
-                        innerPadding = innerPadding,
-                        bottomPadding = outerPadding.calculateBottomPadding(),
-                        layoutDirection = layoutDirection,
-                        hasModules = state.abkRuntimeStatus?.modules.orEmpty().isNotEmpty(),
-                        query = query
-                    )
-                } else {
-                    ModuleListContent(
-                        abkRuntimeLoading = state.abkRuntimeLoading,
-                        abkRuntimeError = state.abkRuntimeError,
-                        hasNativeManagerPermission = state.hasNativeManagerPermission,
-                        abkRuntimeModuleActionId = state.abkRuntimeModuleActionId,
-                        vm = vm,
-                        groupedModules = groupedModules,
-                        query = query,
-                        scrollBehavior = scrollBehavior,
-                        nestedScrollConnection = nestedScrollConnection,
-                        listState = listState,
-                        innerPadding = innerPadding,
-                        bottomPadding = outerPadding.calculateBottomPadding(),
-                        layoutDirection = layoutDirection,
-                        context = context,
-                        onOpenWebUi = { module ->
-                            context.startActivity(
-                                Intent(context, ModuleWebUiActivity::class.java)
-                                    .putExtra(ModuleWebUiActivity.EXTRA_MODULE_ID, module.id)
-                                    .putExtra(ModuleWebUiActivity.EXTRA_MODULE_NAME, module.displayName())
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            )
-                        },
-                        onRequestUninstall = { module -> uninstallTarget = module },
-                        onRunAction = { moduleId -> vm.runRuntimeModuleAction(moduleId) },
-                        onSetEnabled = { moduleId, enabled -> vm.setAbkRuntimeModuleEnabled(moduleId, enabled) }
-                    )
-                }
+                ModuleListContent(
+                    abkRuntimeLoading = state.abkRuntimeLoading,
+                    abkRuntimeError = state.abkRuntimeError,
+                    abkRuntimeStatus = state.abkRuntimeStatus,
+                    hasNativeManagerPermission = state.hasNativeManagerPermission,
+                    abkRuntimeModuleActionId = state.abkRuntimeModuleActionId,
+                    vm = vm,
+                    groupedModules = groupedModules,
+                    query = query,
+                    showEmptyMessage = state.abkRuntimeStatus != null && modules.isEmpty() && query.isBlank(),
+                    showNoMatchMessage = state.abkRuntimeStatus != null && modules.isEmpty() && query.isNotBlank(),
+                    scrollBehavior = scrollBehavior,
+                    nestedScrollConnection = nestedScrollConnection,
+                    listState = listState,
+                    innerPadding = innerPadding,
+                    bottomPadding = outerPadding.calculateBottomPadding(),
+                    layoutDirection = layoutDirection,
+                    context = context,
+                    onOpenWebUi = { module ->
+                        context.startActivity(
+                            Intent(context, ModuleWebUiActivity::class.java)
+                                .putExtra(ModuleWebUiActivity.EXTRA_MODULE_ID, module.id)
+                                .putExtra(ModuleWebUiActivity.EXTRA_MODULE_NAME, module.displayName())
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    },
+                    onRequestUninstall = { module -> uninstallTarget = module },
+                    onRunAction = { moduleId -> vm.runRuntimeModuleAction(moduleId) },
+                    onSetEnabled = { moduleId, enabled -> vm.setAbkRuntimeModuleEnabled(moduleId, enabled) }
+                )
             }
         }
     }
@@ -812,11 +788,14 @@ fun InstalledModulesScreenMiuix(
 private fun ModuleListContent(
     abkRuntimeLoading: Boolean,
     abkRuntimeError: String?,
+    abkRuntimeStatus: AbkRuntimeStatus?,
     hasNativeManagerPermission: Boolean,
     abkRuntimeModuleActionId: String?,
     vm: MainViewModel,
     groupedModules: List<RuntimeModuleDisplayGroup>,
     query: String,
+    showEmptyMessage: Boolean,
+    showNoMatchMessage: Boolean,
     scrollBehavior: top.yukonga.miuix.kmp.basic.ScrollBehavior,
     nestedScrollConnection: NestedScrollConnection,
     listState: LazyListState,
@@ -911,6 +890,28 @@ private fun ModuleListContent(
                             }
                         }
                     }
+                }
+            }
+
+            if (showEmptyMessage) {
+                item {
+                    Text(
+                        text = stringResource(R.string.runtime_no_reported_modules),
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 24.dp)
+                    )
+                }
+            }
+
+            if (showNoMatchMessage) {
+                item {
+                    Text(
+                        text = stringResource(R.string.runtime_no_matching_modules),
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 24.dp)
+                    )
                 }
             }
 
@@ -1137,50 +1138,6 @@ private fun InstalledModuleCardMiuix(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun EmptyModulesStateView(
-    innerPadding: PaddingValues,
-    bottomPadding: androidx.compose.ui.unit.Dp,
-    layoutDirection: LayoutDirection,
-    hasModules: Boolean,
-    query: String
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(
-                top = innerPadding.calculateTopPadding(),
-                start = innerPadding.calculateStartPadding(layoutDirection),
-                end = innerPadding.calculateEndPadding(layoutDirection),
-                bottom = bottomPadding
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Extension,
-                contentDescription = null,
-                tint = MiuixTheme.colorScheme.primary.copy(alpha = 0.6f),
-                modifier = Modifier
-                    .size(96.dp)
-                    .padding(bottom = 16.dp)
-            )
-            Text(
-                text = if (hasModules && query.isNotBlank()) {
-                    stringResource(R.string.runtime_no_matching_modules)
-                } else {
-                    stringResource(R.string.runtime_no_reported_modules)
-                },
-                textAlign = TextAlign.Center,
-                color = MiuixTheme.colorScheme.onBackground
-            )
         }
     }
 }
