@@ -81,6 +81,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
@@ -914,6 +915,7 @@ private fun InstalledModuleCardMiuix(
     val secondaryContainer = MiuixTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
     val actionIconTint = remember(isDark) { onSurface.copy(alpha = if (isDark) 0.7f else 0.9f) }
     val typeLabel = miuixRuntimeModuleTypeLabel(module)
+    val textDecoration = if (module.remove) TextDecoration.LineThrough else null
 
     Card(
         modifier = Modifier
@@ -937,6 +939,7 @@ private fun InstalledModuleCardMiuix(
                             fontSize = 17.sp,
                             fontWeight = FontWeight(550),
                             color = MiuixTheme.colorScheme.onSurface,
+                            textDecoration = textDecoration,
                             onTextLayout = { }
                         )
                     }.first().measure(constraints)
@@ -951,7 +954,8 @@ private fun InstalledModuleCardMiuix(
                         fontSize = 12.sp,
                         modifier = Modifier.padding(top = 2.dp),
                         fontWeight = FontWeight(550),
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        textDecoration = textDecoration
                     )
                 }
                 if (module.author.isNotBlank()) {
@@ -959,21 +963,23 @@ private fun InstalledModuleCardMiuix(
                         text = stringResource(R.string.runtime_module_author, module.author),
                         fontSize = 12.sp,
                         fontWeight = FontWeight(550),
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        textDecoration = textDecoration
                     )
                 }
                 Text(
                     text = "Type: $typeLabel",
                     fontSize = 12.sp,
                     fontWeight = FontWeight(550),
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    textDecoration = textDecoration
                 )
             }
             if (module.controllable && !module.readonly) {
                 Switch(
                     checked = module.enabled,
                     onCheckedChange = onSetEnabled,
-                    enabled = !actionInFlight
+                    enabled = !actionInFlight && !module.remove
                 )
             }
         }
@@ -985,7 +991,8 @@ private fun InstalledModuleCardMiuix(
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 modifier = Modifier.padding(top = 4.dp),
                 overflow = TextOverflow.Ellipsis,
-                maxLines = 4
+                maxLines = 4,
+                textDecoration = textDecoration
             )
         }
 
@@ -996,7 +1003,8 @@ private fun InstalledModuleCardMiuix(
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 modifier = Modifier.padding(top = 2.dp),
                 overflow = TextOverflow.Ellipsis,
-                maxLines = 1
+                maxLines = 1,
+                textDecoration = textDecoration
             )
         }
 
@@ -1008,7 +1016,7 @@ private fun InstalledModuleCardMiuix(
 
         Row {
             AnimatedVisibility(
-                visible = module.actionSupported || module.hasActionScript,
+                visible = (module.actionSupported || module.hasActionScript) && !module.remove,
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
@@ -1028,7 +1036,7 @@ private fun InstalledModuleCardMiuix(
             }
 
             AnimatedVisibility(
-                visible = module.hasWebUi,
+                visible = module.hasWebUi && !module.remove,
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
