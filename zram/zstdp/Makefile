@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
+subdir-ccflags-y += -I$(srctree)/$(src)
+subdir-ccflags-y += -I$(objtree)/$(obj)
 subdir-ccflags-y += -I$(srctree)/$(src)/vendor/include
 subdir-ccflags-y += -I$(objtree)/$(obj)/vendor/include
 subdir-ccflags-y += -Wno-deprecated-declarations

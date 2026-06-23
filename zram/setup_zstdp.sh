@@ -43,9 +43,15 @@ patch_vendor_compat() {
   local vendor_root="$2"
   local mem_h="$vendor_root/lib/zstd/common/mem.h"
   local error_private_h="$vendor_root/lib/zstd/common/error_private.h"
+  local vendor_zstd_h="$vendor_root/include/linux/zstd.h"
+  local vendor_zstd_lib_h="$vendor_root/include/linux/zstd_lib.h"
+  local vendor_zstd_errors_h="$vendor_root/include/linux/zstd_errors.h"
 
   require_file "$mem_h"
   require_file "$error_private_h"
+  require_file "$vendor_zstd_h"
+  require_file "$vendor_zstd_lib_h"
+  require_file "$vendor_zstd_errors_h"
 
   if [ ! -f "$common_root/include/linux/unaligned.h" ]; then
     python3 - "$mem_h" <<'PY'
@@ -73,6 +79,68 @@ new = '#include "vendor/include/linux/zstd_errors.h"  /* enum list */\n'
 if old in text and new not in text:
     text = text.replace(old, new, 1)
     error_private_h.write_text(text)
+PY
+
+  python3 - "$vendor_zstd_h" "$vendor_zstd_lib_h" "$vendor_zstd_errors_h" <<'PY'
+import pathlib
+import sys
+
+vendor_zstd_h = pathlib.Path(sys.argv[1])
+vendor_zstd_lib_h = pathlib.Path(sys.argv[2])
+vendor_zstd_errors_h = pathlib.Path(sys.argv[3])
+
+def rewrite_once(path: pathlib.Path, old: str, new: str) -> None:
+    text = path.read_text()
+    if old in text and new not in text:
+        text = text.replace(old, new, 1)
+        path.write_text(text)
+
+rewrite_once(
+    vendor_zstd_h,
+    '#include <linux/zstd_errors.h>\n',
+    '#include "zstd_errors.h"\n',
+)
+rewrite_once(
+    vendor_zstd_h,
+    '#include <linux/zstd_lib.h>\n',
+    '#include "zstd_lib.h"\n',
+)
+rewrite_once(
+    vendor_zstd_lib_h,
+    '#include <linux/zstd_errors.h> /* list of errors */\n',
+    '#include "zstd_errors.h" /* list of errors */\n',
+)
+rewrite_once(
+    vendor_zstd_lib_h,
+    '#include <linux/zstd.h>\n',
+    '#include "zstd.h"\n',
+)
+rewrite_once(
+    vendor_zstd_errors_h,
+    '#include <linux/types.h>   /* size_t */\n',
+    '#include <linux/types.h>   /* size_t */\n',
+)
+PY
+
+  python3 - "$vendor_root/lib/zstd" <<'PY'
+import pathlib
+import sys
+
+vendor_lib = pathlib.Path(sys.argv[1])
+
+for path in vendor_lib.rglob('*'):
+    if not path.is_file():
+        continue
+    if path.suffix not in {'.c', '.h', '.S'}:
+        continue
+
+    text = path.read_text()
+    new_text = text.replace(
+        '#include <linux/zstd.h>',
+        '#include "vendor/include/linux/zstd.h"',
+    )
+    if new_text != text:
+        path.write_text(new_text)
 PY
 }
 
