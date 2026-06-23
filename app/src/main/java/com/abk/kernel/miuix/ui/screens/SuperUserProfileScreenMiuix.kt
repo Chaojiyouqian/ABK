@@ -69,7 +69,6 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -77,7 +76,6 @@ import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.ListPopupDefaults
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
-import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
@@ -195,10 +193,6 @@ fun SuperUserProfileScreenMiuix(
     var showSelinuxDialog by remember { mutableStateOf(false) }
     var showMorePopup by remember { mutableStateOf(false) }
 
-    // ── Saving state ──
-    val saving = primaryApp != null &&
-        state.rootGrantSavingPackage == primaryApp.packageName
-
     // ── Profile mode options ──
     val profileModeOptions = if (allowSu) {
         listOf(
@@ -222,12 +216,12 @@ fun SuperUserProfileScreenMiuix(
         }
     }
 
-    // ── Save function ──
-    fun saveProfile() {
+    // ── Save function (instant save) ──
+    fun doSave() {
         val app = primaryApp ?: return
+        if (profile == null) return
         val gid = gidText.toIntOrNull() ?: uid
-
-        val updatedProfile = profile?.copy(
+        val updatedProfile = profile.copy(
             name = app.packageName,
             currentUid = uid,
             allowSu = allowSu,
@@ -241,10 +235,8 @@ fun SuperUserProfileScreenMiuix(
             namespace = namespaceIndex,
             umountModules = umountModules,
             nonRootUseDefault = nonRootUseDefault,
-        ) ?: return
-
+        )
         vm.saveRootGrantProfile(updatedProfile)
-        onBack()
     }
 
     // ── Blur ──
@@ -352,7 +344,10 @@ fun SuperUserProfileScreenMiuix(
                                 },
                                 title = stringResource(R.string.root_auth_title),
                                 checked = allowSu,
-                                onCheckedChange = { allowSu = it },
+                                onCheckedChange = {
+                                    allowSu = it
+                                    doSave()
+                                },
                             )
                         }
                     }
@@ -389,6 +384,7 @@ fun SuperUserProfileScreenMiuix(
                                     if (profileType == "template" && templateName.isBlank()) {
                                         templateName = "default"
                                     }
+                                    doSave()
                                 },
                             )
                         }
@@ -467,6 +463,7 @@ fun SuperUserProfileScreenMiuix(
                                         selectedIndex = namespaceIndex,
                                         onSelectedIndexChange = { index ->
                                             namespaceIndex = index
+                                            doSave()
                                         },
                                     )
                                 }
@@ -496,7 +493,10 @@ fun SuperUserProfileScreenMiuix(
                                         title = "Umount modules",
                                         summary = "Unmount modules when app is in background",
                                         checked = umountModules,
-                                        onCheckedChange = { umountModules = it },
+                                        onCheckedChange = {
+                                            umountModules = it
+                                            doSave()
+                                        },
                                     )
                                 }
                             }
@@ -541,38 +541,6 @@ fun SuperUserProfileScreenMiuix(
                                     }
                                     Spacer(Modifier.height(3.dp))
                                 }
-                            }
-                        }
-                    }
-
-                    // ── Save button ──
-                    item(key = "save_button") {
-                        Button(
-                            onClick = { saveProfile() },
-                            enabled = !saving,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp)
-                                .padding(top = 8.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                color = MiuixTheme.colorScheme.primary,
-                                contentColor = Color.White,
-                            ),
-                        ) {
-                            if (saving) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                    colors = ProgressIndicatorDefaults.progressIndicatorColors(
-                                        foregroundColor = Color.White,
-                                        backgroundColor = Color.Transparent,
-                                    ),
-                                )
-                            } else {
-                                Text(
-                                    text = stringResource(R.string.save),
-                                    fontWeight = FontWeight.Medium,
-                                )
                             }
                         }
                     }
@@ -642,6 +610,7 @@ fun SuperUserProfileScreenMiuix(
                     onClick = {
                         uidText = editText
                         showUidDialog = false
+                        doSave()
                     },
                     colors = ButtonDefaults.buttonColors(
                         color = dialogPrimaryColor,
@@ -688,6 +657,7 @@ fun SuperUserProfileScreenMiuix(
                     onClick = {
                         gidText = editText
                         showGidDialog = false
+                        doSave()
                     },
                     colors = ButtonDefaults.buttonColors(
                         color = dialogPrimaryColor,
@@ -758,6 +728,7 @@ fun SuperUserProfileScreenMiuix(
                     onClick = {
                         groupsList = selected.toList()
                         showGroupsDialog = false
+                        doSave()
                     },
                     colors = ButtonDefaults.buttonColors(
                         color = dialogPrimaryColor,
@@ -828,6 +799,7 @@ fun SuperUserProfileScreenMiuix(
                     onClick = {
                         capsList = selected.toList()
                         showCapsDialog = false
+                        doSave()
                     },
                     colors = ButtonDefaults.buttonColors(
                         color = dialogPrimaryColor,
@@ -885,6 +857,7 @@ fun SuperUserProfileScreenMiuix(
                     onClick = {
                         contextText = editContext
                         showSelinuxDialog = false
+                        doSave()
                     },
                     colors = ButtonDefaults.buttonColors(
                         color = dialogPrimaryColor,
