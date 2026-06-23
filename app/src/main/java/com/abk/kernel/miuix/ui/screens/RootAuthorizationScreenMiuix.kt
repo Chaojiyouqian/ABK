@@ -454,8 +454,11 @@ private fun GroupedAppItem(
 
     val tags = remember(group.anyAllowSu, group.anyUmount, group.anyCustom) {
         buildList {
-            if (group.anyAllowSu) add(TagData("ROOT", rootBg, rootFg))
-            if (group.anyUmount) add(TagData("UMOUNT", unmountBg, unmountFg))
+            if (group.anyAllowSu) {
+                add(TagData("ROOT", rootBg, rootFg))
+            } else if (group.anyUmount) {
+                add(TagData("UMOUNT", unmountBg, unmountFg))
+            }
             if (group.anyCustom) add(TagData("CUSTOM", customBg, customFg))
         }
     }
