@@ -64,5 +64,9 @@ sealed interface Route : NavKey, Parcelable {
     @Serializable
     data class FlashPrebuiltDetail(val releaseId: Long) : Route
 
+    @Parcelize
+    @Serializable
+    data class SuperUserProfile(val uid: Int) : Route
+
     // 以后可按需添加更多子页面 Route
 }

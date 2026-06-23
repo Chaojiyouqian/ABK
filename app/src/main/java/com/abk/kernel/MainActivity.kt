@@ -459,7 +459,7 @@ private fun AbkMainScaffold(
         AbkTab.Modules -> navIsOnSubPage
         AbkTab.Flash -> navIsOnSubPage || flashDetailPageVisible
         AbkTab.Settings -> navIsOnSubPage || settingsChildPageVisible
-        AbkTab.RootAuth -> rootAuthDetailPageVisible
+        AbkTab.RootAuth -> navIsOnSubPage || rootAuthDetailPageVisible
         AbkTab.RuntimeHome -> managerPatchPageVisible
         else -> false
     }
@@ -899,10 +899,9 @@ private fun AbkMainScaffold(
                                                 pendingModuleInstallUri = pendingModuleInstallUri,
                                                 onPendingModuleInstallUriConsumed = onModuleInstallUriConsumed
                                             )
-                                            AbkTab.RootAuth -> RootAuthorizationScreen(
+                                            AbkTab.RootAuth -> com.abk.kernel.miuix.ui.screens.RootAuthorizationScreenMiuix(
                                                 vm = vm,
-                                                outerPadding = contentPadding,
-                                                onDetailPageVisibleChange = { rootAuthDetailPageVisible = it }
+                                                outerPadding = contentPadding
                                             )
                                             AbkTab.Settings -> com.abk.kernel.miuix.ui.screens.SettingsScreenMiuix(
                                                 vm = vm,
@@ -1046,6 +1045,13 @@ private fun AbkMainScaffold(
                                     vm = vm,
                                     route = route,
                                     outerPadding = contentPadding,
+                                    onBack = { navigator.pop() }
+                                )
+                            }
+                            entry<Route.SuperUserProfile> { route ->
+                                com.abk.kernel.miuix.ui.screens.SuperUserProfileScreenMiuix(
+                                    vm = vm,
+                                    uid = route.uid,
                                     onBack = { navigator.pop() }
                                 )
                             }
