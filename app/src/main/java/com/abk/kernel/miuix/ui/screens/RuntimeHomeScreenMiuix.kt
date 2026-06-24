@@ -64,9 +64,6 @@ import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import com.abk.kernel.ui.screens.AbkRootPatchScreen
-
 @Composable
 fun RuntimeHomeScreenMiuix(
     vm: MainViewModel,
@@ -562,42 +559,13 @@ fun ManagerPatchScreenMiuix(
     backgroundImageEnabled: Boolean,
     onBack: () -> Unit,
 ) {
-    val surfaceColor = MiuixTheme.colorScheme.surface
-    val backdrop = rememberBlurBackdrop(enableBlur = true, surfaceColor)
-    val barColor = if (backdrop != null) Color.Transparent else surfaceColor
-
-    Scaffold(
-        topBar = {
-            BlurredBar(backdrop, surfaceColor) {
-                TopAppBar(
-                    color = barColor,
-                    title = stringResource(R.string.runtime_manager_title),
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.back)
-                            )
-                        }
-                    }
-                )
-            }
-        }
-    ) { padding ->
-        Box(
-            modifier = if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
-        ) {
-            Box(modifier = Modifier.padding(padding)) {
-                AbkRootPatchScreen(
-                    rootGranted = rootGranted,
-                    hasNativeManagerPermission = hasNativeManagerPermission,
-                    runtimeVariant = runtimeVariant,
-                    backgroundUri = backgroundUri,
-                    backgroundImageEnabled = backgroundImageEnabled,
-                    onBack = onBack,
-                    onBackEnabledChange = {},
-                )
-            }
-        }
-    }
+    AbkRootPatchScreenMiuix(
+        rootGranted = rootGranted,
+        hasNativeManagerPermission = hasNativeManagerPermission,
+        runtimeVariant = runtimeVariant,
+        backgroundUri = backgroundUri,
+        backgroundImageEnabled = backgroundImageEnabled,
+        onBack = onBack,
+        onBackEnabledChange = {},
+    )
 }
