@@ -99,6 +99,7 @@ import top.yukonga.miuix.kmp.icon.extended.MoreCircle
 import top.yukonga.miuix.kmp.icon.extended.Sort
 import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.MiuixPopupUtils
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
@@ -309,38 +310,41 @@ fun RootAuthorizationScreenMiuix(
             }
         },
         popupHost = {
-            searchStatus.SearchPager(
-                onSearchStatusChange = { searchStatus = it },
-                defaultResult = {},
-                searchBarTopPadding = dynamicTopPadding,
-            ) {
-                val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .overScrollVertical(),
+            Box(Modifier.fillMaxSize()) {
+                searchStatus.SearchPager(
+                    onSearchStatusChange = { searchStatus = it },
+                    defaultResult = {},
+                    searchBarTopPadding = dynamicTopPadding,
                 ) {
-                    item { Spacer(Modifier.height(6.dp)) }
-                    items(groupedApps, key = { it.uid }, contentType = { "search-group" }) { group ->
-                        GroupedAppItem(
-                            group = group,
-                            onProfileClick = { navigator.push(Route.SuperUserProfile(group.uid)) },
-                        )
-                    }
-                    item {
-                        Spacer(Modifier.height(maxOf(outerPadding.calculateBottomPadding(), imeBottomPadding) + 80.dp))
-                    }
-                    if (groupedApps.isEmpty() && query.isNotBlank()) {
-                        item {
-                            Text(
-                                text = stringResource(R.string.root_auth_no_matching_apps),
-                                style = MiuixTheme.textStyles.body2,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 24.dp),
+                    val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .overScrollVertical(),
+                    ) {
+                        item { Spacer(Modifier.height(6.dp)) }
+                        items(groupedApps, key = { it.uid }, contentType = { "search-group" }) { group ->
+                            GroupedAppItem(
+                                group = group,
+                                onProfileClick = { navigator.push(Route.SuperUserProfile(group.uid)) },
                             )
+                        }
+                        item {
+                            Spacer(Modifier.height(maxOf(outerPadding.calculateBottomPadding(), imeBottomPadding) + 80.dp))
+                        }
+                        if (groupedApps.isEmpty() && query.isNotBlank()) {
+                            item {
+                                Text(
+                                    text = stringResource(R.string.root_auth_no_matching_apps),
+                                    style = MiuixTheme.textStyles.body2,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 24.dp),
+                                )
+                            }
                         }
                     }
                 }
+                MiuixPopupUtils.MiuixPopupHost()
             }
         },
         contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal),
