@@ -47,6 +47,28 @@ object RootUtils {
     private val SAFE_EXTENSION_ID = Regex("^[A-Za-z0-9._-]+$")
     private var appContext: Context? = null
     private val bundledKsudLock = Any()
+
+    /** Cached root shell reused across all shell commands (avoids reconnecting per call). */
+    private var cachedRootShell: Shell? = null
+    private val shellLock = Any()
+
+    private fun acquireRootShell(timeoutSeconds: Long = 300L): Shell {
+        cachedRootShell?.let { if (it.isAlive) return it }
+        synchronized(shellLock) {
+            cachedRootShell?.let { if (it.isAlive) return it }
+            return createRootShell(timeoutSeconds = timeoutSeconds).also { cachedRootShell = it }
+        }
+    }
+
+    /** Invalidate the cached shell so the next call reconnects. */
+    private fun invalidateRootShell() {
+        synchronized(shellLock) {
+            cachedRootShell?.let {
+                try { it.close() } catch (_: Throwable) {}
+                cachedRootShell = null
+            }
+        }
+    }
     @Volatile
     private var abkMetaMountPlaceholderEnsured = false
 
@@ -1046,20 +1068,18 @@ object RootUtils {
 
         val filePath = "/data/adb/modules/$cleanId/webroot/$cleanRelativePath"
         fun readOnce(): ByteArray? = try {
-            createRootShell(timeoutSeconds = 30L).use { shell ->
-                val result = execWithShell(
-                    shell = shell,
-                    script = """
-                        file=${shellQuote(filePath)}
-                        [ -f "${'$'}file" ] || exit 2
-                        base64 "${'$'}file" 2>/dev/null | tr -d '\n'
-                    """.trimIndent(),
-                    normalizeOutput = false
-                )
-                if (!result.success) return null
-                val encoded = result.output.joinToString("").trim()
-                if (encoded.isBlank()) ByteArray(0) else Base64.decode(encoded, Base64.DEFAULT)
-            }
+            val result = execWithShell(
+                shell = acquireRootShell(30L),
+                script = """
+                    file=${shellQuote(filePath)}
+                    [ -f "${'$'}file" ] || exit 2
+                    base64 "${'$'}file" 2>/dev/null | tr -d '\n'
+                """.trimIndent(),
+                normalizeOutput = false
+            )
+            if (!result.success) return null
+            val encoded = result.output.joinToString("").trim()
+            if (encoded.isBlank()) ByteArray(0) else Base64.decode(encoded, Base64.DEFAULT)
         } catch (error: Throwable) {
             null
         }
@@ -1101,20 +1121,18 @@ object RootUtils {
         val cleanId = sanitizeExtensionId(extensionId) ?: return null
         val filePath = "$ABK_EXTENSION_STATE_DIR/$cleanId.json"
         return try {
-            createRootShell(timeoutSeconds = 20L).use { shell ->
-                val result = execWithShell(
-                    shell = shell,
-                    script = """
-                        file=${shellQuote(filePath)}
-                        [ -f "${'$'}file" ] || exit 3
-                        base64 "${'$'}file" 2>/dev/null | tr -d '\n'
-                    """.trimIndent(),
-                    normalizeOutput = false
-                )
-                if (!result.success) return null
-                val encoded = result.output.joinToString("").trim()
-                if (encoded.isBlank()) "" else String(Base64.decode(encoded, Base64.DEFAULT))
-            }
+            val result = execWithShell(
+                shell = acquireRootShell(20L),
+                script = """
+                    file=${shellQuote(filePath)}
+                    [ -f "${'$'}file" ] || exit 3
+                    base64 "${'$'}file" 2>/dev/null | tr -d '\n'
+                """.trimIndent(),
+                normalizeOutput = false
+            )
+            if (!result.success) return null
+            val encoded = result.output.joinToString("").trim()
+            if (encoded.isBlank()) "" else String(Base64.decode(encoded, Base64.DEFAULT))
         } catch (_: Throwable) {
             null
         }
@@ -1556,15 +1574,21 @@ object RootUtils {
         timeoutSeconds: Long,
         onOutput: ((String) -> Unit)? = null
     ): ShellResult {
+        val shell = acquireRootShell(timeoutSeconds)
         return try {
-            createRootShell(timeoutSeconds = timeoutSeconds).use { shell ->
-                execWithShell(shell, script, onOutput)
-            }
+            execWithShell(shell, script, onOutput)
         } catch (error: Throwable) {
-            Log.w(TAG, "root command failed", error)
-            val line = tr(R.string.ru_manager_not_active)
-            onOutput?.invoke(line)
-            ShellResult(false, listOf(line))
+            Log.w(TAG, "root command failed, retrying with fresh shell", error)
+            invalidateRootShell()
+            try {
+                val freshShell = acquireRootShell(timeoutSeconds)
+                execWithShell(freshShell, script, onOutput)
+            } catch (retryError: Throwable) {
+                Log.w(TAG, "root command failed on retry", retryError)
+                val line = tr(R.string.ru_manager_not_active)
+                onOutput?.invoke(line)
+                ShellResult(false, listOf(line))
+            }
         }
     }
 
@@ -1830,13 +1854,11 @@ object RootUtils {
     ): ShellResult? {
         val embedded = embeddedKsudPath(context) ?: return null
         return try {
-            createRootShell(timeoutSeconds = timeoutSeconds).use { shell ->
-                execWithShell(
-                    shell,
-                    buildKsudShellCommand(embedded, args),
-                    onOutput = onOutput
-                )
-            }
+            execWithShell(
+                acquireRootShell(timeoutSeconds),
+                buildKsudShellCommand(embedded, args),
+                onOutput = onOutput
+            )
         } catch (error: Throwable) {
             Log.w(TAG, "embedded ksud root command unavailable", error)
             null
@@ -1941,15 +1963,13 @@ object RootUtils {
     ): ShellResult? {
         val embedded = embeddedKsudPath(context) ?: return null
         return try {
-            createRootShell(timeoutSeconds = 300L).use { shell ->
-                onOutput?.invoke(tr(R.string.ru_log_invoke_libksud))
-                onOutput?.invoke(tr(R.string.ru_log_ksud_path, embedded))
-                execWithShell(
-                    shell,
-                    buildKsudShellCommand(embedded, args),
-                    onOutput = onOutput
-                )
-            }
+            onOutput?.invoke(tr(R.string.ru_log_invoke_libksud))
+            onOutput?.invoke(tr(R.string.ru_log_ksud_path, embedded))
+            execWithShell(
+                acquireRootShell(300L),
+                buildKsudShellCommand(embedded, args),
+                onOutput = onOutput
+            )
         } catch (error: Throwable) {
             Log.w(TAG, "root boot-patch shell unavailable", error)
             null

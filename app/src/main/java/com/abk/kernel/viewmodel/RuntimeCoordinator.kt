@@ -295,7 +295,6 @@ class RuntimeCoordinator(
                 }
             } else {
                 updateState { it.copy(abkRuntimeModuleActionId = null) }
-                refreshAbkRuntimeStatus()
             }
         }
     }
