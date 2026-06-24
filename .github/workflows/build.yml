@@ -149,11 +149,12 @@ jobs:
           effective_zram_full_algo="${{ inputs.zram_full_algo }}"
           effective_zram_extra_algos="${{ inputs.zram_extra_algos || '' }}"
           effective_zram_legacy_lz4k="true"
+          effective_zram_use_optional_algo="false"
 
           if [ "${{ inputs.kernel_version }}" = "6.12" ]; then
             effective_zram_legacy_lz4k="false"
             if [ "$effective_zram_full_algo" = "true" ]; then
-              echo "::warning::Android16/6.12 会跳过 legacy LZ4K/LZ4KD/LZ4K_OPLUS 补丁栈，仅保留 zstdp 与内核原生支持的 ZRAM 算法。"
+              echo "::warning::Android16/6.12 会跳过 legacy LZ4K/LZ4KD/LZ4K_OPLUS 补丁栈，仅保留内核原生支持的 ZRAM 算法。"
             fi
             if [ -n "$effective_zram_extra_algos" ]; then
               filtered_algos="$(python3 -c 'import sys; blocked={\"lz4k\",\"lz4kd\",\"lz4k_oplus\"}; print(\",\".join(item.strip() for item in sys.argv[1].split(\",\") if item.strip() and item.strip().lower() not in blocked))' "$effective_zram_extra_algos")"
@@ -164,11 +165,18 @@ jobs:
             fi
           fi
 
+          if [ "$effective_use_zram" = "true" ] && [ "$effective_zram_full_algo" != "true" ] && [ -n "$effective_zram_extra_algos" ]; then
+            if python3 -c 'import sys; algos=[item.strip().lower() for item in sys.argv[1].split(",") if item.strip()]; raise SystemExit(0 if "zstdp" in algos else 1)' "$effective_zram_extra_algos"; then
+              effective_zram_use_optional_algo="true"
+            fi
+          fi
+
           {
             echo "EFFECTIVE_USE_ZRAM=$effective_use_zram"
             echo "EFFECTIVE_ZRAM_FULL_ALGO=$effective_zram_full_algo"
             echo "EFFECTIVE_ZRAM_EXTRA_ALGOS=$effective_zram_extra_algos"
             echo "EFFECTIVE_ZRAM_LEGACY_LZ4K=$effective_zram_legacy_lz4k"
+            echo "EFFECTIVE_ZRAM_USE_OPTIONAL_ALGO=$effective_zram_use_optional_algo"
           } >> "$GITHUB_ENV"
 
           effective_ksu_branch="${{ inputs.ksu_branch }}"
@@ -2511,9 +2519,13 @@ jobs:
             echo "6.12 检测到新式 zram backend，跳过 legacy LZ4K/LZ4KD/LZ4K_OPLUS 补丁栈。"
           fi
 
-          chmod +x "$ZZH_PATCHES/zram/setup_zstdp.sh"
-          ABK_ZSTDP_UPSTREAM_TAG="v6.15" \
-            bash "$ZZH_PATCHES/zram/setup_zstdp.sh" integrate "$PWD"
+          if [ "${EFFECTIVE_ZRAM_USE_OPTIONAL_ALGO:-false}" = "true" ]; then
+            chmod +x "$ZZH_PATCHES/zram/setup_zstdp.sh"
+            ABK_ZSTDP_UPSTREAM_TAG="v6.15" \
+              bash "$ZZH_PATCHES/zram/setup_zstdp.sh" integrate "$PWD"
+          else
+            echo "未请求额外可选 ZRAM 算法，跳过附加算法集成。"
+          fi
 
       - name: 修复 6.6 WiFi/蓝牙兼容性（三星 + 小米）
         if: inputs.kernel_version == '6.6'
@@ -2594,41 +2606,6 @@ jobs:
             set_config_value CONFIG_CRYPTO_ZSTDP y
           }
 
-          set_legacy_zstdp_default() {
-            if [ "${{ inputs.kernel_version }}" = "5.10" ]; then
-              return 0
-            fi
-            disable_config CONFIG_ZRAM_DEF_COMP_LZORLE
-            disable_config CONFIG_ZRAM_DEF_COMP_ZSTD
-            disable_config CONFIG_ZRAM_DEF_COMP_LZ4
-            disable_config CONFIG_ZRAM_DEF_COMP_LZO
-            disable_config CONFIG_ZRAM_DEF_COMP_LZ4HC
-            disable_config CONFIG_ZRAM_DEF_COMP_842
-            set_config_value CONFIG_ZRAM_DEF_COMP_ZSTDP y
-            set_config_value CONFIG_ZRAM_DEF_COMP '"zstdp"'
-          }
-
-          set_modern_zstdp_default() {
-            disable_config CONFIG_ZRAM_DEF_COMP_LZORLE
-            disable_config CONFIG_ZRAM_DEF_COMP_LZO
-            disable_config CONFIG_ZRAM_DEF_COMP_LZ4
-            disable_config CONFIG_ZRAM_DEF_COMP_LZ4HC
-            disable_config CONFIG_ZRAM_DEF_COMP_ZSTD
-            disable_config CONFIG_ZRAM_DEF_COMP_DEFLATE
-            disable_config CONFIG_ZRAM_DEF_COMP_842
-            set_config_value CONFIG_ZRAM_BACKEND_ZSTDP y
-            set_config_value CONFIG_ZRAM_DEF_COMP_ZSTDP y
-            set_config_value CONFIG_ZRAM_DEF_COMP '"zstdp"'
-          }
-
-          set_zstdp_default() {
-            if [ "${{ inputs.kernel_version }}" = "6.12" ]; then
-              set_modern_zstdp_default
-            else
-              set_legacy_zstdp_default
-            fi
-          }
-
           enable_legacy_full_algos() {
             set_config_value CONFIG_CRYPTO_LZO y
             set_config_value CONFIG_CRYPTO_LZ4 y
@@ -2641,7 +2618,6 @@ jobs:
             set_config_value CONFIG_ZRAM_BACKEND_LZ4 y
             set_config_value CONFIG_ZRAM_BACKEND_LZ4HC y
             set_config_value CONFIG_ZRAM_BACKEND_ZSTD y
-            set_config_value CONFIG_ZRAM_BACKEND_ZSTDP y
             set_config_value CONFIG_ZRAM_BACKEND_DEFLATE y
             set_config_value CONFIG_ZRAM_BACKEND_842 y
           }
@@ -2706,9 +2682,6 @@ jobs:
             fi
           fi
 
-          enable_zstdp_base
-          set_zstdp_default
-
           # ---- ZRAM 完整算法支持 ----
           if [ "${EFFECTIVE_ZRAM_FULL_ALGO:-false}" = "true" ]; then
             echo "启用 ZRAM 完整算法支持..."
@@ -2717,7 +2690,6 @@ jobs:
             else
               enable_legacy_full_algos
             fi
-            set_zstdp_default
           elif [ -n "${EFFECTIVE_ZRAM_EXTRA_ALGOS:-}" ]; then
             # ---- 自定义单独算法 ----
             echo "添加自定义 ZRAM 算法: $EFFECTIVE_ZRAM_EXTRA_ALGOS"
@@ -3674,6 +3646,152 @@ jobs:
               print(f"已补齐 {path} 的 ksu_stop_input_hook_runtime 声明")
               return True
 
+          def official_sulog_argv_is_pointer(event_text, symbol):
+              pattern = re.compile(
+                  rf"{re.escape(symbol)}\s*\([^;]*?\bstruct\s+user_arg_ptr\s*\*\s*argv_user\b",
+                  re.S,
+              )
+              return pattern.search(event_text) is not None
+
+          def ensure_official_sulog_argv_compat(ksu_dir):
+              event_h = ksu_dir / "sulog/event.h"
+              if not event_h.exists():
+                  return False
+
+              event_text = event_h.read_text()
+
+              def patch_call_second_arg(path, symbol):
+                  if not path.exists():
+                      raise SystemExit(f"未找到 {path}，无法修复 {symbol} argv 参数类型")
+
+                  text = path.read_text()
+                  match = re.search(
+                      rf"{re.escape(symbol)}\s*\(\s*[^,\n]+,\s*([^,\n]+)\s*,",
+                      text,
+                  )
+                  if not match:
+                      return False
+
+                  current_arg = match.group(1).strip()
+                  if current_arg in (
+                      "(struct user_arg_ptr *)argv_user",
+                      "(struct user_arg_ptr*)argv_user",
+                      "&argv",
+                  ):
+                      return False
+
+                  if current_arg != "argv_user":
+                      raise SystemExit(f"{path} 的 {symbol} 第二参数为未知形态: {current_arg}")
+
+                  updated = (
+                      text[:match.start(1)]
+                      + "(struct user_arg_ptr *)argv_user"
+                      + text[match.end(1):]
+                  )
+                  path.write_text(updated)
+                  print(f"已修复 {path} 的 {symbol} argv 参数类型")
+                  return True
+
+              changed = False
+              if official_sulog_argv_is_pointer(event_text, "ksu_sulog_capture_sucompat"):
+                  changed = patch_call_second_arg(
+                      ksu_dir / "feature/sucompat.c",
+                      "ksu_sulog_capture_sucompat",
+                  ) or changed
+
+              if official_sulog_argv_is_pointer(event_text, "ksu_sulog_capture_root_execve"):
+                  changed = patch_call_second_arg(
+                      ksu_dir / "hook/syscall_event_bridge.c",
+                      "ksu_sulog_capture_root_execve",
+                  ) or changed
+
+              return changed
+
+          def ensure_official_app_profile_compat(ksu_dir):
+              changed = False
+
+              header = ksu_dir / "policy/app_profile.h"
+              if header.exists():
+                  header_text = header.read_text()
+                  updated_header = re.sub(
+                      r"(?m)^void\s+escape_to_root_for_init\s*\(\s*void\s*\)\s*;",
+                      "int escape_to_root_for_init(void);",
+                      header_text,
+                  )
+                  if updated_header != header_text:
+                      header.write_text(updated_header)
+                      changed = True
+                      print(f"已修复 {header} 的 escape_to_root_for_init 声明")
+
+              path = ksu_dir / "policy/app_profile.c"
+              if not path.exists():
+                  return changed
+
+              text = path.read_text()
+              original = text
+
+              text = text.replace('#include "hook/tp_marker.h"\n', "")
+              text = re.sub(
+                  r"(?m)^static\s+void\s+disable_seccomp\s*\(\s*void\s*\)",
+                  "void disable_seccomp(void)",
+                  text,
+                  count=1,
+              )
+              text = re.sub(
+                  r"(?m)^([ \t]*)disable_seccomp\(\);\n",
+                  r"\1if (likely(test_thread_flag(TIF_SECCOMP)))\n\1    disable_seccomp();\n",
+                  text,
+                  count=1,
+              )
+              text = re.sub(
+                  r"(?ms)\n[ \t]*for_each_thread\s*\(\s*p\s*,\s*t\s*\)\s*\{\n"
+                  r"[ \t]*ksu_set_task_tracepoint_flag\s*\(\s*t\s*\)\s*;\n"
+                  r"[ \t]*\}\n",
+                  "\n",
+                  text,
+                  count=1,
+              )
+              if "for_each_thread" not in text:
+                  text = re.sub(
+                      r"(?m)^[ \t]*struct\s+task_struct\s+\*p\s*=\s*current\s*;\n",
+                      "",
+                      text,
+                      count=1,
+                  )
+                  text = re.sub(
+                      r"(?m)^[ \t]*struct\s+task_struct\s+\*t\s*;\n",
+                      "",
+                      text,
+                      count=1,
+                  )
+              text = re.sub(
+                  r"(?m)^void\s+escape_to_root_for_init\s*\(\s*void\s*\)",
+                  "int escape_to_root_for_init(void)",
+                  text,
+                  count=1,
+              )
+              if "int escape_to_root_for_init(void)" in text:
+                  text = re.sub(
+                      r'(?m)^([ \t]*)pr_err\("Failed to prepare init\'s creds!\\n"\);\n([ \t]*)return;\n',
+                      r'\1pr_err("Failed to prepare init\'s creds!\\n");\n\1return -EINVAL;\n',
+                      text,
+                      count=1,
+                  )
+                  if re.search(r"(?ms)int\s+escape_to_root_for_init\s*\(\s*void\s*\)\s*\{.*?commit_creds\(cred\);\n\s*\}", text):
+                      text = re.sub(
+                          r"(?ms)(int\s+escape_to_root_for_init\s*\(\s*void\s*\)\s*\{.*?commit_creds\(cred\);\n)(\s*\})",
+                          r"\1\n    return 0;\n\2",
+                          text,
+                          count=1,
+                      )
+
+              if text != original:
+                  path.write_text(text)
+                  changed = True
+                  print(f"已修复 {path} 的 Official app_profile 兼容")
+
+              return changed
+
           def ensure_line_after_any(text, anchors, line, error_message):
               if line in text:
                   return text
@@ -4046,6 +4164,8 @@ jobs:
           changed = ensure_official_susfs_dispatch_compat(ksu_dir) or changed
           changed = ensure_official_runtime_compat(ksu_dir) or changed
           changed = ensure_official_boot_event_compat(ksu_dir) or changed
+          changed = ensure_official_sulog_argv_compat(ksu_dir) or changed
+          changed = ensure_official_app_profile_compat(ksu_dir) or changed
 
           runtime_c = ksu_dir / "runtime/ksud_integration.c"
           if runtime_c.exists():
@@ -4077,6 +4197,45 @@ jobs:
           boot_event_c = ksu_dir / "runtime/boot_event.c"
           if boot_event_c.exists() and "void ksu_stop_input_hook_runtime(void);" not in boot_event_c.read_text():
               raise SystemExit(f"{boot_event_c} 缺少 ksu_stop_input_hook_runtime 声明")
+
+          event_h = ksu_dir / "sulog/event.h"
+          if event_h.exists():
+              event_text = event_h.read_text()
+
+              sucompat_c = ksu_dir / "feature/sucompat.c"
+              if official_sulog_argv_is_pointer(event_text, "ksu_sulog_capture_sucompat"):
+                  if not sucompat_c.exists():
+                      raise SystemExit(f"未找到 {sucompat_c}，无法校验 Official sulog sucompat argv 兼容")
+                  if re.search(
+                      r"ksu_sulog_capture_sucompat\s*\(\s*[^,\n]+,\s*argv_user\s*,",
+                      sucompat_c.read_text(),
+                  ):
+                      raise SystemExit(f"{sucompat_c} 仍以裸 argv_user 调用 ksu_sulog_capture_sucompat")
+
+              bridge_c = ksu_dir / "hook/syscall_event_bridge.c"
+              if official_sulog_argv_is_pointer(event_text, "ksu_sulog_capture_root_execve"):
+                  if not bridge_c.exists():
+                      raise SystemExit(f"未找到 {bridge_c}，无法校验 Official sulog root_execve argv 兼容")
+                  if re.search(
+                      r"ksu_sulog_capture_root_execve\s*\(\s*[^,\n]+,\s*argv_user\s*,",
+                      bridge_c.read_text(),
+                  ):
+                      raise SystemExit(f"{bridge_c} 仍以裸 argv_user 调用 ksu_sulog_capture_root_execve")
+
+          app_profile_c = ksu_dir / "policy/app_profile.c"
+          if app_profile_c.exists():
+              app_profile_text = app_profile_c.read_text()
+              if re.search(r"(?m)^\s*static\s+void\s+disable_seccomp\s*\(", app_profile_text):
+                  raise SystemExit(f"{app_profile_c} 仍保留 static disable_seccomp，Official SUSFS 外部调用会链接失败")
+              if "for_each_thread (p, t)" in app_profile_text or "ksu_set_task_tracepoint_flag(t);" in app_profile_text:
+                  raise SystemExit(f"{app_profile_c} 仍残留 Official SUSFS 不兼容的 tp_marker 线程遍历逻辑")
+              if re.search(r"(?m)^void\s+escape_to_root_for_init\s*\(\s*void\s*\)", app_profile_text):
+                  raise SystemExit(f"{app_profile_c} 仍保留旧版 void escape_to_root_for_init 定义")
+
+          app_profile_h = ksu_dir / "policy/app_profile.h"
+          if app_profile_h.exists():
+              if re.search(r"(?m)^void\s+escape_to_root_for_init\s*\(\s*void\s*\)\s*;", app_profile_h.read_text()):
+                  raise SystemExit(f"{app_profile_h} 仍保留旧版 void escape_to_root_for_init 声明")
 
           dispatch_c = ksu_dir / "supercall/dispatch.c"
           if dispatch_c.exists():
