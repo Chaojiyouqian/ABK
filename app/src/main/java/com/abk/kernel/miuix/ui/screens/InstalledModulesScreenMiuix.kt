@@ -147,8 +147,7 @@ fun InstalledModulesScreenMiuix(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val label = stringResource(R.string.runtime_installed_modules_title)
-    var searchStatus by remember { mutableStateOf(SearchStatus(label)) }
+    var searchStatus by remember { mutableStateOf(SearchStatus("")) }
     var pendingInstallUri by remember { mutableStateOf<Uri?>(null) }
     var installDialogVisible by remember { mutableStateOf(false) }
     var installRunning by remember { mutableStateOf(false) }
