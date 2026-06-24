@@ -206,11 +206,11 @@ fun ThemeSettingsScreenMiuix(
             }
 
             // Section 4: 视觉效果
-            SectionTitleMiuix("视觉效果")
+            SectionTitleMiuix(stringResource(R.string.settings_visual_effects))
             Card {
                 SwitchPreference(
                     title = stringResource(R.string.settings_blur),
-                    summary = "启用顶栏和底栏的模糊效果",
+                    summary = stringResource(R.string.settings_blur_summary),
                     startAction = {
                         Icon(
                             Icons.Rounded.BlurOn,
@@ -224,7 +224,7 @@ fun ThemeSettingsScreenMiuix(
                 )
                 SwitchPreference(
                     title = stringResource(R.string.settings_floating_bottom_bar),
-                    summary = "使用 Apple 风格的悬浮底栏",
+                    summary = stringResource(R.string.settings_floating_bottom_bar_summary),
                     startAction = {
                         Icon(
                             Icons.Rounded.CallToAction,
@@ -238,8 +238,8 @@ fun ThemeSettingsScreenMiuix(
                 )
                 AnimatedVisibility(visible = state.miuixFloatingBottomBarEnabled) {
                     SwitchPreference(
-                        title = "液态玻璃",
-                        summary = "启用悬浮底栏的液态玻璃效果",
+                        title = stringResource(R.string.settings_liquid_glass),
+                        summary = stringResource(R.string.settings_liquid_glass_summary),
                         startAction = {
                             Icon(
                                 Icons.Rounded.WaterDrop,
@@ -259,8 +259,8 @@ fun ThemeSettingsScreenMiuix(
             // No SectionTitleMiuix label — switch lives directly after the "视觉效果" Card.
             Card {
                 SwitchPreference(
-                    title = "预测性返回手势",
-                    summary = "启用对预测性返回手势的支持",
+                    title = stringResource(R.string.settings_predictive_back_gesture),
+                    summary = stringResource(R.string.settings_predictive_back_summary),
                     startAction = {
                         Icon(
                             Icons.AutoMirrored.Rounded.MenuOpen,

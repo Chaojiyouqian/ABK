@@ -664,6 +664,13 @@
     <string name="settings_ui_style">Стиль интерфейса</string>
     <string name="settings_blur">Размытие</string>
     <string name="settings_floating_bottom_bar">Плавающая нижняя панель</string>
+    <string name="settings_visual_effects">Визуальные эффекты</string>
+    <string name="settings_blur_summary">Включить размытие верхней и нижней панели</string>
+    <string name="settings_floating_bottom_bar_summary">Плавающая нижняя панель в стиле Apple</string>
+    <string name="settings_liquid_glass">Жидкое стекло</string>
+    <string name="settings_liquid_glass_summary">Включить эффект жидкого стекла на плавающей панели</string>
+    <string name="settings_predictive_back_gesture">Прогнозируемый жест назад</string>
+    <string name="settings_predictive_back_summary">Включить поддержку прогнозируемого жеста назад</string>
     <string name="settings_current_color">Текущий</string>
     <string name="settings_color_green">Зелёный</string>
     <string name="settings_color_blue">Синий</string>
