@@ -50,6 +50,10 @@ sealed interface Route : NavKey, Parcelable {
 
     @Parcelize
     @Serializable
+    data object ManagerPatch : Route
+
+    @Parcelize
+    @Serializable
     data object BuildModuleRepoSettings : Route
 
     @Parcelize
