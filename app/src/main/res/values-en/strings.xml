@@ -1237,4 +1237,7 @@
     <string name="gh_root_must_be_object">Root node must be a JSON object</string>
     <string name="gh_missing_module_name">Missing ABK_MODULE_NAME</string>
     <string name="gh_catalog_fallback_name">Module repository</string>
+
+    <!-- Search -->
+    <string name="search_cancel">Cancel</string>
 </resources>

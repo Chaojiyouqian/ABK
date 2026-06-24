@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -70,6 +71,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.abk.kernel.R
 
 /**
  * Ported from SukiSU-Ultra SearchStatus with animation state machine.
@@ -235,7 +237,7 @@ fun SearchStatus.SearchPager(
                 exit = shrinkHorizontally() + slideOutHorizontally(targetOffsetX = { it })
             ) {
                 Text(
-                    text = "Cancel",
+                    text = stringResource(R.string.search_cancel),
                     fontWeight = FontWeight.Bold,
                     color = MiuixTheme.colorScheme.primary,
                     modifier = Modifier
