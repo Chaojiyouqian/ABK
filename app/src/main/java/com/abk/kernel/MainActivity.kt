@@ -454,13 +454,14 @@ private fun AbkMainScaffold(
     val contentPadding = PaddingValues(
         bottom = with(density) { bottomBarHeightPx.toDp() }
     )
+    val miuixMode = state.uiStyle == "miuix"
     val childPageVisible = when (activeTab) {
         AbkTab.Build -> navIsOnSubPage || buildPlanPageVisible
         AbkTab.Modules -> navIsOnSubPage
         AbkTab.Flash -> navIsOnSubPage || flashDetailPageVisible
         AbkTab.Settings -> navIsOnSubPage || settingsChildPageVisible
         AbkTab.RootAuth -> navIsOnSubPage || rootAuthDetailPageVisible
-        AbkTab.RuntimeHome -> managerPatchPageVisible
+        AbkTab.RuntimeHome -> if (miuixMode) navIsOnSubPage else managerPatchPageVisible
         else -> false
     }
     // Mutable state captured by closures; reassigned inside NavDisplay setup so any
@@ -590,7 +591,6 @@ private fun AbkMainScaffold(
         BackHandler(onBack = ::handleTopLevelBack)
     }
 
-    val miuixMode = state.uiStyle == "miuix"
     val surfaceColor = if (miuixMode) MiuixTheme.colorScheme.surface else MaterialTheme.colorScheme.surface
     val floatingGlassBackdrop = rememberLayerBackdrop {
         drawRect(surfaceColor)
@@ -887,11 +887,11 @@ private fun AbkMainScaffold(
                                                 outerPadding = contentPadding,
                                                 onDetailPageVisibleChange = { flashDetailPageVisible = it }
                                             )
-                                            AbkTab.RuntimeHome -> RuntimeHomeScreen(
+                                            AbkTab.RuntimeHome -> com.abk.kernel.miuix.ui.screens.RuntimeHomeScreenMiuix(
                                                 vm = vm,
                                                 outerPadding = contentPadding,
                                                 onSwitchToClassic = { vm.setRuntimeNavigationEnabled(false) },
-                                                onManagerPatchPageVisibleChange = { managerPatchPageVisible = it }
+                                                navigator = navigator,
                                             )
                                             AbkTab.InstalledModules -> com.abk.kernel.miuix.ui.screens.InstalledModulesScreenMiuix(
                                                 vm = vm,
@@ -1052,6 +1052,16 @@ private fun AbkMainScaffold(
                                 com.abk.kernel.miuix.ui.screens.SuperUserProfileScreenMiuix(
                                     vm = vm,
                                     uid = route.uid,
+                                    onBack = { navigator.pop() }
+                                )
+                            }
+                            entry<Route.ManagerPatch> {
+                                com.abk.kernel.miuix.ui.screens.ManagerPatchScreenMiuix(
+                                    rootGranted = state.rootGranted,
+                                    hasNativeManagerPermission = state.hasNativeManagerPermission,
+                                    runtimeVariant = state.abkRuntimeStatus?.manager?.variant.orEmpty(),
+                                    backgroundUri = state.customBackgroundUri,
+                                    backgroundImageEnabled = state.backgroundImageEnabled,
                                     onBack = { navigator.pop() }
                                 )
                             }
