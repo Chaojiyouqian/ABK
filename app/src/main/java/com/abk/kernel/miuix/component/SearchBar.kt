@@ -248,6 +248,7 @@ fun SearchStatus.SearchPager(
                             onSearchStatusChange(
                                 searchStatus.copy(
                                     searchText = "",
+                                    resultStatus = SearchStatus.ResultStatus.DEFAULT,
                                     current = SearchStatus.Status.COLLAPSING
                                 )
                             )
@@ -277,6 +278,7 @@ fun SearchStatus.SearchPager(
         onSearchStatusChange(
             searchStatus.copy(
                 searchText = "",
+                resultStatus = SearchStatus.ResultStatus.DEFAULT,
                 current = SearchStatus.Status.COLLAPSING
             )
         )
@@ -305,7 +307,16 @@ fun SearchBar(
         value = textFieldValue,
         onValueChange = {
             textFieldValue = it
-            onSearchStatusChange(searchStatus.copy(searchText = it.text))
+            onSearchStatusChange(
+                searchStatus.copy(
+                    searchText = it.text,
+                    resultStatus = if (it.text.isNotBlank()) {
+                        SearchStatus.ResultStatus.SHOW
+                    } else {
+                        SearchStatus.ResultStatus.DEFAULT
+                    }
+                )
+            )
         },
         singleLine = true,
         textStyle = TextStyle(
@@ -355,7 +366,12 @@ fun SearchBar(
                                 indication = null
                             ) {
                                 textFieldValue = TextFieldValue("")
-                                onSearchStatusChange(searchStatus.copy(searchText = ""))
+                                onSearchStatusChange(
+                                    searchStatus.copy(
+                                        searchText = "",
+                                        resultStatus = SearchStatus.ResultStatus.DEFAULT
+                                    )
+                                )
                             },
                     )
                 }
