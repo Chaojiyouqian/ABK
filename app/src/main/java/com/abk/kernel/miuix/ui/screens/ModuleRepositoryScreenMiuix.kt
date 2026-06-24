@@ -5,7 +5,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,7 +26,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -35,7 +34,6 @@ import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Source
 import androidx.compose.material.icons.filled.UploadFile
 import top.yukonga.miuix.kmp.basic.Checkbox
@@ -44,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -53,12 +52,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -77,6 +80,10 @@ import com.abk.kernel.data.model.ModuleCatalogItemKind
 import com.abk.kernel.data.model.ModuleCatalogRepository
 import com.abk.kernel.data.model.RuntimeModuleCatalogItem
 import com.abk.kernel.data.model.RuntimeModuleRepository
+import com.abk.kernel.miuix.component.SearchBarFake
+import com.abk.kernel.miuix.component.SearchBox
+import com.abk.kernel.miuix.component.SearchPager
+import com.abk.kernel.miuix.component.SearchStatus
 import com.abk.kernel.ui.navigation3.LocalNavigator
 import com.abk.kernel.ui.navigation3.Route
 import com.abk.kernel.ui.screens.ModuleRepositoryMode
@@ -141,64 +148,6 @@ fun ModuleRepositoryScreenMiuix(
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared components
 // ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun MiuixModuleSearchField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(44.dp)
-            .border(
-                width = 1.dp,
-                color = MiuixTheme.colorScheme.outline,
-                shape = RoundedCornerShape(22.dp)
-            ),
-        colors = CardDefaults.defaultColors(
-            color = Color.Transparent
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = null,
-                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(Modifier.width(10.dp))
-            Box(
-                modifier = Modifier.weight(1f),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                if (value.isBlank()) {
-                    Text(
-                        text = stringResource(R.string.module_repo_search),
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                    )
-                }
-                BasicTextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    singleLine = true,
-                    textStyle = MiuixTheme.textStyles.body2.copy(
-                        color = MiuixTheme.colorScheme.onSurface
-                    ),
-                    cursorBrush = SolidColor(MiuixTheme.colorScheme.primary),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun MiuixModuleTagChip(
@@ -273,9 +222,11 @@ private fun BuildModuleRepositoryScreenMiuix(
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val navigator = LocalNavigator.current
+    val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
     val scrollBehavior = MiuixScrollBehavior()
-    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var searchStatus by remember { mutableStateOf(SearchStatus("")) }
+    val query = searchStatus.searchText
     var pendingCatalogModule by remember { mutableStateOf<ModuleCatalogItem?>(null) }
     var selectedCatalogModuleStages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var pendingModuleSetMetadata by remember { mutableStateOf<ExternalModuleMetadata?>(null) }
@@ -306,7 +257,7 @@ private fun BuildModuleRepositoryScreenMiuix(
             loading = mergedModulesState.loading
         ),
         key1 = mergedModulesState,
-        key2 = searchQuery
+        key2 = query
     ) {
         if (mergedModulesState.loading) {
             // Keep previous items visible while parent recomputes
@@ -318,10 +269,10 @@ private fun BuildModuleRepositoryScreenMiuix(
         val prevFiltered = value.items
         value = ModuleListComputation(items = prevFiltered, loading = false)
         val filtered = withContext(Dispatchers.Default) {
-            if (searchQuery.isBlank()) {
+            if (query.isBlank()) {
                 mergedModules
             } else {
-                mergedModules.filter { it.matchesQuery(searchQuery) }
+                mergedModules.filter { it.matchesQuery(query) }
             }
         }
         value = ModuleListComputation(items = filtered, loading = false)
@@ -465,111 +416,218 @@ private fun BuildModuleRepositoryScreenMiuix(
 
     // ── Scaffold ─────────────────────────────────────────────────────────
 
+    val dynamicTopPadding by remember {
+        derivedStateOf { 12.dp * (1f - scrollBehavior.state.collapsedFraction) }
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = buildRepoTitleLabel(context),
-                scrollBehavior = scrollBehavior,
-                actions = {
-                    IconButton(onClick = ::openRepositorySettings) {
-                        Icon(
-                            imageVector = Icons.Default.Dns,
-                            contentDescription = buildRepoManageLabel(context)
-                        )
-                    }
-                }
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            MiuixModuleSearchField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
-            )
-
-            val showInitialLoading = listComputing || (
-                state.refreshingBuildModuleRepositoryIds.isNotEmpty() &&
-                    mergedModules.isEmpty() && searchQuery.isBlank()
-                )
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .overScrollVertical()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection)
-                    .scrollEndHaptic(),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(
-                    start = 20.dp,
-                    end = 20.dp,
-                    bottom = 80.dp + outerPadding.calculateBottomPadding()
-                ),
-                overscrollEffect = null
-            ) {
-                if (showInitialLoading) {
-                    item(key = "initial-loading") {
-                        MiuixModuleInitialLoading()
-                    }
-                } else if (filteredModules.isEmpty()) {
-                    item(key = "empty") {
-                        BuildModuleRepoEmptyStateMiuix(
-                            totalModules = mergedModules.size,
-                            repositoryCount = state.buildModuleRepositories.size,
-                            hasQuery = searchQuery.isNotBlank(),
-                            onOpenRepositorySettings = ::openRepositorySettings
-                        )
-                    }
-                } else {
-                    items(
-                        items = filteredModules,
-                        key = { merged -> merged.module.repoUrl.trim().lowercase() }
-                    ) { merged ->
-                        val module = merged.module
-                        val supportedStages = module.buildNormalizedSupportedStages()
-                        val allStagesAdded = supportedStages.all { stage ->
-                            module.repoUrl.trim().lowercase() to stage in selectedModules
+            searchStatus.TopAppBarAnim(backgroundColor = MiuixTheme.colorScheme.surface) {
+                TopAppBar(
+                    color = MiuixTheme.colorScheme.surface,
+                    title = buildRepoTitleLabel(context),
+                    scrollBehavior = scrollBehavior,
+                    actions = {
+                        IconButton(onClick = ::openRepositorySettings) {
+                            Icon(
+                                imageVector = Icons.Default.Dns,
+                                contentDescription = buildRepoManageLabel(context)
+                            )
                         }
-                        BuildModuleCardMiuix(
-                            merged = merged,
-                            allStagesAdded = allStagesAdded,
-                            onOpen = {
-                                val url = module.homepage.ifBlank { module.repoUrl }
-                                runCatching { uriHandler.openUri(url) }
-                                    .onFailure {
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(R.string.module_repo_open_failed),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
+                    },
+                    bottomContent = {
+                        Box(
+                            modifier = Modifier
+                                .alpha(if (searchStatus.isCollapsed()) 1f else 0f)
+                                .onGloballyPositioned { coordinates ->
+                                    with(density) {
+                                        val newOffsetY = coordinates.positionInWindow().y.toDp()
+                                        searchStatus = searchStatus.copy(offsetY = newOffsetY)
                                     }
-                            },
-                            onAdd = {
-                                if (module.kind == ModuleCatalogItemKind.MODULE_SET) {
-                                    coroutineScope.launch {
-                                        val metadata = vm.checkCustomExternalModuleMetadata(module.repoUrl)
-                                        if (metadata != null) {
-                                            pendingCatalogModule = module
-                                            pendingModuleSetMetadata = metadata
-                                            selectedModuleSetChildren = metadata.children.map { it.id }
-                                            moduleSetStageSelections = metadata.children.associate { child ->
-                                                child.id to child.recommendedStages
-                                                    .filter { it in child.supportedStages }
-                                                    .ifEmpty { listOf(child.defaultStage) }
+                                }
+                                .then(
+                                    if (searchStatus.isCollapsed()) {
+                                        Modifier.pointerInput(Unit) {
+                                            detectTapGestures {
+                                                searchStatus = searchStatus.copy(
+                                                    current = SearchStatus.Status.EXPANDING
+                                                )
                                             }
                                         }
-                                    }
-                                } else {
-                                    pendingCatalogModule = module
-                                    selectedCatalogModuleStages = module.initialStageSelection(selectedModules)
-                                }
+                                    } else Modifier
+                                )
+                        ) {
+                            SearchBarFake(
+                                label = searchStatus.label,
+                                searchBarTopPadding = dynamicTopPadding
+                            )
+                        }
+                    }
+                )
+            }
+        },
+        popupHost = {
+            searchStatus.SearchPager(
+                onSearchStatusChange = { searchStatus = it },
+                defaultResult = {},
+                searchBarTopPadding = dynamicTopPadding,
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .overScrollVertical()
+                        .scrollEndHaptic(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(
+                        start = 20.dp,
+                        end = 20.dp,
+                        bottom = 80.dp + outerPadding.calculateBottomPadding()
+                    ),
+                    overscrollEffect = null
+                ) {
+                    if (filteredModules.isEmpty() && !listComputing) {
+                        item(key = "empty") {
+                            BuildModuleRepoEmptyStateMiuix(
+                                totalModules = mergedModules.size,
+                                repositoryCount = state.buildModuleRepositories.size,
+                                hasQuery = query.isNotBlank(),
+                                onOpenRepositorySettings = ::openRepositorySettings
+                            )
+                        }
+                    } else {
+                        items(
+                            items = filteredModules,
+                            key = { merged -> merged.module.repoUrl.trim().lowercase() }
+                        ) { merged ->
+                            val module = merged.module
+                            val supportedStages = module.buildNormalizedSupportedStages()
+                            val allStagesAdded = supportedStages.all { stage ->
+                                module.repoUrl.trim().lowercase() to stage in selectedModules
                             }
-                        )
+                            BuildModuleCardMiuix(
+                                merged = merged,
+                                allStagesAdded = allStagesAdded,
+                                onOpen = {
+                                    val url = module.homepage.ifBlank { module.repoUrl }
+                                    runCatching { uriHandler.openUri(url) }
+                                        .onFailure {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.module_repo_open_failed),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                },
+                                onAdd = {
+                                    if (module.kind == ModuleCatalogItemKind.MODULE_SET) {
+                                        coroutineScope.launch {
+                                            val metadata = vm.checkCustomExternalModuleMetadata(module.repoUrl)
+                                            if (metadata != null) {
+                                                pendingCatalogModule = module
+                                                pendingModuleSetMetadata = metadata
+                                                selectedModuleSetChildren = metadata.children.map { it.id }
+                                                moduleSetStageSelections = metadata.children.associate { child ->
+                                                    child.id to child.recommendedStages
+                                                        .filter { it in child.supportedStages }
+                                                        .ifEmpty { listOf(child.defaultStage) }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        pendingCatalogModule = module
+                                        selectedCatalogModuleStages = module.initialStageSelection(selectedModules)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    ) { padding ->
+        searchStatus.SearchBox {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+            ) {
+                val showInitialLoading = listComputing || (
+                    state.refreshingBuildModuleRepositoryIds.isNotEmpty() &&
+                        mergedModules.isEmpty() && query.isBlank()
+                    )
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .overScrollVertical()
+                        .nestedScroll(scrollBehavior.nestedScrollConnection)
+                        .scrollEndHaptic(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(
+                        start = 20.dp,
+                        end = 20.dp,
+                        bottom = 80.dp + outerPadding.calculateBottomPadding()
+                    ),
+                    overscrollEffect = null
+                ) {
+                    if (showInitialLoading) {
+                        item(key = "initial-loading") {
+                            MiuixModuleInitialLoading()
+                        }
+                    } else if (filteredModules.isEmpty()) {
+                        item(key = "empty") {
+                            BuildModuleRepoEmptyStateMiuix(
+                                totalModules = mergedModules.size,
+                                repositoryCount = state.buildModuleRepositories.size,
+                                hasQuery = query.isNotBlank(),
+                                onOpenRepositorySettings = ::openRepositorySettings
+                            )
+                        }
+                    } else {
+                        items(
+                            items = filteredModules,
+                            key = { merged -> merged.module.repoUrl.trim().lowercase() }
+                        ) { merged ->
+                            val module = merged.module
+                            val supportedStages = module.buildNormalizedSupportedStages()
+                            val allStagesAdded = supportedStages.all { stage ->
+                                module.repoUrl.trim().lowercase() to stage in selectedModules
+                            }
+                            BuildModuleCardMiuix(
+                                merged = merged,
+                                allStagesAdded = allStagesAdded,
+                                onOpen = {
+                                    val url = module.homepage.ifBlank { module.repoUrl }
+                                    runCatching { uriHandler.openUri(url) }
+                                        .onFailure {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.module_repo_open_failed),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                },
+                                onAdd = {
+                                    if (module.kind == ModuleCatalogItemKind.MODULE_SET) {
+                                        coroutineScope.launch {
+                                            val metadata = vm.checkCustomExternalModuleMetadata(module.repoUrl)
+                                            if (metadata != null) {
+                                                pendingCatalogModule = module
+                                                pendingModuleSetMetadata = metadata
+                                                selectedModuleSetChildren = metadata.children.map { it.id }
+                                                moduleSetStageSelections = metadata.children.associate { child ->
+                                                    child.id to child.recommendedStages
+                                                        .filter { it in child.supportedStages }
+                                                        .ifEmpty { listOf(child.defaultStage) }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        pendingCatalogModule = module
+                                        selectedCatalogModuleStages = module.initialStageSelection(selectedModules)
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -1044,9 +1102,11 @@ private fun RuntimeModuleRepositoryScreenMiuix(
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val navigator = LocalNavigator.current
+    val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val scrollBehavior = MiuixScrollBehavior()
-    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var searchStatus by remember { mutableStateOf(SearchStatus("")) }
+    val query = searchStatus.searchText
     var pendingInstallModule by remember { mutableStateOf<MergedRuntimeCatalogModule?>(null) }
     var installDialogVisible by remember { mutableStateOf(false) }
     var installRunning by remember { mutableStateOf(false) }
@@ -1077,7 +1137,7 @@ private fun RuntimeModuleRepositoryScreenMiuix(
             loading = mergedModulesState.loading
         ),
         key1 = mergedModulesState,
-        key2 = searchQuery
+        key2 = query
     ) {
         if (mergedModulesState.loading) {
             // Keep previous items visible while parent recomputes
@@ -1089,10 +1149,10 @@ private fun RuntimeModuleRepositoryScreenMiuix(
         val prevFiltered = value.items
         value = ModuleListComputation(items = prevFiltered, loading = false)
         val filtered = withContext(Dispatchers.Default) {
-            if (searchQuery.isBlank()) {
+            if (query.isBlank()) {
                 mergedModules
             } else {
-                mergedModules.filter { it.matchesQuery(searchQuery) }
+                mergedModules.filter { it.matchesQuery(query) }
             }
         }
         value = ModuleListComputation(items = filtered, loading = false)
@@ -1211,106 +1271,208 @@ private fun RuntimeModuleRepositoryScreenMiuix(
 
     // ── Scaffold ─────────────────────────────────────────────────────────
 
+    val dynamicTopPadding by remember {
+        derivedStateOf { 12.dp * (1f - scrollBehavior.state.collapsedFraction) }
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = runtimeRepoTitleLabel(context),
-                scrollBehavior = scrollBehavior,
-                actions = {
-                    IconButton(onClick = ::openRepositorySettings) {
-                        Icon(
-                            imageVector = Icons.Default.Dns,
-                            contentDescription = runtimeRepoConfigureLabel(context)
-                        )
+            searchStatus.TopAppBarAnim(backgroundColor = MiuixTheme.colorScheme.surface) {
+                TopAppBar(
+                    color = MiuixTheme.colorScheme.surface,
+                    title = runtimeRepoTitleLabel(context),
+                    scrollBehavior = scrollBehavior,
+                    actions = {
+                        IconButton(onClick = ::openRepositorySettings) {
+                            Icon(
+                                imageVector = Icons.Default.Dns,
+                                contentDescription = runtimeRepoConfigureLabel(context)
+                            )
+                        }
+                    },
+                    bottomContent = {
+                        Box(
+                            modifier = Modifier
+                                .alpha(if (searchStatus.isCollapsed()) 1f else 0f)
+                                .onGloballyPositioned { coordinates ->
+                                    with(density) {
+                                        val newOffsetY = coordinates.positionInWindow().y.toDp()
+                                        searchStatus = searchStatus.copy(offsetY = newOffsetY)
+                                    }
+                                }
+                                .then(
+                                    if (searchStatus.isCollapsed()) {
+                                        Modifier.pointerInput(Unit) {
+                                            detectTapGestures {
+                                                searchStatus = searchStatus.copy(
+                                                    current = SearchStatus.Status.EXPANDING
+                                                )
+                                            }
+                                        }
+                                    } else Modifier
+                                )
+                        ) {
+                            SearchBarFake(
+                                label = searchStatus.label,
+                                searchBarTopPadding = dynamicTopPadding
+                            )
+                        }
+                    }
+                )
+            }
+        },
+        popupHost = {
+            searchStatus.SearchPager(
+                onSearchStatusChange = { searchStatus = it },
+                defaultResult = {},
+                searchBarTopPadding = dynamicTopPadding,
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .overScrollVertical()
+                        .scrollEndHaptic(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(
+                        start = 20.dp,
+                        end = 20.dp,
+                        bottom = 80.dp + outerPadding.calculateBottomPadding()
+                    ),
+                    overscrollEffect = null
+                ) {
+                    if (filteredModules.isEmpty() && !listComputing) {
+                        item(key = "empty") {
+                            RuntimeModuleRepoEmptyStateMiuix(
+                                totalModules = mergedModules.size,
+                                repositoryCount = state.runtimeModuleRepositories.size,
+                                hasQuery = query.isNotBlank(),
+                                onOpenRepositorySettings = ::openRepositorySettings
+                            )
+                        }
+                    } else {
+                        items(
+                            items = filteredModules,
+                            key = { merged ->
+                                "${merged.module.id.trim().lowercase().ifBlank { merged.module.name.trim().lowercase() }}-${merged.sources.joinToString("|")}"
+                            }
+                        ) { merged ->
+                            RuntimeModuleCardMiuix(
+                                merged = merged,
+                                onOpen = {
+                                    val url = merged.module.preferredOpenUrl()
+                                    if (url.isBlank()) {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.module_repo_open_failed),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    } else {
+                                        runCatching { uriHandler.openUri(url) }
+                                            .onFailure {
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.module_repo_open_failed),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                    }
+                                },
+                                onInstall = {
+                                    if (merged.module.zipUrl.isBlank()) {
+                                        Toast.makeText(
+                                            context,
+                                            runtimeRepoNoZipLabel(context),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    } else {
+                                        pendingInstallModule = merged
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
-            )
+            }
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            MiuixModuleSearchField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
-            )
-
-            val showInitialLoading = listComputing || (
-                state.refreshingRuntimeModuleRepositoryIds.isNotEmpty() &&
-                    mergedModules.isEmpty() && searchQuery.isBlank()
-                )
-            LazyColumn(
+        searchStatus.SearchBox {
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .overScrollVertical()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection)
-                    .scrollEndHaptic(),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(
-                    start = 20.dp,
-                    end = 20.dp,
-                    bottom = 80.dp + outerPadding.calculateBottomPadding()
-                ),
-                overscrollEffect = null
+                    .padding(padding)
             ) {
-                if (showInitialLoading) {
-                    item(key = "initial-loading") {
-                        MiuixModuleInitialLoading()
-                    }
-                } else if (filteredModules.isEmpty()) {
-                    item(key = "empty") {
-                        RuntimeModuleRepoEmptyStateMiuix(
-                            totalModules = mergedModules.size,
-                            repositoryCount = state.runtimeModuleRepositories.size,
-                            hasQuery = searchQuery.isNotBlank(),
-                            onOpenRepositorySettings = ::openRepositorySettings
-                        )
-                    }
-                } else {
-                    items(
-                        items = filteredModules,
-                        key = { merged ->
-                            "${merged.module.id.trim().lowercase().ifBlank { merged.module.name.trim().lowercase() }}-${merged.sources.joinToString("|")}"
+                val showInitialLoading = listComputing || (
+                    state.refreshingRuntimeModuleRepositoryIds.isNotEmpty() &&
+                        mergedModules.isEmpty() && query.isBlank()
+                    )
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .overScrollVertical()
+                        .nestedScroll(scrollBehavior.nestedScrollConnection)
+                        .scrollEndHaptic(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(
+                        start = 20.dp,
+                        end = 20.dp,
+                        bottom = 80.dp + outerPadding.calculateBottomPadding()
+                    ),
+                    overscrollEffect = null
+                ) {
+                    if (showInitialLoading) {
+                        item(key = "initial-loading") {
+                            MiuixModuleInitialLoading()
                         }
-                    ) { merged ->
-                        RuntimeModuleCardMiuix(
-                            merged = merged,
-                            onOpen = {
-                                val url = merged.module.preferredOpenUrl()
-                                if (url.isBlank()) {
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(R.string.module_repo_open_failed),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                } else {
-                                    runCatching { uriHandler.openUri(url) }
-                                        .onFailure {
-                                            Toast.makeText(
-                                                context,
-                                                context.getString(R.string.module_repo_open_failed),
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                }
-                            },
-                            onInstall = {
-                                if (merged.module.zipUrl.isBlank()) {
-                                    Toast.makeText(
-                                        context,
-                                        runtimeRepoNoZipLabel(context),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                } else {
-                                    pendingInstallModule = merged
-                                }
+                    } else if (filteredModules.isEmpty()) {
+                        item(key = "empty") {
+                            RuntimeModuleRepoEmptyStateMiuix(
+                                totalModules = mergedModules.size,
+                                repositoryCount = state.runtimeModuleRepositories.size,
+                                hasQuery = query.isNotBlank(),
+                                onOpenRepositorySettings = ::openRepositorySettings
+                            )
+                        }
+                    } else {
+                        items(
+                            items = filteredModules,
+                            key = { merged ->
+                                "${merged.module.id.trim().lowercase().ifBlank { merged.module.name.trim().lowercase() }}-${merged.sources.joinToString("|")}"
                             }
-                        )
+                        ) { merged ->
+                            RuntimeModuleCardMiuix(
+                                merged = merged,
+                                onOpen = {
+                                    val url = merged.module.preferredOpenUrl()
+                                    if (url.isBlank()) {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.module_repo_open_failed),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    } else {
+                                        runCatching { uriHandler.openUri(url) }
+                                            .onFailure {
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.module_repo_open_failed),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                    }
+                                },
+                                onInstall = {
+                                    if (merged.module.zipUrl.isBlank()) {
+                                        Toast.makeText(
+                                            context,
+                                            runtimeRepoNoZipLabel(context),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    } else {
+                                        pendingInstallModule = merged
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
