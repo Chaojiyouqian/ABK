@@ -82,7 +82,7 @@ fun ThemeSettingsScreenMiuix(
                 val uiStyleOptions = listOf("material" to "Material 3", "miuix" to "MIUIX")
                 val uiStyleIndex = if (state.uiStyle == "miuix") 1 else 0
                 OverlayDropdownPreference(
-                    title = "UI 风格",
+                    title = stringResource(R.string.settings_ui_style),
                     items = uiStyleOptions.map { it.second },
                     selectedIndex = uiStyleIndex,
                     onSelectedIndexChange = { index ->
@@ -209,7 +209,7 @@ fun ThemeSettingsScreenMiuix(
             SectionTitleMiuix("视觉效果")
             Card {
                 SwitchPreference(
-                    title = "模糊",
+                    title = stringResource(R.string.settings_blur),
                     summary = "启用顶栏和底栏的模糊效果",
                     startAction = {
                         Icon(
@@ -223,7 +223,7 @@ fun ThemeSettingsScreenMiuix(
                     onCheckedChange = { vm.setMiuixBlurEnabled(it) }
                 )
                 SwitchPreference(
-                    title = "悬浮底栏",
+                    title = stringResource(R.string.settings_floating_bottom_bar),
                     summary = "使用 Apple 风格的悬浮底栏",
                     startAction = {
                         Icon(
