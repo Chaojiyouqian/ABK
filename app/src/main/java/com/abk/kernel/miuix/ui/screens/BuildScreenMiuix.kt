@@ -155,6 +155,9 @@ import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import top.yukonga.miuix.kmp.window.WindowDialog
+import com.abk.kernel.miuix.util.BlurredBar
+import com.abk.kernel.miuix.util.rememberBlurBackdrop
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -178,6 +181,9 @@ fun BuildScreenMiuix(
     val isOnePlusBuild = config.buildTarget == BUILD_TARGET_ONEPLUS
     val recommended = state.recommendedBuildConfig
     val scrollBehavior = MiuixScrollBehavior()
+    val surfaceColor = MiuixTheme.colorScheme.surface
+    val backdrop = rememberBlurBackdrop(state.miuixBlurEnabled, surfaceColor)
+    val barColor = if (backdrop != null) Color.Transparent else surfaceColor
     val suggestedPlanName = remember(config) { vm.suggestedBuildPlanName(config) }
     val ksuVariantOptions = remember(config.buildTarget) {
         if (config.buildTarget == BUILD_TARGET_ONEPLUS) {
@@ -968,16 +974,25 @@ fun BuildScreenMiuix(
     if (!state.isLoggedIn || state.forkRepo == null) {
         val needsLogin = !state.isLoggedIn
         Scaffold(
+    
+
             topBar = {
-                TopAppBar(
-                    title = stringResource(R.string.build_title),
-                    scrollBehavior = scrollBehavior
-                )
+                BlurredBar(backdrop, surfaceColor) {
+                    TopAppBar(
+                        color = barColor,
+                        title = stringResource(R.string.build_title),
+                        scrollBehavior = scrollBehavior
+                    )
+                }
             }
         ) { padding ->
+            Box(
+                modifier = Modifier.then(
+                    if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
+                )
+            ) {
             Column(
                 modifier = Modifier
-                    .padding(padding)
                     .fillMaxSize()
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
                     .verticalScroll(rememberScrollState())
@@ -1012,22 +1027,32 @@ fun BuildScreenMiuix(
                 }
                 Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
             }
+            }
         }
         return
     }
 
     // ── Child page overlay ────────────────────────────────────────────────
     Scaffold(
+    
+
             topBar = {
-                TopAppBar(
-                    title = stringResource(R.string.build_title),
-                    scrollBehavior = scrollBehavior
-                )
+                BlurredBar(backdrop, surfaceColor) {
+                    TopAppBar(
+                        color = barColor,
+                        title = stringResource(R.string.build_title),
+                        scrollBehavior = scrollBehavior
+                    )
+                }
             }
         ) { padding ->
+            Box(
+                modifier = Modifier.then(
+                    if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
+                )
+            ) {
             Column(
                 modifier = Modifier
-                    .padding(padding)
                     .fillMaxSize()
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
                     .verticalScroll(rememberScrollState())
@@ -1036,7 +1061,7 @@ fun BuildScreenMiuix(
                     .padding(horizontal = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(padding.calculateTopPadding() + 4.dp))
 
                 // ═══ 1. Hero card ═══════════════════════════════════════════
                 BuildPlanHeroMiuix(
@@ -1704,6 +1729,7 @@ fun BuildScreenMiuix(
 
                 Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
             }
+            }
         }
 }
 
@@ -1718,6 +1744,9 @@ fun BuildPlanLibraryScreenMiuix(vm: MainViewModel) {
     val context = LocalContext.current
     val navigator = LocalNavigator.current
     val scrollBehavior = MiuixScrollBehavior()
+    val surfaceColor = MiuixTheme.colorScheme.surface
+    val backdrop = rememberBlurBackdrop(state.miuixBlurEnabled, surfaceColor)
+    val barColor = if (backdrop != null) Color.Transparent else surfaceColor
 
     var sharePlanTarget by remember { mutableStateOf<BuildPlan?>(null) }
     var renamePlanTarget by remember { mutableStateOf<BuildPlan?>(null) }
@@ -1827,24 +1856,33 @@ fun BuildPlanLibraryScreenMiuix(vm: MainViewModel) {
     }
 
     Scaffold(
+
+
         topBar = {
-            TopAppBar(
-                title = stringResource(R.string.build_plan_library),
-                scrollBehavior = scrollBehavior,
-                navigationIcon = {
-                    top.yukonga.miuix.kmp.basic.IconButton(onClick = { navigator.pop() }) {
-                        top.yukonga.miuix.kmp.basic.Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.build_back_to_config)
-                        )
+            BlurredBar(backdrop, surfaceColor) {
+                TopAppBar(
+                    color = barColor,
+                    title = stringResource(R.string.build_plan_library),
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        top.yukonga.miuix.kmp.basic.IconButton(onClick = { navigator.pop() }) {
+                            top.yukonga.miuix.kmp.basic.Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.build_back_to_config)
+                            )
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { padding ->
+        Box(
+            modifier = Modifier.then(
+                if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
+            )
+        ) {
         Column(
             modifier = Modifier
-                .padding(padding)
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .verticalScroll(rememberScrollState())
@@ -1869,6 +1907,7 @@ fun BuildPlanLibraryScreenMiuix(vm: MainViewModel) {
             )
             Spacer(Modifier.height(80.dp))
         }
+        }
     }
 }
 
@@ -1878,26 +1917,38 @@ fun BuildQueueScreenMiuix(vm: MainViewModel) {
     val context = LocalContext.current
     val navigator = LocalNavigator.current
     val scrollBehavior = MiuixScrollBehavior()
+    val surfaceColor = MiuixTheme.colorScheme.surface
+    val backdrop = rememberBlurBackdrop(state.miuixBlurEnabled, surfaceColor)
+    val barColor = if (backdrop != null) Color.Transparent else surfaceColor
 
     Scaffold(
+
+
         topBar = {
-            TopAppBar(
-                title = stringResource(R.string.build_queue_title),
-                scrollBehavior = scrollBehavior,
-                navigationIcon = {
-                    top.yukonga.miuix.kmp.basic.IconButton(onClick = { navigator.pop() }) {
-                        top.yukonga.miuix.kmp.basic.Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.build_back_to_config)
-                        )
+            BlurredBar(backdrop, surfaceColor) {
+                TopAppBar(
+                    color = barColor,
+                    title = stringResource(R.string.build_queue_title),
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        top.yukonga.miuix.kmp.basic.IconButton(onClick = { navigator.pop() }) {
+                            top.yukonga.miuix.kmp.basic.Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.build_back_to_config)
+                            )
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { padding ->
+        Box(
+            modifier = Modifier.then(
+                if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
+            )
+        ) {
         Column(
             modifier = Modifier
-                .padding(padding)
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .verticalScroll(rememberScrollState())
@@ -1920,6 +1971,7 @@ fun BuildQueueScreenMiuix(vm: MainViewModel) {
                 onClearCompleted = vm::clearCompletedBuildQueueItems
             )
             Spacer(Modifier.height(80.dp))
+        }
         }
     }
 }

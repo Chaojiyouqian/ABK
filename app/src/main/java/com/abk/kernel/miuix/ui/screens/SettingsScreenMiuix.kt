@@ -21,11 +21,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.add
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -70,6 +76,8 @@ import com.abk.kernel.data.model.ManagerSettingKind
 import com.abk.kernel.data.model.normalizeAppUpdateLine
 import com.abk.kernel.data.model.normalizeAppUpdateStability
 import com.abk.kernel.data.repository.PreferencesRepository
+import com.abk.kernel.miuix.util.BlurredBar
+import com.abk.kernel.miuix.util.rememberBlurBackdrop
 import com.abk.kernel.utils.DownloadDirectoryUtils
 import com.abk.kernel.utils.DownloadUtils
 import com.abk.kernel.utils.LocaleHelper
@@ -85,6 +93,7 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -175,27 +184,39 @@ fun SettingsScreenMiuix(
             )
         }
 
+        val surfaceColor = MiuixTheme.colorScheme.surface
+        val backdrop = rememberBlurBackdrop(state.miuixBlurEnabled, surfaceColor)
+        val barColor = if (backdrop != null) Color.Transparent else surfaceColor
+
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = stringResource(R.string.settings_title),
-                    scrollBehavior = scrollBehavior
-                )
-            }
-        ) { padding ->
+                BlurredBar(backdrop, surfaceColor) {
+                    TopAppBar(
+                        color = barColor,
+                        title = stringResource(R.string.settings_title),
+                        scrollBehavior = scrollBehavior
+                    )
+                }
+            },
+            contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal),
+        ) { innerPadding ->
             val listState = rememberScrollState()
-            Column(
-                modifier = Modifier
-                    .padding(padding)
-                    .fillMaxSize()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection)
-                    .verticalScroll(listState)
-                    .overScrollVertical()
-                    .scrollEndHaptic()
-                    .padding(horizontal = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            Box(
+                modifier = Modifier.then(
+                    if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
+                )
             ) {
-                Spacer(Modifier.height(8.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(scrollBehavior.nestedScrollConnection)
+                        .verticalScroll(listState)
+                        .overScrollVertical()
+                        .scrollEndHaptic()
+                        .padding(horizontal = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Spacer(Modifier.height(innerPadding.calculateTopPadding() + 8.dp))
 
                 // ═══════════════════════════════════════════════════════════
                 // 1. ACCOUNT
@@ -659,6 +680,7 @@ fun SettingsScreenMiuix(
                 }
 
                 Spacer(Modifier.height(60.dp + outerPadding.calculateBottomPadding()))
+            }
             }
         }
     }

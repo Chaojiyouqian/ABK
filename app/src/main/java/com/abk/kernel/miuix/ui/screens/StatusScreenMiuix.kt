@@ -86,6 +86,9 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import com.abk.kernel.miuix.util.BlurredBar
+import com.abk.kernel.miuix.util.rememberBlurBackdrop
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 
 @Composable
 fun StatusScreenMiuix(
@@ -96,44 +99,54 @@ fun StatusScreenMiuix(
 ) {
     val state by vm.uiState.collectAsState()
     val scrollBehavior = MiuixScrollBehavior()
+    val surfaceColor = MiuixTheme.colorScheme.surface
+    val backdrop = rememberBlurBackdrop(state.miuixBlurEnabled, surfaceColor)
+    val barColor = if (backdrop != null) Color.Transparent else surfaceColor
 
     androidx.compose.runtime.LaunchedEffect(Unit) { vm.loadRecentRuns() }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = stringResource(R.string.app_name),
-                scrollBehavior = scrollBehavior,
-                navigationIcon = {
-                    IconButton(onClick = onToggleRuntimeNavigation) {
-                        Icon(
-                            imageVector = if (runtimeNavigationEnabled) {
-                                Icons.Default.Home
-                            } else {
-                                Icons.Default.SwapHoriz
-                            },
-                            contentDescription = stringResource(
-                                if (runtimeNavigationEnabled) R.string.nav_home else R.string.nav_status
+            BlurredBar(backdrop, surfaceColor) {
+                TopAppBar(
+                    color = barColor,
+                    title = stringResource(R.string.app_name),
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        IconButton(onClick = onToggleRuntimeNavigation) {
+                            Icon(
+                                imageVector = if (runtimeNavigationEnabled) {
+                                    Icons.Default.Home
+                                } else {
+                                    Icons.Default.SwapHoriz
+                                },
+                                contentDescription = stringResource(
+                                    if (runtimeNavigationEnabled) R.string.nav_home else R.string.nav_status
+                                )
                             )
-                        )
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { padding ->
         val listState = rememberScrollState()
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .verticalScroll(listState)
-                .padding(horizontal = 12.dp)
-                .overScrollVertical()
-                .scrollEndHaptic(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        Box(
+            modifier = Modifier.then(
+                if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
+            )
         ) {
-            Spacer(Modifier.height(16.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .verticalScroll(listState)
+                    .padding(horizontal = 12.dp)
+                    .overScrollVertical()
+                    .scrollEndHaptic(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Spacer(Modifier.height(padding.calculateTopPadding() + 16.dp))
 
             StatusHeroCardMiuix(
                 rootGranted = state.rootGranted,
@@ -201,6 +214,7 @@ fun StatusScreenMiuix(
             }
 
             Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
+        }
         }
     }
 }

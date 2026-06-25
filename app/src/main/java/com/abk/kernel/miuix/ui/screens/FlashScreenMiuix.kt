@@ -140,6 +140,9 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import top.yukonga.miuix.kmp.window.WindowDialog
+import com.abk.kernel.miuix.util.BlurredBar
+import com.abk.kernel.miuix.util.rememberBlurBackdrop
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entry point
@@ -195,6 +198,9 @@ fun FlashScreenMiuix(
 
     // ── Scroll state ────────────────────────────────────────────────────
     val scrollBehavior = MiuixScrollBehavior()
+    val surfaceColor = MiuixTheme.colorScheme.surface
+    val backdrop = rememberBlurBackdrop(state.miuixBlurEnabled, surfaceColor)
+    val barColor = if (backdrop != null) Color.Transparent else surfaceColor
     val flashListScrollState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
 
     // ── Derived state ───────────────────────────────────────────────────
@@ -799,30 +805,40 @@ fun FlashScreenMiuix(
     // ── Main Scaffold ───────────────────────────────────────────────────
 
     Scaffold(
+
+
         topBar = {
-            TopAppBar(
-                title = if (rootGranted) stringResource(R.string.flash_title)
-                else stringResource(R.string.flash_files_title),
-                scrollBehavior = scrollBehavior
-            )
+            BlurredBar(backdrop, surfaceColor) {
+                TopAppBar(
+                    color = barColor,
+                    title = if (rootGranted) stringResource(R.string.flash_title)
+                    else stringResource(R.string.flash_files_title),
+                    scrollBehavior = scrollBehavior
+                )
+            }
         }
     ) { padding ->
-        LazyColumn(
-            state = flashListScrollState,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .overScrollVertical()
-                .scrollEndHaptic(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(
-                start = 20.dp,
-                end = 20.dp,
-                bottom = 80.dp + outerPadding.calculateBottomPadding()
-            ),
-            overscrollEffect = null
+        Box(
+            modifier = Modifier.then(
+                if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
+            )
         ) {
+            LazyColumn(
+                state = flashListScrollState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .overScrollVertical()
+                    .scrollEndHaptic(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(
+                    top = padding.calculateTopPadding() + 6.dp,
+                    start = 20.dp,
+                    end = 20.dp,
+                    bottom = 80.dp + outerPadding.calculateBottomPadding()
+                ),
+                overscrollEffect = null
+            ) {
             // ── Hero card ───────────────────────────────────────────────
             item(key = "hero") {
                 MiuixFlashHeroCard(
@@ -1057,6 +1073,7 @@ fun FlashScreenMiuix(
             item(key = "bottom-spacer") {
                 Spacer(Modifier.height(24.dp))
             }
+        }
         }
     }
 }
