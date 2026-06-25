@@ -532,6 +532,15 @@
     <string name="flash_category_module">模块</string>
     <string name="empty_state_build_artifacts_hint">等待下一次构建完成后，这里会自动整理可用产物。</string>
 
+    <!-- Flash terminal -->
+    <string name="flash_terminal_status_flashing">正在执行...</string>
+    <string name="flash_terminal_status_success">执行成功</string>
+    <string name="flash_terminal_status_failed">执行失败</string>
+    <string name="flash_terminal_reboot">重启</string>
+    <string name="flash_terminal_back_confirm_title">确认退出</string>
+    <string name="flash_terminal_back_confirm_msg">操作正在执行，确定要退出吗？</string>
+    <string name="flash_terminal_save_log">保存日志</string>
+
     <!-- Status -->
     <string name="status_title">当前状态</string>
     <string name="status_root">Root 状态</string>

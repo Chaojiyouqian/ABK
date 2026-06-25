@@ -28,7 +28,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,12 +51,8 @@ import com.abk.kernel.ui.screens.flash.prebuiltSubLevelOptions
 import com.abk.kernel.ui.screens.flash.releaseDateLabel
 import com.abk.kernel.ui.screens.flash.sanitizePrebuiltFilter
 import com.abk.kernel.utils.DownloadUtils
-import com.abk.kernel.utils.RootUtils
 import com.abk.kernel.viewmodel.MainViewModel
 import com.abk.kernel.miuix.ui.screens.flash.common.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -90,7 +85,6 @@ fun FlashPrebuiltDetailScreenMiuix(
 
     val navigator = LocalNavigator.current
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val state by vm.uiState.collectAsState()
 
     val releaseId = route.releaseId
@@ -112,8 +106,6 @@ fun FlashPrebuiltDetailScreenMiuix(
     var showFlashConfirm by remember { mutableStateOf(false) }
     var showInstallConfirm by remember { mutableStateOf(false) }
 
-    val terminal = rememberFlashTerminalState(context, scope)
-
     LaunchedEffect(release) {
         val r = release ?: return@LaunchedEffect
         if (!state.prebuiltGkiAssetsByReleaseId.containsKey(releaseId)) {
@@ -134,59 +126,16 @@ fun FlashPrebuiltDetailScreenMiuix(
 
     fun startFlash(item: DownloadedArtifact) {
         if (!state.rootGranted) {
-            terminal.showFailure(
-                context.getString(R.string.flash_root_unauthorized),
-                listOf(
-                    context.getString(R.string.flash_partial_files_only),
-                    context.getString(R.string.flash_grant_root_flash)
-                )
-            )
             return
         }
-        scope.launch {
-            terminal.executeRootOp(
-                title = context.getString(R.string.flash_operation_flash_boot),
-                canReboot = true
-            ) {
-                appendLine("$ flash ${item.name}")
-                appendLine("file: ${item.filePath}")
-                appendLine("")
-                appendLine(context.getString(R.string.flash_wait_root_shell))
-                val result = runCatching {
-                    withContext(Dispatchers.IO) {
-                        val prepared = DownloadUtils.prepareDownloadedArtifact(context, item)
-                        try {
-                            if (prepared.cleanupDir != null) {
-                                appendLine("[ABK] Extracted to cache")
-                                appendLine("[ABK] Payload: ${prepared.file.absolutePath}")
-                            }
-                            when (prepared.resolvedType ?: item.type) {
-                                ArtifactType.KERNEL_IMG ->
-                                    RootUtils.flashImage(prepared.file.absolutePath) { line -> appendLine(line) }
-                                ArtifactType.ANYKERNEL3 ->
-                                    RootUtils.flashAnyKernel3(context, prepared.file.absolutePath) { line -> appendLine(line) }
-                                ArtifactType.SUSFS_MODULE ->
-                                    RootUtils.installModule(prepared.file.absolutePath) { line -> appendLine(line) }
-                                ArtifactType.KSU_MANAGER ->
-                                    RootUtils.installApk(context, prepared.file.absolutePath) { line -> appendLine(line) }
-                                else ->
-                                    RootUtils.ShellResult(false, listOf("unsupported: ${item.type}"))
-                            }
-                        } finally {
-                            prepared.cleanupDir?.deleteRecursively()
-                        }
-                    }
-                }.getOrElse { error ->
-                    RootUtils.ShellResult(false, listOf(error.message ?: error::class.java.simpleName))
-                }
-                if (result.output.isEmpty()) {
-                    appendLine(if (result.success) context.getString(R.string.flash_command_done_no_output) else context.getString(R.string.flash_command_failed_no_log))
-                } else {
-                    result.output.forEach { line -> appendLine(line) }
-                }
-                RootResult(result.success, "")
-            }
-        }
+        navigator.push(Route.FlashTerminalLog(FlashTerminalParams(
+            artifactPath = item.filePath,
+            artifactName = item.name,
+            artifactType = item.type.name,
+            ak3SlotTarget = null,
+            allowHighRiskFallback = false,
+            operationTitle = context.getString(R.string.flash_operation_flash_boot)
+        )))
     }
 
     fun requestInstall(item: DownloadedArtifact) {
@@ -196,48 +145,16 @@ fun FlashPrebuiltDetailScreenMiuix(
 
     fun installManager(item: DownloadedArtifact) {
         if (!state.rootGranted) {
-            terminal.showFailure(
-                context.getString(R.string.flash_root_unauthorized),
-                listOf(
-                    context.getString(R.string.flash_partial_files_only),
-                    context.getString(R.string.flash_grant_root_install_manager)
-                )
-            )
             return
         }
-        scope.launch {
-            terminal.executeRootOp(
-                title = context.getString(R.string.flash_install_manager_apk),
-                canReboot = false
-            ) {
-                appendLine("$ pm install -r ${item.name}")
-                appendLine("file: ${item.filePath}")
-                appendLine("")
-                appendLine(context.getString(R.string.flash_wait_root_shell))
-                val result = runCatching {
-                    withContext(Dispatchers.IO) {
-                        val prepared = DownloadUtils.prepareDownloadedArtifact(context, item)
-                        try {
-                            if (prepared.cleanupDir != null) {
-                                appendLine("[ABK] Extracted to cache")
-                                appendLine("[ABK] Payload: ${prepared.file.absolutePath}")
-                            }
-                            RootUtils.installApk(context, prepared.file.absolutePath) { line -> appendLine(line) }
-                        } finally {
-                            prepared.cleanupDir?.deleteRecursively()
-                        }
-                    }
-                }.getOrElse { error ->
-                    RootUtils.ShellResult(false, listOf(error.message ?: error::class.java.simpleName))
-                }
-                if (result.output.isEmpty()) {
-                    appendLine(if (result.success) context.getString(R.string.flash_command_done_no_output) else context.getString(R.string.flash_command_failed_no_log))
-                } else {
-                    result.output.forEach { line -> appendLine(line) }
-                }
-                RootResult(result.success, "")
-            }
-        }
+        navigator.push(Route.FlashTerminalLog(FlashTerminalParams(
+            artifactPath = item.filePath,
+            artifactName = item.name,
+            artifactType = item.type.name,
+            ak3SlotTarget = null,
+            allowHighRiskFallback = false,
+            operationTitle = context.getString(R.string.flash_install_manager_apk)
+        )))
     }
 
     // ── UI ───────────────────────────────────────────────────────────────
@@ -412,11 +329,6 @@ fun FlashPrebuiltDetailScreenMiuix(
         )
     }
 
-    TerminalDialogFromState(
-        state = terminal,
-        canReboot = true,
-        onReboot = { scope.launch { RootUtils.reboot() } }
-    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -532,6 +532,15 @@
     <string name="flash_category_module">Modules</string>
     <string name="empty_state_build_artifacts_hint">After the next build finishes, available artifacts will be organized here automatically.</string>
 
+    <!-- Flash terminal -->
+    <string name="flash_terminal_status_flashing">Executing...</string>
+    <string name="flash_terminal_status_success">Success</string>
+    <string name="flash_terminal_status_failed">Failed</string>
+    <string name="flash_terminal_reboot">Reboot</string>
+    <string name="flash_terminal_back_confirm_title">Confirm Exit</string>
+    <string name="flash_terminal_back_confirm_msg">Operation in progress, exit?</string>
+    <string name="flash_terminal_save_log">Save Log</string>
+
     <!-- Status -->
     <string name="status_title">Current status</string>
     <string name="status_root">Root status</string>

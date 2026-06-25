@@ -1048,6 +1048,12 @@ private fun AbkMainScaffold(
                                     onBack = { navigator.pop() }
                                 )
                             }
+                            entry<Route.FlashTerminalLog> { route ->
+                                com.abk.kernel.miuix.ui.screens.flash.FlashTerminalLogScreenMiuix(
+                                    params = route.params,
+                                    onBack = { navigator.pop() }
+                                )
+                            }
                             entry<Route.SuperUserProfile> { route ->
                                 com.abk.kernel.miuix.ui.screens.SuperUserProfileScreenMiuix(
                                     vm = vm,

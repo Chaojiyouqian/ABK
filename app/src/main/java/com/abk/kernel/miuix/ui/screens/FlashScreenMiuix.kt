@@ -46,7 +46,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -78,7 +77,6 @@ import com.abk.kernel.ui.screens.flash.FlashFilterSaver
 import com.abk.kernel.ui.screens.flash.WorkflowArtifactGroup
 import com.abk.kernel.ui.screens.flash.buildWorkflowGroups
 import com.abk.kernel.ui.screens.flash.emptyWorkflowGroupFor
-import com.abk.kernel.ui.screens.flash.flashCommandPreview
 import com.abk.kernel.ui.screens.flash.flashOperationLabelRes
 import com.abk.kernel.ui.screens.flash.hasDownloadedFilesForRun
 import com.abk.kernel.ui.screens.flash.hasKernelArtifact
@@ -104,8 +102,8 @@ import com.abk.kernel.miuix.ui.screens.flash.MiuixInstallManagerConfirmDialog
 import com.abk.kernel.miuix.ui.screens.flash.MiuixLocalOnlyArtifactCard
 import com.abk.kernel.miuix.ui.screens.flash.MiuixPrebuiltParameterSummaryDialog
 import com.abk.kernel.miuix.ui.screens.flash.MiuixTagChip
-import com.abk.kernel.miuix.ui.screens.flash.MiuixTerminalDialog
 import com.abk.kernel.miuix.ui.screens.flash.MiuixWorkflowDownloadManagementCard
+import com.abk.kernel.miuix.ui.screens.flash.common.FlashTerminalParams
 import com.abk.kernel.miuix.ui.screens.flash.MiuixWorkflowRunCard
 import com.abk.kernel.utils.DownloadUtils
 import com.abk.kernel.utils.FlashFilter
@@ -119,7 +117,6 @@ import com.abk.kernel.viewmodel.mergeWorkflowActiveDownloads
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -156,7 +153,6 @@ fun FlashScreenMiuix(
 ) {
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val navigator = LocalNavigator.current
 
     // ── Tab & filter state ──────────────────────────────────────────────
@@ -177,14 +173,6 @@ fun FlashScreenMiuix(
     var showInstallManagerConfirm by remember { mutableStateOf(false) }
     var cancelConfirmRunId by remember { mutableStateOf<Long?>(null) }
     var dismissingFailedRunId by remember { mutableStateOf<Long?>(null) }
-
-    // ── Terminal state ──────────────────────────────────────────────────
-    var showTerminal by remember { mutableStateOf(false) }
-    var terminalTitle by remember { mutableStateOf(context.getString(R.string.flash_terminal)) }
-    var terminalCanReboot by remember { mutableStateOf(false) }
-    var terminalRunning by remember { mutableStateOf(false) }
-    var terminalLog by remember { mutableStateOf<List<String>>(emptyList()) }
-    var terminalSuccess by remember { mutableStateOf<Boolean?>(null) }
 
     // ── AnyKernel slot state ────────────────────────────────────────────
     var selectedAnyKernelSlotTargetName by rememberSaveable {
@@ -443,101 +431,25 @@ fun FlashScreenMiuix(
 
     // ── Operational callbacks ───────────────────────────────────────────
 
-    fun showFailure(title: String, lines: List<String>) {
-        terminalTitle = title
-        terminalCanReboot = false
-        terminalRunning = false
-        terminalSuccess = false
-        terminalLog = lines
-        showTerminal = true
-    }
-
     fun copyDownloadedFilePath(item: DownloadedArtifact) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText(item.name, item.filePath))
         Toast.makeText(context, context.getString(R.string.flash_copy_path_done), Toast.LENGTH_SHORT).show()
     }
 
-    fun appendTerminalOutput(line: String) {
-        scope.launch(Dispatchers.Main.immediate) {
-            terminalLog = terminalLog + line
-        }
-    }
-
-    suspend fun executeWithPreparedArtifact(
-        item: DownloadedArtifact,
-        allowHighRiskFallback: Boolean = false,
-        block: (DownloadUtils.PreparedDownloadedArtifact) -> RootUtils.ShellResult
-    ): RootUtils.ShellResult = withContext(Dispatchers.IO) {
-        val prepared = DownloadUtils.prepareDownloadedArtifact(
-            context = context,
-            artifact = item,
-            allowHighRiskFallback = allowHighRiskFallback
-        )
-        try {
-            if (prepared.cleanupDir != null) {
-                appendTerminalOutput("[ABK] 已解包下载包到缓存目录")
-                appendTerminalOutput("[ABK] Payload: ${prepared.file.absolutePath}")
-                if (prepared.dependencyModules.isNotEmpty()) {
-                    appendTerminalOutput("[ABK] 附带 Magisk 依赖模块: ${prepared.dependencyModules.joinToString { it.name }}")
-                }
-                if (prepared.dependencyApps.isNotEmpty()) {
-                    appendTerminalOutput("[ABK] 附带扩展应用: ${prepared.dependencyApps.joinToString { it.name }}")
-                }
-            }
-            block(prepared)
-        } finally {
-            prepared.cleanupDir?.deleteRecursively()
-        }
-    }
-
     fun installManager(item: DownloadedArtifact) {
         if (!rootGranted) {
-            showFailure(
-                context.getString(R.string.flash_root_unauthorized),
-                listOf(
-                    "$ pm install -r ${item.name}",
-                    context.getString(R.string.flash_partial_files_only),
-                    context.getString(R.string.flash_grant_root_install_manager)
-                )
-            )
+            Toast.makeText(context, context.getString(R.string.flash_root_unauthorized), Toast.LENGTH_SHORT).show()
             return
         }
-        terminalTitle = context.getString(R.string.flash_install_manager_apk)
-        terminalCanReboot = false
-        terminalRunning = true
-        terminalSuccess = null
-        terminalLog = listOf(
-            "$ pm install -r ${item.name}",
-            "file: ${item.filePath}",
-            "",
-            context.getString(R.string.flash_wait_root_shell)
-        )
-        showTerminal = true
-        scope.launch {
-            val result = runCatching {
-                executeWithPreparedArtifact(item) { prepared ->
-                    RootUtils.installApk(context, prepared.file.absolutePath, ::appendTerminalOutput)
-                }
-            }.getOrElse { error ->
-                RootUtils.ShellResult(false, listOf(error.message ?: error::class.java.simpleName))
-            }
-            terminalRunning = false
-            terminalSuccess = result.success
-            terminalLog = listOf(
-                "$ pm install -r ${item.name}",
-                "file: ${item.filePath}",
-                ""
-            ) + result.output.ifEmpty {
-                listOf(
-                    if (result.success) {
-                        context.getString(R.string.flash_command_done_no_output)
-                    } else {
-                        context.getString(R.string.flash_command_failed_no_log)
-                    }
-                )
-            }
-        }
+        navigator.push(Route.FlashTerminalLog(FlashTerminalParams(
+            artifactPath = item.filePath,
+            artifactName = item.name,
+            artifactType = item.type.name,
+            ak3SlotTarget = null,
+            allowHighRiskFallback = false,
+            operationTitle = context.getString(R.string.flash_install_manager_apk)
+        )))
     }
 
     fun startFlash(
@@ -546,97 +458,17 @@ fun FlashScreenMiuix(
         allowHighRiskFallback: Boolean = false
     ) {
         if (!rootGranted) {
-            showFailure(
-                context.getString(R.string.flash_root_unauthorized),
-                listOf(
-                    "$ ${flashCommandPreview(item, anyKernelSlotTarget)}",
-                    context.getString(R.string.flash_partial_files_only),
-                    context.getString(R.string.flash_grant_root_flash)
-                )
-            )
+            Toast.makeText(context, context.getString(R.string.flash_root_unauthorized), Toast.LENGTH_SHORT).show()
             return
         }
-        terminalTitle = context.getString(flashOperationLabelRes(item.type))
-        terminalCanReboot = true
-        terminalRunning = true
-        terminalSuccess = null
-        val slotLog = if (item.type == ArtifactType.ANYKERNEL3) {
-            listOf(
-                context.getString(
-                    R.string.root_patch_log_slot,
-                    when (anyKernelSlotTarget) {
-                        RootUtils.Ak3SlotTarget.INACTIVE -> flashAnyKernelInactiveSlotLabel
-                        RootUtils.Ak3SlotTarget.CURRENT -> flashAnyKernelCurrentSlotLabel
-                    }
-                )
-            )
-        } else {
-            emptyList()
-        }
-        terminalLog = listOf(
-            "$ ${flashCommandPreview(item, anyKernelSlotTarget)}",
-            "file: ${item.filePath}",
-        ) + slotLog + listOf(
-            "",
-            context.getString(R.string.flash_wait_root_shell)
-        )
-        showTerminal = true
-        scope.launch {
-            val result = runCatching {
-                executeWithPreparedArtifact(item, allowHighRiskFallback) { prepared ->
-                    val flashType = prepared.resolvedType ?: item.type
-                    if (flashType == ArtifactType.KERNEL_IMG || flashType == ArtifactType.ANYKERNEL3) {
-                        prepared.dependencyApps.forEach { dependency ->
-                            appendTerminalOutput("[ABK] 先安装依赖扩展应用: ${dependency.name}")
-                            val dependencyResult = RootUtils.installApk(context, dependency.absolutePath, ::appendTerminalOutput)
-                            if (!dependencyResult.success) {
-                                return@executeWithPreparedArtifact dependencyResult
-                            }
-                        }
-                        prepared.dependencyModules.forEach { dependency ->
-                            appendTerminalOutput("[ABK] 先安装依赖模块: ${dependency.name}")
-                            val dependencyResult = RootUtils.installModule(dependency.absolutePath, ::appendTerminalOutput)
-                            if (!dependencyResult.success) {
-                                return@executeWithPreparedArtifact dependencyResult
-                            }
-                        }
-                    }
-                    when (flashType) {
-                        ArtifactType.KERNEL_IMG -> RootUtils.flashImage(prepared.file.absolutePath, onOutput = ::appendTerminalOutput)
-                        ArtifactType.ANYKERNEL3 -> RootUtils.flashAnyKernel3(
-                            context,
-                            prepared.file.absolutePath,
-                            targetSlot = anyKernelSlotTarget,
-                            onOutput = ::appendTerminalOutput
-                        )
-                        ArtifactType.SUSFS_MODULE -> RootUtils.installModule(prepared.file.absolutePath, ::appendTerminalOutput)
-                        ArtifactType.KSU_MANAGER -> RootUtils.installApk(context, prepared.file.absolutePath, ::appendTerminalOutput)
-                        ArtifactType.ABK_MANAGER ->
-                            RootUtils.ShellResult(false, listOf(context.getString(R.string.flash_unsupported_auto_flash)))
-                        else -> RootUtils.ShellResult(false, listOf(context.getString(R.string.flash_unsupported_auto_flash)))
-                    }
-                }
-            }.getOrElse { error ->
-                RootUtils.ShellResult(false, listOf(error.message ?: error::class.java.simpleName))
-            }
-            allowLegacyBundleFallback = false
-            terminalRunning = false
-            terminalSuccess = result.success
-            terminalLog = listOf(
-                "$ ${flashCommandPreview(item, anyKernelSlotTarget)}",
-                "file: ${item.filePath}",
-            ) + slotLog + listOf(
-                ""
-            ) + result.output.ifEmpty {
-                listOf(
-                    if (result.success) {
-                        context.getString(R.string.flash_command_done_no_output)
-                    } else {
-                        context.getString(R.string.flash_command_failed_no_log)
-                    }
-                )
-            }
-        }
+        navigator.push(Route.FlashTerminalLog(FlashTerminalParams(
+            artifactPath = item.filePath,
+            artifactName = item.name,
+            artifactType = item.type.name,
+            ak3SlotTarget = anyKernelSlotTarget.name,
+            allowHighRiskFallback = allowHighRiskFallback,
+            operationTitle = context.getString(flashOperationLabelRes(item.type))
+        )))
     }
 
     fun requestFlash(item: DownloadedArtifact) {
@@ -655,19 +487,6 @@ fun FlashScreenMiuix(
     }
 
     // ── Dialogs ─────────────────────────────────────────────────────────
-
-    if (showTerminal) {
-        MiuixTerminalDialog(
-            title = terminalTitle,
-            running = terminalRunning,
-            success = terminalSuccess,
-            onClose = { if (!terminalRunning) showTerminal = false },
-            onReboot = if (terminalCanReboot && !terminalRunning) {
-                { scope.launch(Dispatchers.IO) { RootUtils.reboot() } }
-            } else null,
-            terminalLog = terminalLog
-        )
-    }
 
     if (showFlashConfirm) {
         val item = selectedItem

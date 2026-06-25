@@ -2,6 +2,7 @@ package com.abk.kernel.ui.navigation3
 
 import android.os.Parcelable
 import androidx.navigation3.runtime.NavKey
+import com.abk.kernel.miuix.ui.screens.flash.common.FlashTerminalParams
 import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.Serializable
 
@@ -71,6 +72,10 @@ sealed interface Route : NavKey, Parcelable {
     @Parcelize
     @Serializable
     data class SuperUserProfile(val uid: Int) : Route
+
+    @Parcelize
+    @Serializable
+    data class FlashTerminalLog(val params: FlashTerminalParams) : Route
 
     // 以后可按需添加更多子页面 Route
 }

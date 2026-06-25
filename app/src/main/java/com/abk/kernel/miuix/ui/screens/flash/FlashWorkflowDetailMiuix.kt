@@ -25,7 +25,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,7 +36,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.abk.kernel.R
 import com.abk.kernel.data.model.ArtifactCategory
-import com.abk.kernel.data.model.ArtifactType
 import com.abk.kernel.data.model.BuildProgress
 import com.abk.kernel.data.model.DownloadedArtifact
 import com.abk.kernel.data.model.PREBUILT_GKI_RUN_ID
@@ -50,7 +48,6 @@ import com.abk.kernel.ui.screens.flash.WorkflowArtifactGroup
 import com.abk.kernel.ui.screens.flash.artifactCategoryOrder
 import com.abk.kernel.ui.screens.flash.buildWorkflowGroups
 import com.abk.kernel.ui.screens.flash.emptyWorkflowGroupFor
-import com.abk.kernel.ui.screens.flash.flashCommandPreview
 import com.abk.kernel.ui.screens.flash.flashOperationLabelRes
 import com.abk.kernel.ui.screens.flash.hasArtifactsInCategory
 import com.abk.kernel.ui.screens.flash.hasKernelArtifact
@@ -66,10 +63,7 @@ import com.abk.kernel.utils.RootUtils
 import com.abk.kernel.utils.WorkflowPrimary
 import com.abk.kernel.viewmodel.MainViewModel
 import com.abk.kernel.miuix.ui.screens.flash.common.*
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -99,7 +93,6 @@ fun FlashWorkflowDetailScreenMiuix(
     val navigator = LocalNavigator.current
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val rootGranted = state.rootGranted
     val runId = route.runId
 
@@ -179,7 +172,7 @@ fun FlashWorkflowDetailScreenMiuix(
         ?: if (keepBuildingForCancel) recentRunById[runId] else null
     val showBuilding = buildingRun != null && (activeRun != null || isCancelling)
 
-    // ── Dialog / terminal state ─────────────────────────────────────────
+    // ── Dialog state ─────────────────────────────────────────
     var cancelConfirmDialog by remember { mutableStateOf(false) }
     var deleteWorkflowTarget by remember { mutableStateOf<WorkflowArtifactGroup?>(null) }
     var parameterTarget by remember { mutableStateOf<WorkflowArtifactGroup?>(null) }
@@ -188,8 +181,6 @@ fun FlashWorkflowDetailScreenMiuix(
     var showInstallManagerConfirm by remember { mutableStateOf(false) }
     var selectedItem by remember { mutableStateOf<DownloadedArtifact?>(null) }
     var allowLegacyBundleFallback by remember { mutableStateOf(false) }
-
-    val terminal = rememberFlashTerminalState(context, scope)
 
     // ── LaunchedEffects ─────────────────────────────────────────────────
 
@@ -237,73 +228,18 @@ fun FlashWorkflowDetailScreenMiuix(
         copyArtifactPath(context, item)
     }
 
-    suspend fun executeWithPreparedArtifact(
-        item: DownloadedArtifact,
-        allowHighRiskFallback: Boolean = false,
-        block: (DownloadUtils.PreparedDownloadedArtifact) -> RootUtils.ShellResult
-    ): RootUtils.ShellResult = withContext(Dispatchers.IO) {
-        val prepared = DownloadUtils.prepareDownloadedArtifact(
-            context = context,
-            artifact = item,
-            allowHighRiskFallback = allowHighRiskFallback
-        )
-        try {
-            if (prepared.cleanupDir != null) {
-                terminal.appendLine("[ABK] 已解包下载包到缓存目录")
-                terminal.appendLine("[ABK] Payload: ${prepared.file.absolutePath}")
-                if (prepared.dependencyModules.isNotEmpty()) {
-                    terminal.appendLine(
-                        "[ABK] 附带 Magisk 依赖模块: ${prepared.dependencyModules.joinToString { it.name }}"
-                    )
-                }
-                if (prepared.dependencyApps.isNotEmpty()) {
-                    terminal.appendLine(
-                        "[ABK] 附带扩展应用: ${prepared.dependencyApps.joinToString { it.name }}"
-                    )
-                }
-            }
-            block(prepared)
-        } finally {
-            prepared.cleanupDir?.deleteRecursively()
-        }
-    }
-
     fun installManager(item: DownloadedArtifact) {
         if (!rootGranted) {
-            terminal.showFailure(
-                context.getString(R.string.flash_root_unauthorized),
-                listOf(
-                    "$ pm install -r ${item.name}",
-                    context.getString(R.string.flash_partial_files_only),
-                    context.getString(R.string.flash_grant_root_install_manager)
-                )
-            )
             return
         }
-        scope.launch {
-            terminal.executeRootOp(
-                title = context.getString(R.string.flash_install_manager_apk),
-                canReboot = false
-            ) {
-                appendLine("$ pm install -r ${item.name}")
-                appendLine("file: ${item.filePath}")
-                appendLine("")
-                appendLine(context.getString(R.string.flash_wait_root_shell))
-                val result = runCatching {
-                    executeWithPreparedArtifact(item) { prepared ->
-                        RootUtils.installApk(context, prepared.file.absolutePath) { line -> appendLine(line) }
-                    }
-                }.getOrElse { error ->
-                    RootUtils.ShellResult(false, listOf(error.message ?: error::class.java.simpleName))
-                }
-                if (result.output.isEmpty()) {
-                    appendLine(if (result.success) context.getString(R.string.flash_command_done_no_output) else context.getString(R.string.flash_command_failed_no_log))
-                } else {
-                    result.output.forEach { line -> appendLine(line) }
-                }
-                RootResult(result.success, "")
-            }
-        }
+        navigator.push(Route.FlashTerminalLog(FlashTerminalParams(
+            artifactPath = item.filePath,
+            artifactName = item.name,
+            artifactType = item.type.name,
+            ak3SlotTarget = null,
+            allowHighRiskFallback = false,
+            operationTitle = context.getString(R.string.flash_install_manager_apk)
+        )))
     }
 
     fun startFlash(
@@ -312,81 +248,16 @@ fun FlashWorkflowDetailScreenMiuix(
         allowHighRiskFallback: Boolean = false
     ) {
         if (!rootGranted) {
-            terminal.showFailure(
-                context.getString(R.string.flash_root_unauthorized),
-                listOf(
-                    "$ ${flashCommandPreview(item, anyKernelSlotTarget)}",
-                    context.getString(R.string.flash_partial_files_only),
-                    context.getString(R.string.flash_grant_root_flash)
-                )
-            )
             return
         }
-        scope.launch {
-            terminal.executeRootOp(
-                title = context.getString(flashOperationLabelRes(item.type)),
-                canReboot = true
-            ) {
-                appendLine("$ ${flashCommandPreview(item, anyKernelSlotTarget)}")
-                appendLine("file: ${item.filePath}")
-                appendLine("")
-                appendLine(context.getString(R.string.flash_wait_root_shell))
-                val result = runCatching {
-                    executeWithPreparedArtifact(item, allowHighRiskFallback) { prepared ->
-                        val flashType = prepared.resolvedType ?: item.type
-                        if (flashType == ArtifactType.KERNEL_IMG || flashType == ArtifactType.ANYKERNEL3) {
-                            prepared.dependencyApps.forEach { dependency ->
-                                appendLine("[ABK] 先安装依赖扩展应用: ${dependency.name}")
-                                val dependencyResult = RootUtils.installApk(
-                                    context, dependency.absolutePath
-                                ) { line -> appendLine(line) }
-                                if (!dependencyResult.success) {
-                                    return@executeWithPreparedArtifact dependencyResult
-                                }
-                            }
-                            prepared.dependencyModules.forEach { dependency ->
-                                appendLine("[ABK] 先安装依赖模块: ${dependency.name}")
-                                val dependencyResult = RootUtils.installModule(
-                                    dependency.absolutePath
-                                ) { line -> appendLine(line) }
-                                if (!dependencyResult.success) {
-                                    return@executeWithPreparedArtifact dependencyResult
-                                }
-                            }
-                        }
-                        when (flashType) {
-                            ArtifactType.KERNEL_IMG -> RootUtils.flashImage(
-                                prepared.file.absolutePath
-                            ) { line -> appendLine(line) }
-                            ArtifactType.ANYKERNEL3 -> RootUtils.flashAnyKernel3(
-                                context,
-                                prepared.file.absolutePath,
-                                targetSlot = anyKernelSlotTarget
-                            ) { line -> appendLine(line) }
-                            ArtifactType.SUSFS_MODULE -> RootUtils.installModule(
-                                prepared.file.absolutePath
-                            ) { line -> appendLine(line) }
-                            ArtifactType.KSU_MANAGER -> RootUtils.installApk(
-                                context, prepared.file.absolutePath
-                            ) { line -> appendLine(line) }
-                            ArtifactType.ABK_MANAGER ->
-                                RootUtils.ShellResult(false, listOf(context.getString(R.string.flash_unsupported_auto_flash)))
-                            else ->
-                                RootUtils.ShellResult(false, listOf(context.getString(R.string.flash_unsupported_auto_flash)))
-                        }
-                    }
-                }.getOrElse { error ->
-                    RootUtils.ShellResult(false, listOf(error.message ?: error::class.java.simpleName))
-                }
-                allowLegacyBundleFallback = false
-                if (result.output.isEmpty()) {
-                    appendLine(if (result.success) context.getString(R.string.flash_command_done_no_output) else context.getString(R.string.flash_command_failed_no_log))
-                } else {
-                    result.output.forEach { line -> appendLine(line) }
-                }
-                RootResult(result.success, "")
-            }
-        }
+        navigator.push(Route.FlashTerminalLog(FlashTerminalParams(
+            artifactPath = item.filePath,
+            artifactName = item.name,
+            artifactType = item.type.name,
+            ak3SlotTarget = anyKernelSlotTarget.name,
+            allowHighRiskFallback = allowHighRiskFallback,
+            operationTitle = context.getString(flashOperationLabelRes(item.type))
+        )))
     }
 
     fun requestFlash(item: DownloadedArtifact) {
@@ -688,12 +559,6 @@ fun FlashWorkflowDetailScreenMiuix(
             onDismiss = { showInstallManagerConfirm = false }
         )
     }
-
-    TerminalDialogFromState(
-        state = terminal,
-        canReboot = true,
-        onReboot = { scope.launch { RootUtils.reboot() } }
-    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
