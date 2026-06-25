@@ -459,6 +459,7 @@ private fun AbkMainScaffold(
         AbkTab.Build -> navIsOnSubPage || buildPlanPageVisible
         AbkTab.Modules -> navIsOnSubPage
         AbkTab.Flash -> navIsOnSubPage || flashDetailPageVisible
+        AbkTab.InstalledModules -> navIsOnSubPage
         AbkTab.Settings -> navIsOnSubPage || settingsChildPageVisible
         AbkTab.RootAuth -> navIsOnSubPage || rootAuthDetailPageVisible
         AbkTab.RuntimeHome -> if (miuixMode) navIsOnSubPage else managerPatchPageVisible
@@ -1068,6 +1069,13 @@ private fun AbkMainScaffold(
                                     runtimeVariant = state.abkRuntimeStatus?.manager?.variant.orEmpty(),
                                     backgroundUri = state.customBackgroundUri,
                                     backgroundImageEnabled = state.backgroundImageEnabled,
+                                    onBack = { navigator.pop() }
+                                )
+                            }
+                            entry<Route.ModuleInstallLog> { route ->
+                                com.abk.kernel.miuix.ui.screens.runtime.ModuleInstallLogScreenMiuix(
+                                    params = route.params,
+                                    vm = vm,
                                     onBack = { navigator.pop() }
                                 )
                             }

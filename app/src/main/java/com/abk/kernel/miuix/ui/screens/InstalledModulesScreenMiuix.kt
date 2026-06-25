@@ -41,12 +41,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Delete
@@ -60,7 +56,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -79,7 +74,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -97,7 +91,6 @@ import com.abk.kernel.miuix.component.SearchStatus
 import com.abk.kernel.ui.screens.MODULE_INSTALL_MIME_TYPES
 import com.abk.kernel.ui.screens.RuntimeModuleDisplayGroup
 import com.abk.kernel.ui.screens.canUninstallRuntimeModule
-import com.abk.kernel.ui.screens.copyRuntimeModuleUriToCache
 import com.abk.kernel.ui.screens.displayName
 import com.abk.kernel.ui.screens.groupRuntimeModulesForDisplay
 import com.abk.kernel.ui.screens.hasRuntimeModuleFileAccess
@@ -105,16 +98,14 @@ import com.abk.kernel.ui.screens.matchesRuntimeModuleQuery
 import com.abk.kernel.ui.screens.normalizedType
 import com.abk.kernel.ui.screens.runtimeModuleUriDisplayName
 import com.abk.kernel.ui.screens.typeOrder
+import com.abk.kernel.ui.navigation3.LocalNavigator
+import com.abk.kernel.ui.navigation3.Route
+import com.abk.kernel.miuix.ui.screens.runtime.ModuleInstallParams
 import com.abk.kernel.ui.webui.ModuleWebUiActivity
-import com.abk.kernel.utils.RootUtils
 import com.abk.kernel.viewmodel.MainViewModel
 import com.abk.kernel.miuix.util.BlurredBar
 import com.abk.kernel.miuix.util.rememberBlurBackdrop
-import java.io.File
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -145,14 +136,10 @@ fun InstalledModulesScreenMiuix(
 ) {
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val navigator = LocalNavigator.current
     var searchStatus by remember { mutableStateOf(SearchStatus("")) }
     var pendingInstallUri by remember { mutableStateOf<Uri?>(null) }
-    var installDialogVisible by remember { mutableStateOf(false) }
-    var installRunning by remember { mutableStateOf(false) }
-    var installSuccess by remember { mutableStateOf<Boolean?>(null) }
-    var installLog by remember { mutableStateOf<List<String>>(emptyList()) }
     var showAllFilesAccessPrompt by remember { mutableStateOf(false) }
     var resumeModulePickerAfterPermission by remember { mutableStateOf(false) }
     var uninstallTarget by remember { mutableStateOf<AbkRuntimeModule?>(null) }
@@ -202,65 +189,6 @@ fun InstalledModulesScreenMiuix(
         animationSpec = tween(durationMillis = 350)
     )
 
-    fun appendInstallLog(line: String) {
-        scope.launch(Dispatchers.Main.immediate) {
-            installLog = installLog + line
-        }
-    }
-
-    fun installModuleFromUri(uri: Uri) {
-        if (installRunning) return
-        installDialogVisible = true
-        installRunning = true
-        installSuccess = null
-        installLog = listOf(
-            "\$ module install",
-            "source: $uri",
-            "",
-            context.getString(R.string.runtime_copying_module)
-        )
-        scope.launch {
-            var stagedName = "module.zip"
-            var stagedPath = ""
-            val result = withContext(Dispatchers.IO) {
-                var stagedFile: File? = null
-                runCatching {
-                    stagedFile = copyRuntimeModuleUriToCache(context, uri).also {
-                        stagedName = it.name
-                        stagedPath = it.absolutePath
-                    }
-                    appendInstallLog("file: $stagedPath")
-                    appendInstallLog(context.getString(R.string.runtime_wait_root_shell))
-                    if (!RootUtils.refreshRootState()) {
-                        RootUtils.ShellResult(false, listOf(context.getString(R.string.runtime_manager_inactive)))
-                    } else {
-                        RootUtils.installModule(stagedPath, ::appendInstallLog)
-                    }
-                }.getOrElse {
-                    RootUtils.ShellResult(false, listOf(context.getString(R.string.runtime_module_file_read_failed)))
-                }.also {
-                    stagedFile?.delete()
-                }
-            }
-            installRunning = false
-            installSuccess = result.success
-            installLog = listOf(
-                "\$ module install $stagedName",
-                "file: ${stagedPath.ifBlank { context.getString(R.string.runtime_temp_file_missing) }}",
-                ""
-            ) + result.output.ifEmpty {
-                listOf(
-                    if (result.success) {
-                        context.getString(R.string.runtime_module_install_done_no_output)
-                    } else {
-                        context.getString(R.string.runtime_module_install_failed_no_log)
-                    }
-                )
-            }
-            if (result.success) vm.refreshAbkRuntimeStatus()
-        }
-    }
-
     val modulePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -280,7 +208,6 @@ fun InstalledModulesScreenMiuix(
     }
 
     fun launchModulePickerWithPermissionCheck() {
-        if (installRunning) return
         modulePicker.launch(MODULE_INSTALL_MIME_TYPES)
     }
 
@@ -301,7 +228,7 @@ fun InstalledModulesScreenMiuix(
     fun launchModulePickerFallback() {
         showAllFilesAccessPrompt = false
         resumeModulePickerAfterPermission = false
-        if (!installRunning) modulePicker.launch(MODULE_INSTALL_MIME_TYPES)
+        modulePicker.launch(MODULE_INSTALL_MIME_TYPES)
     }
 
     LaunchedEffect(pendingModuleInstallUri) {
@@ -545,7 +472,7 @@ fun InstalledModulesScreenMiuix(
         WindowDialog(
             show = true,
             title = stringResource(R.string.runtime_confirm_flash_module),
-            onDismissRequest = { if (!installRunning) pendingInstallUri = null }
+            onDismissRequest = { pendingInstallUri = null }
         ) {
             Column {
                 Text(
@@ -575,17 +502,20 @@ fun InstalledModulesScreenMiuix(
                 ) {
                     TextButton(
                         text = stringResource(R.string.cancel),
-                        onClick = { if (!installRunning) pendingInstallUri = null },
+                        onClick = { pendingInstallUri = null },
                         modifier = Modifier.weight(1f)
                     )
                     Spacer(modifier = Modifier.width(20.dp))
                     TextButton(
                         text = stringResource(R.string.runtime_confirm_flash),
                         onClick = {
-                            if (!installRunning) {
-                                pendingInstallUri = null
-                                installModuleFromUri(uri)
-                            }
+                            pendingInstallUri = null
+                            navigator.push(Route.ModuleInstallLog(
+                                params = ModuleInstallParams(
+                                    uri = uri.toString(),
+                                    displayName = uriDisplayName
+                                )
+                            ))
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.textButtonColorsPrimary()
@@ -635,107 +565,6 @@ fun InstalledModulesScreenMiuix(
         }
     }
 
-    if (installDialogVisible) {
-        val terminalScroll = rememberScrollState()
-        val isDark = isSystemInDarkTheme()
-        val terminalContainer = if (isDark) {
-            MiuixTheme.colorScheme.surface.copy(alpha = 0.3f)
-        } else {
-            MiuixTheme.colorScheme.surface.copy(alpha = 0.7f)
-        }
-
-        LaunchedEffect(installLog.size) {
-            terminalScroll.animateScrollTo(terminalScroll.maxValue)
-        }
-
-        WindowDialog(
-            show = true,
-            title = if (installRunning) {
-                stringResource(R.string.runtime_installing_module)
-            } else {
-                stringResource(R.string.runtime_install_module)
-            },
-            onDismissRequest = { if (!installRunning) installDialogVisible = false }
-        ) {
-            Column {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 190.dp, max = 360.dp)
-                        .background(
-                            color = terminalContainer,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .border(
-                            width = 0.5.dp,
-                            color = MiuixTheme.colorScheme.outline.copy(alpha = 0.3f),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .verticalScroll(terminalScroll)
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        installLog.ifEmpty { listOf(stringResource(R.string.runtime_waiting_output)) }.forEach { line ->
-                            Text(
-                                text = line,
-                                style = MiuixTheme.textStyles.body2,
-                                fontFamily = FontFamily.Monospace,
-                                color = if (line.startsWith("\$")) {
-                                    MiuixTheme.colorScheme.primary
-                                } else {
-                                    MiuixTheme.colorScheme.onSurface
-                                }
-                            )
-                        }
-                    }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    if (installRunning) {
-                        TextButton(
-                            text = stringResource(R.string.runtime_running),
-                            onClick = {},
-                            enabled = false,
-                            modifier = Modifier.weight(1f)
-                        )
-                    } else {
-                        TextButton(
-                            text = stringResource(R.string.close),
-                            onClick = { installDialogVisible = false },
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (installSuccess == true) {
-                            Spacer(modifier = Modifier.width(20.dp))
-                            Button(
-                                onClick = {
-                                    scope.launch(Dispatchers.IO) { RootUtils.reboot() }
-                                },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(
-                                    color = MiuixTheme.colorScheme.error,
-                                    contentColor = Color.White
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.RestartAlt,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(17.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(stringResource(R.string.runtime_reboot))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable

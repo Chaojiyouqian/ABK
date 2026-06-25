@@ -1,5 +1,6 @@
-package com.abk.kernel.miuix.ui.screens.flash
+package com.abk.kernel.miuix.ui.screens.runtime
 
+import android.net.Uri
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -16,21 +17,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.abk.kernel.R
-import com.abk.kernel.data.model.ArtifactType
-import com.abk.kernel.data.model.DownloadedArtifact
 import com.abk.kernel.miuix.component.KeyEventBlocker
-import com.abk.kernel.miuix.ui.screens.flash.common.FlashTerminalParams
 import com.abk.kernel.miuix.ui.screens.flash.common.rememberFlashTerminalLogState
-import com.abk.kernel.utils.DownloadUtils
+import com.abk.kernel.ui.screens.copyRuntimeModuleUriToCache
 import com.abk.kernel.utils.RootUtils
+import com.abk.kernel.viewmodel.MainViewModel
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
@@ -47,12 +47,13 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FlashTerminalLogScreenMiuix — full-page terminal log for flash operations
+// ModuleInstallLogScreenMiuix — full-page terminal log for module installation
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-fun FlashTerminalLogScreenMiuix(
-    params: FlashTerminalParams,
+fun ModuleInstallLogScreenMiuix(
+    params: ModuleInstallParams,
+    vm: MainViewModel,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -62,9 +63,9 @@ fun FlashTerminalLogScreenMiuix(
     val scrollState = rememberScrollState()
 
     // ── Pre-resolve string resources (cannot call stringResource inside LaunchedEffect) ──
-    val flashWaitRootShell = stringResource(R.string.flash_wait_root_shell)
-    val flashCommandDoneNoOutput = stringResource(R.string.flash_command_done_no_output)
-    val flashCommandFailedNoLog = stringResource(R.string.flash_command_failed_no_log)
+    val flashWaitRootShell = stringResource(R.string.runtime_wait_root_shell)
+    val flashCommandDoneNoOutput = stringResource(R.string.runtime_module_install_done_no_output)
+    val flashCommandFailedNoLog = stringResource(R.string.runtime_module_install_failed_no_log)
 
     // ── Key event blocker (volume keys) ─────────────────────────────────────
     KeyEventBlocker {
@@ -84,85 +85,31 @@ fun FlashTerminalLogScreenMiuix(
         executionStarted.value = true
         logState.setRunning()
 
-        logState.appendLine("$ ${params.operationTitle}")
-        logState.appendLine("file: ${params.artifactPath}")
+        logState.appendLine("$ module install")
+        logState.appendLine("source: ${params.uri}")
         logState.appendLine("")
-        logState.appendLine(flashWaitRootShell)
+        logState.appendLine(context.getString(R.string.runtime_copying_module))
 
-        val result = runCatching {
-            withContext(NonCancellable + Dispatchers.IO) {
-                val item = DownloadedArtifact(
-                    id = 0L,
-                    name = params.artifactName,
-                    filePath = params.artifactPath,
-                    type = ArtifactType.valueOf(params.artifactType),
-                    sizeBytes = 0L
-                )
-                val prepared = DownloadUtils.prepareDownloadedArtifact(
-                    context = context,
-                    artifact = item,
-                    allowHighRiskFallback = params.allowHighRiskFallback
-                )
-                try {
-                    if (prepared.cleanupDir != null) {
-                        logState.appendLine("[ABK] 已解包下载包到缓存目录")
-                        logState.appendLine("[ABK] Payload: ${prepared.file.absolutePath}")
-                        if (prepared.dependencyModules.isNotEmpty()) {
-                            logState.appendLine(
-                                "[ABK] 附带 Magisk 依赖模块: ${prepared.dependencyModules.joinToString { it.name }}"
-                            )
-                        }
-                        if (prepared.dependencyApps.isNotEmpty()) {
-                            logState.appendLine(
-                                "[ABK] 附带扩展应用: ${prepared.dependencyApps.joinToString { it.name }}"
-                            )
-                        }
-                    }
-
-                    val flashType = prepared.resolvedType ?: item.type
-
-                    // Install dependency apps and modules for kernel / AK3
-                    if (flashType == ArtifactType.KERNEL_IMG || flashType == ArtifactType.ANYKERNEL3) {
-                        prepared.dependencyApps.forEach { dependency ->
-                            logState.appendLine("[ABK] 先安装依赖扩展应用: ${dependency.name}")
-                            val depResult = RootUtils.installApk(
-                                context, dependency.absolutePath
-                            ) { line -> logState.appendLine(line) }
-                            if (!depResult.success) return@withContext depResult
-                        }
-                        prepared.dependencyModules.forEach { dependency ->
-                            logState.appendLine("[ABK] 先安装依赖模块: ${dependency.name}")
-                            val depResult = RootUtils.installModule(
-                                dependency.absolutePath
-                            ) { line -> logState.appendLine(line) }
-                            if (!depResult.success) return@withContext depResult
-                        }
-                    }
-
-                    when (flashType) {
-                        ArtifactType.KERNEL_IMG ->
-                            RootUtils.flashImage(prepared.file.absolutePath) { line -> logState.appendLine(line) }
-                        ArtifactType.ANYKERNEL3 -> {
-                            val slotTarget = params.ak3SlotTarget?.let {
-                                RootUtils.Ak3SlotTarget.valueOf(it)
-                            } ?: RootUtils.Ak3SlotTarget.CURRENT
-                            RootUtils.flashAnyKernel3(
-                                context, prepared.file.absolutePath, targetSlot = slotTarget
-                            ) { line -> logState.appendLine(line) }
-                        }
-                        ArtifactType.SUSFS_MODULE ->
-                            RootUtils.installModule(prepared.file.absolutePath) { line -> logState.appendLine(line) }
-                        ArtifactType.KSU_MANAGER ->
-                            RootUtils.installApk(context, prepared.file.absolutePath) { line -> logState.appendLine(line) }
-                        else ->
-                            RootUtils.ShellResult(false, listOf(context.getString(R.string.flash_unsupported_auto_flash)))
-                    }
-                } finally {
-                    prepared.cleanupDir?.deleteRecursively()
+        val result = withContext(NonCancellable + Dispatchers.IO) {
+            var stagedFile: File? = null
+            runCatching {
+                val uri = Uri.parse(params.uri)
+                stagedFile = copyRuntimeModuleUriToCache(context, uri).also {
+                    logState.appendLine("file: ${it.absolutePath}")
                 }
+                logState.appendLine(flashWaitRootShell)
+                if (!RootUtils.refreshRootState()) {
+                    RootUtils.ShellResult(false, listOf(context.getString(R.string.runtime_manager_inactive)))
+                } else {
+                    RootUtils.installModule(stagedFile.absolutePath) { line ->
+                        logState.appendLine(line)
+                    }
+                }
+            }.getOrElse { e ->
+                RootUtils.ShellResult(false, listOf(context.getString(R.string.runtime_module_file_read_failed)))
+            }.also {
+                stagedFile?.delete()
             }
-        }.getOrElse { error ->
-            RootUtils.ShellResult(false, listOf(error.message ?: error::class.java.simpleName))
         }
 
         if (result.output.isEmpty()) {
@@ -176,6 +123,7 @@ fun FlashTerminalLogScreenMiuix(
 
         if (result.success) {
             logState.setSuccess()
+            vm.refreshAbkRuntimeStatus()
         } else {
             logState.setFailed(result.output.joinToString("\n"))
         }
@@ -189,7 +137,7 @@ fun FlashTerminalLogScreenMiuix(
                     when {
                         !logState.isSuccess && logState.isCompleted -> R.string.flash_terminal_status_failed
                         logState.isSuccess -> R.string.flash_terminal_status_success
-                        else -> R.string.flash_terminal_status_flashing
+                        else -> R.string.runtime_installing_module
                     }
                 ),
                 navigationIcon = {
