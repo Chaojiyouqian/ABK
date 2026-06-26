@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
@@ -653,6 +654,14 @@ private fun BuildModuleRepositoryScreenMiuix(
                 }
             }
         }
+    }
+
+    BackHandler(enabled = searchStatus.shouldExpand() && navigator.backStackSize() <= 1) {
+        searchStatus = searchStatus.copy(
+            searchText = "",
+            resultStatus = SearchStatus.ResultStatus.DEFAULT,
+            current = SearchStatus.Status.COLLAPSING
+        )
     }
 }
 
@@ -1510,6 +1519,14 @@ private fun RuntimeModuleRepositoryScreenMiuix(
                 }
             }
         }
+    }
+
+    BackHandler(enabled = searchStatus.shouldExpand() && navigator.backStackSize() <= 1) {
+        searchStatus = searchStatus.copy(
+            searchText = "",
+            resultStatus = SearchStatus.ResultStatus.DEFAULT,
+            current = SearchStatus.Status.COLLAPSING
+        )
     }
 }
 

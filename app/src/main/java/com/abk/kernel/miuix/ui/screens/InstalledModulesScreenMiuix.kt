@@ -3,6 +3,7 @@ package com.abk.kernel.miuix.ui.screens
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -391,6 +392,17 @@ fun InstalledModulesScreenMiuix(
                 )
             }
         }
+    }
+
+    // BackHandler to collapse search when pressing back while search is expanded.
+    // Must be at the screen level (not inside popupHost subcomposition) so that it
+    // properly registers with the Activity's OnBackPressedDispatcher.
+    BackHandler(enabled = searchStatus.shouldExpand() && navigator.backStackSize() <= 1) {
+        searchStatus = searchStatus.copy(
+            searchText = "",
+            resultStatus = SearchStatus.ResultStatus.DEFAULT,
+            current = SearchStatus.Status.COLLAPSING
+        )
     }
 
     if (state.abkRuntimeModuleActionTitle != null) {

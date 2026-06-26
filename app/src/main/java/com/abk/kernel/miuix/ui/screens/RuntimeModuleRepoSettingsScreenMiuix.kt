@@ -31,6 +31,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -191,9 +192,7 @@ fun RuntimeModuleRepoSettingsScreenMiuix(vm: MainViewModel) {
                             },
                             enabled = repositoryUrl.isNotBlank(),
                             colors = ButtonDefaults.buttonColorsPrimary(),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
+                            modifier = Modifier.weight(1f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
@@ -207,9 +206,7 @@ fun RuntimeModuleRepoSettingsScreenMiuix(vm: MainViewModel) {
                             onClick = { vm.refreshAllRuntimeModuleRepositories() },
                             enabled = state.runtimeModuleRepositories.isNotEmpty(),
                             colors = ButtonDefaults.buttonColors(),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
+                            modifier = Modifier.weight(1f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
@@ -388,9 +385,7 @@ private fun RuntimeModuleRepositoryCardMiuix(
                     onClick = onRefresh,
                     enabled = !refreshing,
                     colors = ButtonDefaults.buttonColors(),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(42.dp)
+                    modifier = Modifier.weight(1f)
                 ) {
                     if (refreshing) {
                         CircularProgressIndicator(
@@ -413,11 +408,9 @@ private fun RuntimeModuleRepositoryCardMiuix(
                     onClick = onDelete,
                     colors = ButtonDefaults.buttonColors(
                         color = MiuixTheme.colorScheme.error,
-                        contentColor = MiuixTheme.colorScheme.surface
+                        contentColor = Color.White
                     ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(42.dp)
+                    modifier = Modifier.weight(1f)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,

@@ -3,6 +3,7 @@ package com.abk.kernel.miuix.ui.screens
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -46,6 +47,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -136,13 +138,12 @@ fun RootAuthorizationScreenMiuix(
     val layoutDirection = LocalLayoutDirection.current
 
     // Search state
-    val searchLabel = stringResource(R.string.root_auth_title)
-    var searchStatus by remember { mutableStateOf(SearchStatus(searchLabel)) }
+    var searchStatus by remember { mutableStateOf(SearchStatus("")) }
     val query = searchStatus.searchText
 
     // Sort & filter state
     var sortOption by remember { mutableStateOf(SortOption.NAME_ASC) }
-    var showSystemApps by remember { mutableStateOf(true) }
+    var showSystemApps by rememberSaveable { mutableStateOf(false) }
     var showSortPopup by remember { mutableStateOf(false) }
     var showMorePopup by remember { mutableStateOf(false) }
 
@@ -435,6 +436,14 @@ fun RootAuthorizationScreenMiuix(
                 }
             }
         }
+    }
+
+    BackHandler(enabled = searchStatus.shouldExpand() && navigator.backStackSize() <= 1) {
+        searchStatus = searchStatus.copy(
+            searchText = "",
+            resultStatus = SearchStatus.ResultStatus.DEFAULT,
+            current = SearchStatus.Status.COLLAPSING
+        )
     }
 }
 

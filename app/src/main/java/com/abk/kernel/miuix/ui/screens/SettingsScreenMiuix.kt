@@ -654,16 +654,8 @@ fun SettingsScreenMiuix(
                 Card(modifier = Modifier.fillMaxWidth()) {
                     ArrowPreference(
                         title = stringResource(R.string.app_full_name),
+                        summary = "${stringResource(R.string.app_full_name)} v${BuildConfig.VERSION_NAME}",
                         startAction = { Icon(Icons.Default.Info, contentDescription = null, tint = iconTint) }
-                    )
-                    top.yukonga.miuix.kmp.basic.Text(
-                        text = "v${BuildConfig.VERSION_NAME}",
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                     ArrowPreference(
                         title = stringResource(R.string.settings_about),
