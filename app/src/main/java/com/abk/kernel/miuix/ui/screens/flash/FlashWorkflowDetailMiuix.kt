@@ -1,6 +1,7 @@
 package com.abk.kernel.miuix.ui.screens.flash
 
 import android.content.Context
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,18 +25,22 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.abk.kernel.R
 import com.abk.kernel.data.model.ArtifactCategory
+import com.abk.kernel.data.model.ArtifactType
 import com.abk.kernel.data.model.BuildProgress
 import com.abk.kernel.data.model.DownloadedArtifact
 import com.abk.kernel.data.model.PREBUILT_GKI_RUN_ID
@@ -63,20 +68,26 @@ import com.abk.kernel.utils.RootUtils
 import com.abk.kernel.utils.WorkflowPrimary
 import com.abk.kernel.viewmodel.MainViewModel
 import com.abk.kernel.miuix.ui.screens.flash.common.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.window.WindowDialog
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Workflow Detail Sub-page (MIUIX)
@@ -181,6 +192,20 @@ fun FlashWorkflowDetailScreenMiuix(
     var showInstallManagerConfirm by remember { mutableStateOf(false) }
     var selectedItem by remember { mutableStateOf<DownloadedArtifact?>(null) }
     var allowLegacyBundleFallback by remember { mutableStateOf(false) }
+    var showUnverifiedFlashConfirm by remember { mutableStateOf(false) }
+
+    // ── AnyKernel slot state ────────────────────────────────────────────
+    var selectedAnyKernelSlotTargetName by rememberSaveable {
+        mutableStateOf(RootUtils.Ak3SlotTarget.CURRENT.name)
+    }
+    val selectedAnyKernelSlotTarget = runCatching {
+        RootUtils.Ak3SlotTarget.valueOf(selectedAnyKernelSlotTargetName)
+    }.getOrDefault(RootUtils.Ak3SlotTarget.CURRENT)
+    val flashAnyKernelCurrentSlotLabel = stringResource(R.string.root_patch_ak3_slot_current)
+    val flashAnyKernelInactiveSlotLabel = stringResource(R.string.root_patch_ak3_slot_inactive)
+    val supportsAnyKernelInactiveSlot by produceState(initialValue = false, rootGranted) {
+        value = withContext(Dispatchers.IO) { RootUtils.supportsAnyKernelInactiveSlot() }
+    }
 
     // ── LaunchedEffects ─────────────────────────────────────────────────
 
@@ -263,7 +288,11 @@ fun FlashWorkflowDetailScreenMiuix(
     fun requestFlash(item: DownloadedArtifact) {
         selectedItem = item
         allowLegacyBundleFallback = false
-        showFlashConfirm = true
+        if ((item.type == ArtifactType.KERNEL_PACKAGE || item.type == ArtifactType.KERNEL_IMG || item.type == ArtifactType.ANYKERNEL3) && !item.verified) {
+            showUnverifiedFlashConfirm = true
+        } else {
+            showFlashConfirm = true
+        }
     }
 
     fun requestInstallManager(item: DownloadedArtifact) {
@@ -538,15 +567,39 @@ fun FlashWorkflowDetailScreenMiuix(
         )
     }
 
+    if (showUnverifiedFlashConfirm) {
+        val item = selectedItem
+        if (item != null) {
+            MiuixUnverifiedFlashConfirmDialog(
+                summary = item.verificationSummary
+                    ?: context.getString(R.string.flash_bundle_unverified_requires_confirmation),
+                onConfirm = {
+                    showUnverifiedFlashConfirm = false
+                    allowLegacyBundleFallback = true
+                    showFlashConfirm = true
+                },
+                onDismiss = { showUnverifiedFlashConfirm = false }
+            )
+        }
+    }
+
     if (showFlashConfirm) {
-        MiuixFlashConfirmDialog(
-            onConfirm = {
-                showFlashConfirm = false
-                val item = selectedItem
-                if (item != null) startFlash(item, allowHighRiskFallback = allowLegacyBundleFallback)
-            },
-            onDismiss = { showFlashConfirm = false }
-        )
+        val item = selectedItem
+        if (item != null) {
+            MiuixFlashConfirmDialogWithSlot(
+                item = item,
+                supportsAnyKernelInactiveSlot = supportsAnyKernelInactiveSlot,
+                selectedSlotTarget = selectedAnyKernelSlotTarget,
+                currentSlotLabel = flashAnyKernelCurrentSlotLabel,
+                inactiveSlotLabel = flashAnyKernelInactiveSlotLabel,
+                onSlotTargetChange = { selectedAnyKernelSlotTargetName = it.name },
+                onConfirm = {
+                    showFlashConfirm = false
+                    startFlash(item, selectedAnyKernelSlotTarget, allowLegacyBundleFallback)
+                },
+                onDismiss = { showFlashConfirm = false }
+            )
+        }
     }
 
     if (showInstallManagerConfirm) {
@@ -826,6 +879,154 @@ private fun MiuixWorkflowDetailHeader(
                         fontSize = FlashCompactButtonFontSize
                     )
                 }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unverified flash confirm dialog (MIUIX style)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun MiuixUnverifiedFlashConfirmDialog(
+    summary: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    WindowDialog(
+        show = true,
+        title = stringResource(R.string.flash_confirm),
+        onDismissRequest = onDismiss
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = summary,
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    text = stringResource(R.string.cancel),
+                    onClick = onDismiss
+                )
+                Button(
+                    modifier = Modifier.weight(1f),
+                    onClick = onConfirm,
+                    colors = ButtonDefaults.buttonColorsPrimary()
+                ) {
+                    Text(text = stringResource(R.string.flash_confirm))
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Flash confirm dialog with optional AnyKernel3 slot selection (MIUIX style)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun MiuixFlashConfirmDialogWithSlot(
+    item: DownloadedArtifact,
+    supportsAnyKernelInactiveSlot: Boolean,
+    selectedSlotTarget: RootUtils.Ak3SlotTarget,
+    currentSlotLabel: String,
+    inactiveSlotLabel: String,
+    onSlotTargetChange: (RootUtils.Ak3SlotTarget) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val showSlotOption = item.type == ArtifactType.ANYKERNEL3 && supportsAnyKernelInactiveSlot
+    if (!showSlotOption) {
+        MiuixFlashConfirmDialog(
+            onConfirm = onConfirm,
+            onDismiss = onDismiss
+        )
+        return
+    }
+    WindowDialog(
+        show = true,
+        title = stringResource(R.string.flash_confirm),
+        onDismissRequest = onDismiss
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.flash_confirm_msg),
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = stringResource(R.string.root_patch_ak3_slot_title),
+                        style = MiuixTheme.textStyles.subtitle,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MiuixTheme.colorScheme.onSurface
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSlotTargetChange(RootUtils.Ak3SlotTarget.CURRENT) },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Checkbox(
+                            state = ToggleableState(selectedSlotTarget == RootUtils.Ak3SlotTarget.CURRENT),
+                            onClick = { onSlotTargetChange(RootUtils.Ak3SlotTarget.CURRENT) }
+                        )
+                        Text(
+                            text = currentSlotLabel,
+                            style = MiuixTheme.textStyles.body1,
+                            color = MiuixTheme.colorScheme.onSurface
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSlotTargetChange(RootUtils.Ak3SlotTarget.INACTIVE) },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Checkbox(
+                            state = ToggleableState(selectedSlotTarget == RootUtils.Ak3SlotTarget.INACTIVE),
+                            onClick = { onSlotTargetChange(RootUtils.Ak3SlotTarget.INACTIVE) }
+                        )
+                        Text(
+                            text = inactiveSlotLabel,
+                            style = MiuixTheme.textStyles.body1,
+                            color = MiuixTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    text = stringResource(R.string.cancel),
+                    onClick = onDismiss
+                )
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    text = stringResource(R.string.flash_confirm),
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    onClick = onConfirm
+                )
             }
         }
     }
