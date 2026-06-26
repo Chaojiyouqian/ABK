@@ -12,8 +12,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.add
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -83,6 +89,7 @@ fun RuntimeHomeScreenMiuix(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal),
         topBar = {
             BlurredBar(backdrop, surfaceColor) {
                 TopAppBar(
@@ -101,36 +108,41 @@ fun RuntimeHomeScreenMiuix(
             }
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp)
-                .overScrollVertical()
-                .scrollEndHaptic(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Spacer(Modifier.height(16.dp))
-
-            RuntimeStatusHeroCardMiuix(
-                runtimeStatus = state.abkRuntimeStatus,
-                hasNativeManagerPermission = state.hasNativeManagerPermission,
-                loading = state.abkRuntimeLoading,
-                error = state.abkRuntimeError,
-                abkVersion = BuildConfig.VERSION_NAME,
-                themeMode = state.themeMode,
-                onRefresh = vm::refreshAbkRuntimeStatus,
-                onClick = { navigator.push(Route.ManagerPatch) }
+        Box(
+            modifier = Modifier.then(
+                if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
             )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp)
+                    .overScrollVertical()
+                    .scrollEndHaptic(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Spacer(Modifier.height(padding.calculateTopPadding() + 16.dp))
 
-            state.abkRuntimeStatus?.let { runtimeStatus ->
-                RuntimeManagerCardMiuix(runtimeStatus)
-                RuntimeBuildParametersCardMiuix(runtimeStatus)
+                RuntimeStatusHeroCardMiuix(
+                    runtimeStatus = state.abkRuntimeStatus,
+                    hasNativeManagerPermission = state.hasNativeManagerPermission,
+                    loading = state.abkRuntimeLoading,
+                    error = state.abkRuntimeError,
+                    abkVersion = BuildConfig.VERSION_NAME,
+                    themeMode = state.themeMode,
+                    onRefresh = vm::refreshAbkRuntimeStatus,
+                    onClick = { navigator.push(Route.ManagerPatch) }
+                )
+
+                state.abkRuntimeStatus?.let { runtimeStatus ->
+                    RuntimeManagerCardMiuix(runtimeStatus)
+                    RuntimeBuildParametersCardMiuix(runtimeStatus)
+                }
+
+                Spacer(Modifier.height(160.dp + outerPadding.calculateBottomPadding()))
             }
-
-            Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
         }
     }
 }
