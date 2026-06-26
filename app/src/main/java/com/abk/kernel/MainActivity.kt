@@ -63,6 +63,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -825,97 +826,103 @@ private fun AbkMainScaffold(
                         entryProvider = entryProvider {
                             entry<Route.Main> {
                                 if (state.uiStyle == "miuix") {
-                                    val pagerState = rememberPagerState(
-                                        initialPage = visibleTabs.indexOf(activeTab).coerceAtLeast(0),
-                                        pageCount = { visibleTabs.size }
-                                    )
+                                    // NB: key(visibleTabs) forces the pager to fully recompose when the tab list
+                                    // changes (e.g., toggling runtimeNavigationEnabled). Without this,
+                                    // rememberPagerState caches the old page count and currentPage, causing
+                                    // selectedTab to be incorrectly reset via the LaunchedEffect sync loop.
+                                    key(visibleTabs) {
+                                        val pagerState = rememberPagerState(
+                                            initialPage = visibleTabs.indexOf(activeTab).coerceAtLeast(0),
+                                            pageCount = { visibleTabs.size }
+                                        )
 
-                                    // Flag to suppress pagerState -> selectedTab sync
-                                    // during programmatic scrolling (prevents feedback loop).
-                                    var isProgrammaticScroll by remember { mutableStateOf(false) }
+                                        // Flag to suppress pagerState -> selectedTab sync
+                                        // during programmatic scrolling (prevents feedback loop).
+                                        var isProgrammaticScroll by remember { mutableStateOf(false) }
 
-                                    // Sync pagerState -> selectedTab (only during user swipe)
-                                    LaunchedEffect(pagerState.currentPage) {
-                                        if (!isProgrammaticScroll &&
-                                            pagerState.currentPage in visibleTabs.indices) {
-                                            selectedTab = visibleTabs[pagerState.currentPage]
-                                        }
-                                    }
-
-                                    // Sync selectedTab -> pagerState
-                                    LaunchedEffect(activeTab) {
-                                        val index = visibleTabs.indexOf(activeTab)
-                                        if (index >= 0 && pagerState.currentPage != index) {
-                                            isProgrammaticScroll = true
-                                            try {
-                                                pagerState.animateScrollToPage(index)
-                                            } finally {
-                                                isProgrammaticScroll = false
+                                        // Sync pagerState -> selectedTab (only during user swipe)
+                                        LaunchedEffect(pagerState.currentPage) {
+                                            if (!isProgrammaticScroll &&
+                                                pagerState.currentPage in visibleTabs.indices) {
+                                                selectedTab = visibleTabs[pagerState.currentPage]
                                             }
                                         }
-                                    }
 
-                                    HorizontalPager(
-                                        state = pagerState,
-                                        modifier = Modifier.fillMaxSize(),
-                                        beyondViewportPageCount = visibleTabs.size
-                                    ) { page ->
-                                        when (visibleTabs[page]) {
-                                            AbkTab.Status -> com.abk.kernel.miuix.ui.screens.StatusScreenMiuix(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                runtimeNavigationEnabled = state.runtimeNavigationEnabled,
-                                                onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) }
-                                            )
-                                            AbkTab.Build -> com.abk.kernel.miuix.ui.screens.BuildScreenMiuix(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                onPlanPageVisibleChange = { buildPlanPageVisible = it },
-                                                onNavigateToStatus = { selectedTab = AbkTab.Status }
-                                            )
-                                            AbkTab.Modules -> com.abk.kernel.miuix.ui.screens.ModuleRepositoryScreenMiuix(
-                                                vm = vm,
-                                                mode = if (state.runtimeNavigationEnabled) {
-                                                    com.abk.kernel.ui.screens.ModuleRepositoryMode.RUNTIME_STANDARD
-                                                } else {
-                                                    com.abk.kernel.ui.screens.ModuleRepositoryMode.BUILD_ABK
-                                                },
-                                                outerPadding = contentPadding,
-                                                onRepositoryPageVisibleChange = { moduleRepositoryPageVisible = it }
-                                            )
-                                            AbkTab.Flash -> com.abk.kernel.miuix.ui.screens.FlashScreenMiuix(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                onDetailPageVisibleChange = { flashDetailPageVisible = it }
-                                            )
-                                            AbkTab.RuntimeHome -> com.abk.kernel.miuix.ui.screens.RuntimeHomeScreenMiuix(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                onSwitchToClassic = { vm.setRuntimeNavigationEnabled(false) },
-                                                navigator = navigator,
-                                            )
-                                            AbkTab.InstalledModules -> com.abk.kernel.miuix.ui.screens.InstalledModulesScreenMiuix(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                pendingModuleInstallUri = pendingModuleInstallUri,
-                                                onPendingModuleInstallUriConsumed = onModuleInstallUriConsumed
-                                            )
-                                            AbkTab.RootAuth -> com.abk.kernel.miuix.ui.screens.RootAuthorizationScreenMiuix(
-                                                vm = vm,
-                                                outerPadding = contentPadding
-                                            )
-                                            AbkTab.Settings -> com.abk.kernel.miuix.ui.screens.SettingsScreenMiuix(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                onOpenInstalledModules = {
-                                                    if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
-                                                    selectedTab = if (state.rootGranted) {
-                                                        AbkTab.InstalledModules
-                                                    } else {
-                                                        AbkTab.RuntimeHome
-                                                    }
+                                        // Sync selectedTab -> pagerState
+                                        LaunchedEffect(activeTab) {
+                                            val index = visibleTabs.indexOf(activeTab)
+                                            if (index >= 0 && pagerState.currentPage != index) {
+                                                isProgrammaticScroll = true
+                                                try {
+                                                    pagerState.animateScrollToPage(index)
+                                                } finally {
+                                                    isProgrammaticScroll = false
                                                 }
-                                            )
+                                            }
+                                        }
+
+                                        HorizontalPager(
+                                            state = pagerState,
+                                            modifier = Modifier.fillMaxSize(),
+                                            beyondViewportPageCount = visibleTabs.size
+                                        ) { page ->
+                                            when (visibleTabs[page]) {
+                                                AbkTab.Status -> com.abk.kernel.miuix.ui.screens.StatusScreenMiuix(
+                                                    vm = vm,
+                                                    outerPadding = contentPadding,
+                                                    runtimeNavigationEnabled = state.runtimeNavigationEnabled,
+                                                    onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) }
+                                                )
+                                                AbkTab.Build -> com.abk.kernel.miuix.ui.screens.BuildScreenMiuix(
+                                                    vm = vm,
+                                                    outerPadding = contentPadding,
+                                                    onPlanPageVisibleChange = { buildPlanPageVisible = it },
+                                                    onNavigateToStatus = { selectedTab = AbkTab.Status }
+                                                )
+                                                AbkTab.Modules -> com.abk.kernel.miuix.ui.screens.ModuleRepositoryScreenMiuix(
+                                                    vm = vm,
+                                                    mode = if (state.runtimeNavigationEnabled) {
+                                                        com.abk.kernel.ui.screens.ModuleRepositoryMode.RUNTIME_STANDARD
+                                                    } else {
+                                                        com.abk.kernel.ui.screens.ModuleRepositoryMode.BUILD_ABK
+                                                    },
+                                                    outerPadding = contentPadding,
+                                                    onRepositoryPageVisibleChange = { moduleRepositoryPageVisible = it }
+                                                )
+                                                AbkTab.Flash -> com.abk.kernel.miuix.ui.screens.FlashScreenMiuix(
+                                                    vm = vm,
+                                                    outerPadding = contentPadding,
+                                                    onDetailPageVisibleChange = { flashDetailPageVisible = it }
+                                                )
+                                                AbkTab.RuntimeHome -> com.abk.kernel.miuix.ui.screens.RuntimeHomeScreenMiuix(
+                                                    vm = vm,
+                                                    outerPadding = contentPadding,
+                                                    onSwitchToClassic = { vm.setRuntimeNavigationEnabled(false) },
+                                                    navigator = navigator,
+                                                )
+                                                AbkTab.InstalledModules -> com.abk.kernel.miuix.ui.screens.InstalledModulesScreenMiuix(
+                                                    vm = vm,
+                                                    outerPadding = contentPadding,
+                                                    pendingModuleInstallUri = pendingModuleInstallUri,
+                                                    onPendingModuleInstallUriConsumed = onModuleInstallUriConsumed
+                                                )
+                                                AbkTab.RootAuth -> com.abk.kernel.miuix.ui.screens.RootAuthorizationScreenMiuix(
+                                                    vm = vm,
+                                                    outerPadding = contentPadding
+                                                )
+                                                AbkTab.Settings -> com.abk.kernel.miuix.ui.screens.SettingsScreenMiuix(
+                                                    vm = vm,
+                                                    outerPadding = contentPadding,
+                                                    onOpenInstalledModules = {
+                                                        if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
+                                                        selectedTab = if (state.rootGranted) {
+                                                            AbkTab.InstalledModules
+                                                        } else {
+                                                            AbkTab.RuntimeHome
+                                                        }
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 } else {
