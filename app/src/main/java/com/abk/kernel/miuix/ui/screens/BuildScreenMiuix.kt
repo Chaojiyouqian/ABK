@@ -320,30 +320,38 @@ fun BuildScreenMiuix(
     // ── Dialogs ────────────────────────────────────────────────────────────
 
     if (showBuildSubmittedDialog) {
-        AlertDialog(
-            onDismissRequest = {},
-            icon = { Icon(Icons.Default.CheckCircle, contentDescription = null) },
-            title = {
-                Text(
-                    text = stringResource(R.string.build_submitted_title),
-                    fontWeight = FontWeight.Bold
+        WindowDialog(
+            show = true,
+            title = stringResource(R.string.build_submitted_title),
+            onDismissRequest = { showBuildSubmittedDialog = false }
+        ) {
+            Column {
+                top.yukonga.miuix.kmp.basic.Text(
+                    text = stringResource(R.string.build_submitted_desc),
                 )
-            },
-            text = { Text(stringResource(R.string.build_submitted_desc)) },
-            confirmButton = {
-                Button(onClick = {
-                    showBuildSubmittedDialog = false
-                    onNavigateToStatus()
-                }) {
-                    Text(stringResource(R.string.build_submitted_ok))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showBuildSubmittedDialog = false }) {
-                    Text(stringResource(R.string.close))
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        modifier = Modifier.weight(1f),
+                        text = stringResource(R.string.close),
+                        onClick = { showBuildSubmittedDialog = false }
+                    )
+                    Spacer(Modifier.width(20.dp))
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        modifier = Modifier.weight(1f),
+                        text = stringResource(R.string.build_submitted_ok),
+                        colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary(),
+                        onClick = {
+                            showBuildSubmittedDialog = false
+                            onNavigateToStatus()
+                        }
+                    )
                 }
             }
-        )
+        }
     }
 
     if (showConfirmDialog) {
@@ -994,14 +1002,9 @@ fun BuildScreenMiuix(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection)
-                    .verticalScroll(rememberScrollState())
-                    .overScrollVertical()
-                    .scrollEndHaptic()
-                    .padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(horizontal = 12.dp)
             ) {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(padding.calculateTopPadding() + 25.dp))
                 BuildHeroCardMiuix(
                     title = stringResource(
                         if (needsLogin) R.string.build_login_required_title
@@ -1014,6 +1017,7 @@ fun BuildScreenMiuix(
                     isActivated = false,
                     themeMode = state.themeMode
                 )
+                Spacer(Modifier.height(12.dp))
                 top.yukonga.miuix.kmp.basic.Button(
                     onClick = vm::openBuildOobe,
                     modifier = Modifier.fillMaxWidth().height(52.dp)
@@ -2034,7 +2038,7 @@ private fun BuildHeroCardMiuix(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(all = 16.dp)
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 51.dp)
             ) {
                 top.yukonga.miuix.kmp.basic.Text(
                     modifier = Modifier.fillMaxWidth(),
