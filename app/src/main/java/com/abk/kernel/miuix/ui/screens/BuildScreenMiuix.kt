@@ -103,6 +103,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -713,178 +714,192 @@ fun BuildScreenMiuix(
     }
 
     editingCustomModuleGroup?.let { group ->
-        AlertDialog(
+        WindowDialog(
+            show = true,
+            title = stringResource(R.string.build_edit_injection_stage),
             onDismissRequest = {
                 editingCustomModuleGroup = null
                 editingCustomModuleStages = emptyList()
-            },
-            icon = { Icon(Icons.Default.Edit, null) },
-            title = { Text(stringResource(R.string.build_edit_injection_stage)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = group.displayName(stringResource(R.string.build_external_module_default)),
-                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = group.url,
-                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    CustomExternalModuleStage.options.forEach { stage ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Checkbox(
-                                checked = stage in editingCustomModuleStages,
-                                onCheckedChange = { checked ->
-                                    editingCustomModuleStages = if (checked) {
-                                        (editingCustomModuleStages + stage).distinct()
-                                    } else {
-                                        editingCustomModuleStages - stage
+            }
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        top.yukonga.miuix.kmp.basic.Text(
+                            text = group.displayName(stringResource(R.string.build_external_module_default)),
+                            style = MiuixTheme.textStyles.title4,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        top.yukonga.miuix.kmp.basic.Text(
+                            text = group.url,
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        CustomExternalModuleStage.options.forEach { stage ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                top.yukonga.miuix.kmp.basic.Checkbox(
+                                    state = ToggleableState(stage in editingCustomModuleStages),
+                                    onClick = {
+                                        editingCustomModuleStages = if (stage in editingCustomModuleStages) {
+                                            editingCustomModuleStages - stage
+                                        } else {
+                                            (editingCustomModuleStages + stage).distinct()
+                                        }
                                     }
-                                }
-                            )
-                            Text(stage, style = androidx.compose.material3.MaterialTheme.typography.bodyMedium)
+                                )
+                                top.yukonga.miuix.kmp.basic.Text(
+                                    text = stage,
+                                    style = MiuixTheme.textStyles.body1
+                                )
+                            }
                         }
                     }
                 }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        vm.setCustomExternalModuleStages(group.url, editingCustomModuleStages)
-                        editingCustomModuleGroup = null
-                        editingCustomModuleStages = emptyList()
-                    }
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        if (editingCustomModuleStages.isEmpty()) {
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        text = stringResource(R.string.cancel),
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            editingCustomModuleGroup = null
+                            editingCustomModuleStages = emptyList()
+                        }
+                    )
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        text = if (editingCustomModuleStages.isEmpty()) {
                             stringResource(R.string.build_remove_module)
                         } else {
                             stringResource(R.string.build_save)
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary(),
+                        onClick = {
+                            vm.setCustomExternalModuleStages(group.url, editingCustomModuleStages)
+                            editingCustomModuleGroup = null
+                            editingCustomModuleStages = emptyList()
                         }
                     )
                 }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        editingCustomModuleGroup = null
-                        editingCustomModuleStages = emptyList()
-                    }
-                ) {
-                    Text(stringResource(R.string.cancel))
-                }
             }
-        )
+        }
     }
 
     val moduleSetGroup = editingModuleSetGroup
     val moduleSetMetadata = editingModuleSetMetadata
     if (moduleSetGroup != null && moduleSetMetadata != null) {
-        AlertDialog(
-            onDismissRequest = { clearModuleSetEditor() },
-            icon = { Icon(Icons.Default.Edit, null) },
-            title = { Text(stringResource(R.string.build_edit_injection_stage)) },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 420.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = moduleSetMetadata.name,
-                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    if (moduleSetMetadata.version.isNotBlank() || moduleSetMetadata.description.isNotBlank()) {
-                        Text(
-                            text = buildString {
-                                if (moduleSetMetadata.version.isNotBlank()) {
-                                    append(stringResource(R.string.module_repo_version, moduleSetMetadata.version))
-                                }
-                                if (moduleSetMetadata.version.isNotBlank() && moduleSetMetadata.description.isNotBlank()) {
-                                    appendLine()
-                                }
-                                if (moduleSetMetadata.description.isNotBlank()) {
-                                    append(moduleSetMetadata.description)
-                                }
-                            },
-                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+        WindowDialog(
+            show = true,
+            title = stringResource(R.string.build_edit_injection_stage),
+            onDismissRequest = { clearModuleSetEditor() }
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 420.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        top.yukonga.miuix.kmp.basic.Text(
+                            text = moduleSetMetadata.name,
+                            style = MiuixTheme.textStyles.title4,
+                            fontWeight = FontWeight.SemiBold
                         )
-                    }
-                    moduleSetMetadata.children.forEach { child ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.Top,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Checkbox(
-                                checked = child.id in editingModuleSetChildIds,
-                                onCheckedChange = { checked ->
-                                    editingModuleSetChildIds = if (checked) {
-                                        (editingModuleSetChildIds + child.id).distinct()
-                                    } else {
-                                        editingModuleSetChildIds - child.id
+                        if (moduleSetMetadata.version.isNotBlank() || moduleSetMetadata.description.isNotBlank()) {
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = buildString {
+                                    if (moduleSetMetadata.version.isNotBlank()) {
+                                        append(stringResource(R.string.module_repo_version, moduleSetMetadata.version))
                                     }
-                                }
+                                    if (moduleSetMetadata.version.isNotBlank() && moduleSetMetadata.description.isNotBlank()) {
+                                        appendLine()
+                                    }
+                                    if (moduleSetMetadata.description.isNotBlank()) {
+                                        append(moduleSetMetadata.description)
+                                    }
+                                },
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                             )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = child.name,
-                                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold
+                        }
+                        moduleSetMetadata.children.forEach { child ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.Top,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                top.yukonga.miuix.kmp.basic.Checkbox(
+                                    state = ToggleableState(child.id in editingModuleSetChildIds),
+                                    onClick = {
+                                        editingModuleSetChildIds = if (child.id in editingModuleSetChildIds) {
+                                            editingModuleSetChildIds - child.id
+                                        } else {
+                                            (editingModuleSetChildIds + child.id).distinct()
+                                        }
+                                    }
                                 )
-                                if (child.description.isNotBlank()) {
-                                    Text(
-                                        text = child.description,
-                                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                                Column(modifier = Modifier.weight(1f)) {
+                                    top.yukonga.miuix.kmp.basic.Text(
+                                        text = child.name,
+                                        style = MiuixTheme.textStyles.body1,
+                                        fontWeight = FontWeight.SemiBold
                                     )
-                                }
-                                if (child.id in editingModuleSetChildIds) {
-                                    val options = child.supportedStages
-                                    val initialStages = child.recommendedStages
-                                        .filter { it in options }
-                                        .ifEmpty { listOf(child.defaultStage) }
-                                    val selectedStagesForChild = editingModuleSetStageSelections[child.id] ?: initialStages
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        options.forEach { stage ->
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Checkbox(
-                                                    checked = stage in selectedStagesForChild,
-                                                    onCheckedChange = { checked ->
-                                                        val updatedStages = if (checked) {
-                                                            (selectedStagesForChild + stage).distinct()
-                                                        } else {
-                                                            selectedStagesForChild - stage
+                                    if (child.description.isNotBlank()) {
+                                        top.yukonga.miuix.kmp.basic.Text(
+                                            text = child.description,
+                                            style = MiuixTheme.textStyles.body2,
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                        )
+                                    }
+                                    if (child.id in editingModuleSetChildIds) {
+                                        val options = child.supportedStages
+                                        val initialStages = child.recommendedStages
+                                            .filter { it in options }
+                                            .ifEmpty { listOf(child.defaultStage) }
+                                        val selectedStagesForChild = editingModuleSetStageSelections[child.id] ?: initialStages
+                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            options.forEach { stage ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    top.yukonga.miuix.kmp.basic.Checkbox(
+                                                        state = ToggleableState(stage in selectedStagesForChild),
+                                                        onClick = {
+                                                            val updatedStages = if (stage in selectedStagesForChild) {
+                                                                selectedStagesForChild - stage
+                                                            } else {
+                                                                (selectedStagesForChild + stage).distinct()
+                                                            }
+                                                            editingModuleSetStageSelections =
+                                                                editingModuleSetStageSelections + (child.id to updatedStages)
                                                         }
-                                                        editingModuleSetStageSelections =
-                                                            editingModuleSetStageSelections + (child.id to updatedStages)
-                                                    }
-                                                )
-                                                Text(
-                                                    text = buildString {
-                                                        append(stage)
-                                                        if (stage in child.recommendedStages) {
-                                                            append(stringResource(R.string.module_repo_recommended))
-                                                        }
-                                                    },
-                                                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall
-                                                )
+                                                    )
+                                                    top.yukonga.miuix.kmp.basic.Text(
+                                                        text = buildString {
+                                                            append(stage)
+                                                            if (stage in child.recommendedStages) {
+                                                                append(stringResource(R.string.module_repo_recommended))
+                                                            }
+                                                        },
+                                                        style = MiuixTheme.textStyles.body2
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -893,54 +908,59 @@ fun BuildScreenMiuix(
                         }
                     }
                 }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val repoUrl = moduleSetGroup.groupRepoUrl.ifBlank {
-                            moduleSetGroup.catalogModule?.module?.repoUrl ?: moduleSetGroup.url
-                        }
-                        val selections = moduleSetMetadata.children
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        text = stringResource(R.string.cancel),
+                        modifier = Modifier.weight(1f),
+                        onClick = { clearModuleSetEditor() }
+                    )
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        text = stringResource(R.string.build_save),
+                        modifier = Modifier.weight(1f),
+                        enabled = editingModuleSetChildIds.isNotEmpty() && moduleSetMetadata.children
                             .filter { it.id in editingModuleSetChildIds }
-                            .map { child ->
-                                child to (
-                                    editingModuleSetStageSelections[child.id]
-                                        ?.distinct()
-                                        ?.filter { stage -> stage in child.supportedStages }
-                                        ?.ifEmpty {
-                                            child.recommendedStages
+                            .all { child ->
+                                val selStages = editingModuleSetStageSelections[child.id]
+                                    ?: child.recommendedStages
+                                        .filter { it in child.supportedStages }
+                                        .ifEmpty { listOf(child.defaultStage) }
+                                selStages.any { it in child.supportedStages }
+                            },
+                        colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary(),
+                        onClick = {
+                            val repoUrl = moduleSetGroup.groupRepoUrl.ifBlank {
+                                moduleSetGroup.catalogModule?.module?.repoUrl ?: moduleSetGroup.url
+                            }
+                            val selections = moduleSetMetadata.children
+                                .filter { it.id in editingModuleSetChildIds }
+                                .map { child ->
+                                    child to (
+                                        editingModuleSetStageSelections[child.id]
+                                            ?.distinct()
+                                            ?.filter { stage -> stage in child.supportedStages }
+                                            ?.ifEmpty {
+                                                child.recommendedStages
+                                                    .filter { stage -> stage in child.supportedStages }
+                                                    .ifEmpty { listOf(child.defaultStage) }
+                                            }
+                                            ?: child.recommendedStages
                                                 .filter { stage -> stage in child.supportedStages }
                                                 .ifEmpty { listOf(child.defaultStage) }
-                                        }
-                                        ?: child.recommendedStages
-                                            .filter { stage -> stage in child.supportedStages }
-                                            .ifEmpty { listOf(child.defaultStage) }
-                                    )
+                                        )
+                                }
+                                .filter { (_, stages) -> stages.isNotEmpty() }
+                            if (vm.replaceModuleSetSelection(repoUrl, moduleSetMetadata, selections)) {
+                                clearModuleSetEditor()
                             }
-                            .filter { (_, stages) -> stages.isNotEmpty() }
-                        if (vm.replaceModuleSetSelection(repoUrl, moduleSetMetadata, selections)) {
-                            clearModuleSetEditor()
                         }
-                    },
-                    enabled = editingModuleSetChildIds.isNotEmpty() && moduleSetMetadata.children
-                        .filter { it.id in editingModuleSetChildIds }
-                        .all { child ->
-                            val selStages = editingModuleSetStageSelections[child.id]
-                                ?: child.recommendedStages
-                                    .filter { it in child.supportedStages }
-                                    .ifEmpty { listOf(child.defaultStage) }
-                            selStages.any { it in child.supportedStages }
-                        }
-                ) {
-                    Text(stringResource(R.string.build_save))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { clearModuleSetEditor() }) {
-                    Text(stringResource(R.string.cancel))
+                    )
                 }
             }
-        )
+        }
     }
 
     state.workflowEnablementPrompt?.let { prompt ->
@@ -1493,7 +1513,7 @@ fun BuildScreenMiuix(
                             val catalogGroups = customModuleGroups.filter { it.catalogModule != null }
                             val manualGroups = customModuleGroups.filter { it.catalogModule == null }
                             LazyColumn(
-                                modifier = Modifier.heightIn(max = 800.dp),
+                                modifier = Modifier.heightIn(max = 4000.dp),
                                 userScrollEnabled = false,
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
@@ -1616,12 +1636,6 @@ fun BuildScreenMiuix(
                                                 }
                                             )
                                         }
-                                    }
-                                }
-
-                                if (customModuleGroups.isNotEmpty()) {
-                                    item(key = "divider") {
-                                        HorizontalDivider()
                                     }
                                 }
 

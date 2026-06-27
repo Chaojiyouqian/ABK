@@ -1173,19 +1173,10 @@ private fun MiuixPrebuiltReleaseListHeader(
             }
         }
         IconButton(onClick = onRefresh, enabled = !isLoading) {
-            if (isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    progress = null,
-                    size = 18.dp,
-                    strokeWidth = 2.dp
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = stringResource(R.string.flash_refresh_artifacts)
-                )
-            }
+            Icon(
+                imageVector = Icons.Default.Refresh,
+                contentDescription = stringResource(R.string.flash_refresh_artifacts)
+            )
         }
     }
 }
