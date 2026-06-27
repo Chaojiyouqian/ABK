@@ -313,7 +313,7 @@ private fun StatusHeroCardMiuix(
                 )
 
                 if (rootGranted) {
-                    Spacer(Modifier.height(60.dp))
+                    Spacer(Modifier.height(35.dp))
                 } else {
                     Spacer(Modifier.height(12.dp))
                     Row(

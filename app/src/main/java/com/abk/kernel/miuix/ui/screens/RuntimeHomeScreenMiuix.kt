@@ -1,7 +1,11 @@
 package com.abk.kernel.miuix.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -198,7 +202,7 @@ private fun RuntimeStatusHeroCardMiuix(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(all = 16.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 Text(
                     modifier = Modifier.fillMaxWidth(),
@@ -266,7 +270,49 @@ private fun RuntimeStatusHeroCardMiuix(
                     }
                     Spacer(Modifier.height(4.dp))
                 } else {
-                    Spacer(Modifier.height(60.dp))
+                    Spacer(Modifier.height(42.dp))
+                }
+            }
+
+            if (runtimeStatus != null) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .border(
+                                border = BorderStroke(1.dp, MiuixTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MiuixTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "schema ${runtimeStatus.schema}",
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.primary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    if (runtimeStatus.abkCommit.isNotBlank()) {
+                        RuntimeChipMiuix(label = runtimeStatus.abkCommit, secondary = true)
+                    }
                 }
             }
         }
@@ -492,7 +538,7 @@ private fun RuntimeInfoRowMiuix(label: String, value: String) {
 }
 
 @Composable
-private fun RuntimeChipMiuix(label: String, secondary: Boolean = false) {
+private fun RuntimeChipMiuix(label: String, secondary: Boolean = false, bold: Boolean = false) {
     val accentColor = if (secondary) {
         MiuixTheme.colorScheme.onSurfaceVariantSummary
     } else {
@@ -500,7 +546,7 @@ private fun RuntimeChipMiuix(label: String, secondary: Boolean = false) {
     }
     Row(
         modifier = Modifier
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .padding(horizontal = if (bold) 6.dp else 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -508,8 +554,8 @@ private fun RuntimeChipMiuix(label: String, secondary: Boolean = false) {
             text = label,
             style = MiuixTheme.textStyles.body2,
             color = accentColor,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium
+            fontSize = if (bold) 14.sp else 12.sp,
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Medium
         )
     }
 }

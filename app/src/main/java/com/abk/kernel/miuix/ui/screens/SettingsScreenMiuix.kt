@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -87,6 +88,9 @@ import com.abk.kernel.viewmodel.MainUiState
 import com.abk.kernel.viewmodel.MainViewModel
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Text as MiuixText
+import top.yukonga.miuix.kmp.basic.TextButton as MiuixTextButton
+import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TopAppBar
@@ -141,47 +145,75 @@ fun SettingsScreenMiuix(
     Box(Modifier.fillMaxSize()) {
         // ── Logout confirmation dialog ──────────────────────────────────────
         if (showLogoutDialog) {
-            AlertDialog(
-                onDismissRequest = { showLogoutDialog = false },
-                title = { Text(stringResource(R.string.settings_logout_title)) },
-                text = { Text(stringResource(R.string.settings_logout_message)) },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showLogoutDialog = false
-                            vm.logout()
-                            onLogout()
-                        }
-                    ) { Text(stringResource(R.string.confirm)) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showLogoutDialog = false }) {
-                        Text(stringResource(R.string.cancel))
+            WindowDialog(
+                show = true,
+                title = stringResource(R.string.settings_logout_title),
+                onDismissRequest = { showLogoutDialog = false }
+            ) {
+                Column {
+                    MiuixText(
+                        text = stringResource(R.string.settings_logout_message),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        MiuixTextButton(
+                            modifier = Modifier.weight(1f),
+                            text = stringResource(android.R.string.cancel),
+                            onClick = { showLogoutDialog = false }
+                        )
+                        Spacer(Modifier.width(20.dp))
+                        MiuixTextButton(
+                            modifier = Modifier.weight(1f),
+                            text = stringResource(R.string.confirm),
+                            colors = ButtonDefaults.textButtonColorsPrimary(),
+                            onClick = {
+                                showLogoutDialog = false
+                                vm.logout()
+                                onLogout()
+                            }
+                        )
                     }
                 }
-            )
+            }
         }
 
         // ── Clear artifacts confirmation dialog ─────────────────────────────
         if (showClearArtifactsDialog) {
-            AlertDialog(
-                onDismissRequest = { showClearArtifactsDialog = false },
-                title = { Text(stringResource(R.string.settings_clear_artifacts_title)) },
-                text = { Text(stringResource(R.string.settings_clear_artifacts_message)) },
-                confirmButton = {
-                    TextButton(onClick = {
-                        vm.clearAllDownloadedArtifacts()
-                        showClearArtifactsDialog = false
-                    }) {
-                        Text(stringResource(R.string.settings_clear_artifacts_confirm))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showClearArtifactsDialog = false }) {
-                        Text(stringResource(android.R.string.cancel))
+            WindowDialog(
+                show = true,
+                title = stringResource(R.string.settings_clear_artifacts_title),
+                onDismissRequest = { showClearArtifactsDialog = false }
+            ) {
+                Column {
+                    MiuixText(
+                        text = stringResource(R.string.settings_clear_artifacts_message),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        MiuixTextButton(
+                            modifier = Modifier.weight(1f),
+                            text = stringResource(android.R.string.cancel),
+                            onClick = { showClearArtifactsDialog = false }
+                        )
+                        Spacer(Modifier.width(20.dp))
+                        MiuixTextButton(
+                            modifier = Modifier.weight(1f),
+                            text = stringResource(R.string.settings_clear_artifacts_confirm),
+                            colors = ButtonDefaults.textButtonColorsPrimary(),
+                            onClick = {
+                                vm.clearAllDownloadedArtifacts()
+                                showClearArtifactsDialog = false
+                            }
+                        )
                     }
                 }
-            )
+            }
         }
 
         val surfaceColor = MiuixTheme.colorScheme.surface
@@ -779,14 +811,7 @@ private fun DownloadDirectoryItem(
                 text = stringResource(R.string.settings_download_directory_choose),
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.textButtonColorsPrimary(),
-                onClick = {
-                    if (needsAllFilesAccess) {
-                        Toast.makeText(context, permissionNeededMessage, Toast.LENGTH_LONG).show()
-                        openAllFilesAccessSettings(context)
-                    } else {
-                        folderPicker.launch(null)
-                    }
-                }
+                onClick = { folderPicker.launch(null) }
             )
             top.yukonga.miuix.kmp.basic.TextButton(
                 text = stringResource(R.string.settings_download_directory_reset),
@@ -795,6 +820,13 @@ private fun DownloadDirectoryItem(
                     onValueChange(defaultDirectory)
                     Toast.makeText(context, restoredMessage, Toast.LENGTH_SHORT).show()
                 }
+            )
+        }
+        AnimatedVisibility(visible = needsAllFilesAccess) {
+            top.yukonga.miuix.kmp.basic.TextButton(
+                text = permissionNeededMessage,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { openAllFilesAccessSettings(context) }
             )
         }
     }
