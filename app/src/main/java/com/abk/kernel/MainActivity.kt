@@ -845,21 +845,31 @@ private fun AbkMainScaffold(
                                         initialPage = visibleTabs.indexOf(activeTab).coerceAtLeast(0),
                                         pageCount = { visibleTabs.size }
                                     )
+                                    var navigatingToTarget by remember { mutableStateOf(false) }
 
-                                    // Pager -> selectedTab: sync immediately when currentPage changes
-                                    // during swipe or fling, so the bottom bar indicator follows
-                                    // the page in real time without delay.
+                                    // Pager -> selectedTab: sync immediately when user scrolls
+                                    // changes currentPage, but skip during programmatic (tab click)
+                                    // animation to avoid overriding to an intermediate page.
                                     LaunchedEffect(pagerState.currentPage) {
-                                        if (pagerState.currentPage in visibleTabs.indices) {
+                                        if (!navigatingToTarget &&
+                                            pagerState.currentPage in visibleTabs.indices
+                                        ) {
                                             selectedTab = visibleTabs[pagerState.currentPage]
                                         }
                                     }
 
                                     // selectedTab -> pager: animate to the correct page.
+                                    // Suppress the reverse sync while animating so intermediate
+                                    // page changes don't override the target tab selection.
                                     LaunchedEffect(activeTab) {
                                         val index = visibleTabs.indexOf(activeTab)
                                         if (index >= 0 && pagerState.currentPage != index) {
-                                            pagerState.animateScrollToPage(index)
+                                            navigatingToTarget = true
+                                            try {
+                                                pagerState.animateScrollToPage(index)
+                                            } finally {
+                                                navigatingToTarget = false
+                                            }
                                         }
                                     }
 
