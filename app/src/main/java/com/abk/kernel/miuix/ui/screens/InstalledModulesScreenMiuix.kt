@@ -621,6 +621,14 @@ private fun ModuleListContent(
         }
     }
 
+    // 刷新完成后，如果兼容层提示磁贴可见，确保它不被顶栏遮挡
+    LaunchedEffect(abkRuntimeError, hasNativeManagerPermission, isRefreshing) {
+        if (!isRefreshing && abkRuntimeError != null && !hasNativeManagerPermission) {
+            delay(100)
+            listState.animateScrollToItem(0)
+        }
+    }
+
     PullToRefresh(
         isRefreshing = isRefreshing,
         onRefresh = { if (!isRefreshing) isRefreshing = true },

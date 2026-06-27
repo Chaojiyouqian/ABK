@@ -29,7 +29,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -106,7 +109,10 @@ import com.abk.kernel.miuix.util.rememberBlurBackdrop
 import com.abk.kernel.ui.theme.AbkTheme
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.basic.TextButton as MiuixTextButton
+import top.yukonga.miuix.kmp.basic.ButtonDefaults as MiuixButtonDefaults
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.window.WindowDialog
 import androidx.compose.ui.graphics.Color
 import com.abk.kernel.ui.theme.LocalUiSurfaceAlpha
 import com.abk.kernel.ui.theme.appPageBackgroundColor
@@ -266,26 +272,32 @@ private fun SyncPromptDialog(
     onSync: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    WindowDialog(
+        show = true,
+        title = stringResource(R.string.sync_title),
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.sync_title)) },
-        text = {
-            Text(
-                "${stringResource(R.string.sync_desc)}\n\n" +
-                    stringResource(R.string.sync_behind_commits, behindBy)
-            )
-        },
-        confirmButton = {
-            Button(onClick = onSync) {
-                Text(stringResource(R.string.sync_action))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.skip))
+    ) {
+        Column {
+            Text("${stringResource(R.string.sync_desc)}\n\n${stringResource(R.string.sync_behind_commits, behindBy)}")
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                MiuixTextButton(
+                    text = stringResource(R.string.skip),
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(20.dp))
+                MiuixTextButton(
+                    text = stringResource(R.string.sync_action),
+                    onClick = onSync,
+                    modifier = Modifier.weight(1f),
+                    colors = MiuixButtonDefaults.textButtonColorsPrimary()
+                )
             }
         }
-    )
+    }
 }
 
 @Composable
@@ -834,14 +846,11 @@ private fun AbkMainScaffold(
                                         pageCount = { visibleTabs.size }
                                     )
 
-                                    // Flag to suppress pagerState -> selectedTab sync
-                                    // Pager -> selectedTab: sync only when pager is NOT scrolling.
-                                    // Uses both isScrollInProgress AND currentPage as keys, so the
-                                    // sync fires reliably when the pager settles — regardless of
-                                    // when currentPage reached its target during the animation.
-                                    LaunchedEffect(pagerState.isScrollInProgress, pagerState.currentPage) {
-                                        if (!pagerState.isScrollInProgress &&
-                                            pagerState.currentPage in visibleTabs.indices) {
+                                    // Pager -> selectedTab: sync immediately when currentPage changes
+                                    // during swipe or fling, so the bottom bar indicator follows
+                                    // the page in real time without delay.
+                                    LaunchedEffect(pagerState.currentPage) {
+                                        if (pagerState.currentPage in visibleTabs.indices) {
                                             selectedTab = visibleTabs[pagerState.currentPage]
                                         }
                                     }
