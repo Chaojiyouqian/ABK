@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -163,7 +165,7 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private const val CATALOG_MODULE_REMOVE_DELAY_MS = 260L
+private const val CATALOG_MODULE_REMOVE_DELAY_MS = 300L
 
 @Composable
 fun BuildScreenMiuix(
@@ -1134,7 +1136,7 @@ fun BuildScreenMiuix(
                 AnimatedVisibility(
                     visible = state.buildStatus != BuildStatus.IDLE,
                     enter = fadeIn() + expandIn(expandFrom = Alignment.TopStart),
-                    exit = fadeOut() + shrinkOut(shrinkTowards = Alignment.TopStart)
+                    exit = fadeOut() + shrinkVertically() + shrinkOut(shrinkTowards = Alignment.TopStart)
                 ) {
                     val kernelActiveRuns = remember(state.activeBuildRuns) {
                         state.activeBuildRuns.filter { it.isKernelBuild() }
@@ -1433,7 +1435,7 @@ fun BuildScreenMiuix(
                 AnimatedVisibility(
                     visible = !isOnePlusBuild && config.useZram,
                     enter = fadeIn() + expandIn(expandFrom = Alignment.TopStart),
-                    exit = fadeOut() + shrinkOut(shrinkTowards = Alignment.TopStart)
+                    exit = fadeOut() + shrinkVertically() + shrinkOut(shrinkTowards = Alignment.TopStart)
                 ) {
                     Column {
                         SectionTitle(stringResource(R.string.build_zram_options))
@@ -1459,7 +1461,7 @@ fun BuildScreenMiuix(
                 AnimatedVisibility(
                     visible = !isOnePlusBuild && config.useKpm,
                     enter = fadeIn() + expandIn(expandFrom = Alignment.TopStart),
-                    exit = fadeOut() + shrinkOut(shrinkTowards = Alignment.TopStart)
+                    exit = fadeOut() + shrinkVertically() + shrinkOut(shrinkTowards = Alignment.TopStart)
                 ) {
                     Column {
                         SectionTitle(stringResource(R.string.build_kpm_options))
@@ -1488,193 +1490,207 @@ fun BuildScreenMiuix(
                             enter = fadeIn() + expandVertically(),
                             exit = fadeOut() + shrinkVertically()
                         ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                val catalogGroups = customModuleGroups.filter { it.catalogModule != null }
-                                val manualGroups = customModuleGroups.filter { it.catalogModule == null }
+                            val catalogGroups = customModuleGroups.filter { it.catalogModule != null }
+                            val manualGroups = customModuleGroups.filter { it.catalogModule == null }
+                            LazyColumn(
+                                modifier = Modifier.heightIn(max = 800.dp),
+                                userScrollEnabled = false,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 if (catalogGroups.isNotEmpty()) {
-                                    top.yukonga.miuix.kmp.basic.Text(
-                                        text = stringResource(R.string.build_add_from_module_repo),
-                                        style = MiuixTheme.textStyles.subtitle,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                                    )
-                                    catalogGroups.forEach { group ->
-                                        key(group.key) {
-                                            AnimatedVisibility(
-                                                visible = group.key !in removingCustomModuleKeys,
-                                                enter = fadeIn() + expandVertically(),
-                                                exit = fadeOut() + shrinkVertically()
-                                            ) {
-                                                ArrowPreference(
-                                                    title = group.displayName(stringResource(R.string.build_external_module_default)),
-                                                    summary = group.subtitle(
-                                                        noStageLabel = stringResource(R.string.build_stage_none),
-                                                        sourcePrefix = stringResource(R.string.build_source_list, "%s")
-                                                    ),
-                                                    endActions = {
-                                                        IconButton(
-                                                            onClick = {
-                                                                if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
-                                                                    openModuleSetEditor(group)
-                                                                } else {
-                                                                    editingCustomModuleGroup = group
-                                                                    editingCustomModuleStages = group.stages
-                                                                }
+                                    item(key = "catalog-header") {
+                                        top.yukonga.miuix.kmp.basic.Text(
+                                            text = stringResource(R.string.build_add_from_module_repo),
+                                            style = MiuixTheme.textStyles.subtitle,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                    items(catalogGroups, key = { it.key }) { group ->
+                                        AnimatedVisibility(
+                                            visible = group.key !in removingCustomModuleKeys,
+                                            enter = fadeIn() + expandVertically(),
+                                            exit = fadeOut() + shrinkVertically()
+                                        ) {
+                                            ArrowPreference(
+                                                modifier = Modifier.animateItem(),
+                                                title = group.displayName(stringResource(R.string.build_external_module_default)),
+                                                summary = group.subtitle(
+                                                    noStageLabel = stringResource(R.string.build_stage_none),
+                                                    sourcePrefix = stringResource(R.string.build_source_list, "%s")
+                                                ),
+                                                endActions = {
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
+                                                                openModuleSetEditor(group)
+                                                            } else {
+                                                                editingCustomModuleGroup = group
+                                                                editingCustomModuleStages = group.stages
                                                             }
-                                                        ) {
-                                                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.build_edit_injection_stage))
                                                         }
-                                                        IconButton(
-                                                            onClick = {
-                                                                if (group.key in removingCustomModuleKeys) return@IconButton
-                                                                removingCustomModuleKeys =
-                                                                    (removingCustomModuleKeys + group.key).distinct()
-                                                                coroutineScope.launch {
-                                                                    delay(CATALOG_MODULE_REMOVE_DELAY_MS)
-                                                                    if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
-                                                                        vm.removeModuleSetSelection(group.groupRepoUrl.ifBlank { group.url })
-                                                                    } else {
-                                                                        vm.setCustomExternalModuleStages(group.url, emptyList())
-                                                                    }
-                                                                    removingCustomModuleKeys =
-                                                                        removingCustomModuleKeys - group.key
-                                                                }
-                                                            },
-                                                            enabled = group.key !in removingCustomModuleKeys
-                                                        ) {
-                                                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.build_remove_module))
-                                                        }
+                                                    ) {
+                                                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.build_edit_injection_stage))
                                                     }
-                                                )
-                                            }
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (group.key in removingCustomModuleKeys) return@IconButton
+                                                            removingCustomModuleKeys =
+                                                                (removingCustomModuleKeys + group.key).distinct()
+                                                            coroutineScope.launch {
+                                                                delay(CATALOG_MODULE_REMOVE_DELAY_MS)
+                                                                if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
+                                                                    vm.removeModuleSetSelection(group.groupRepoUrl.ifBlank { group.url })
+                                                                } else {
+                                                                    vm.setCustomExternalModuleStages(group.url, emptyList())
+                                                                }
+                                                                removingCustomModuleKeys =
+                                                                    removingCustomModuleKeys - group.key
+                                                            }
+                                                        },
+                                                        enabled = group.key !in removingCustomModuleKeys
+                                                    ) {
+                                                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.build_remove_module))
+                                                    }
+                                                }
+                                            )
                                         }
                                     }
                                 }
 
                                 if (manualGroups.isNotEmpty()) {
-                                    top.yukonga.miuix.kmp.basic.Text(
-                                        text = stringResource(R.string.build_manual_add),
-                                        style = MiuixTheme.textStyles.subtitle,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                                    )
-                                    manualGroups.forEach { group ->
-                                        key(group.key) {
-                                            AnimatedVisibility(
-                                                visible = group.key !in removingCustomModuleKeys,
-                                                enter = fadeIn() + expandVertically(),
-                                                exit = fadeOut() + shrinkVertically()
-                                            ) {
-                                                ArrowPreference(
-                                                    title = group.displayName(stringResource(R.string.build_external_module_default)),
-                                                    summary = group.subtitle(
-                                                        noStageLabel = stringResource(R.string.build_stage_none),
-                                                        sourcePrefix = stringResource(R.string.build_source_list, "%s")
-                                                    ),
-                                                    endActions = {
-                                                        IconButton(
-                                                            onClick = {
-                                                                if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
-                                                                    openModuleSetEditor(group)
-                                                                } else {
-                                                                    editingCustomModuleGroup = group
-                                                                    editingCustomModuleStages = group.stages
-                                                                }
+                                    item(key = "manual-header") {
+                                        top.yukonga.miuix.kmp.basic.Text(
+                                            text = stringResource(R.string.build_manual_add),
+                                            style = MiuixTheme.textStyles.subtitle,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                    items(manualGroups, key = { it.key }) { group ->
+                                        AnimatedVisibility(
+                                            visible = group.key !in removingCustomModuleKeys,
+                                            enter = fadeIn() + expandVertically(),
+                                            exit = fadeOut() + shrinkVertically()
+                                        ) {
+                                            ArrowPreference(
+                                                modifier = Modifier.animateItem(),
+                                                title = group.displayName(stringResource(R.string.build_external_module_default)),
+                                                summary = group.subtitle(
+                                                    noStageLabel = stringResource(R.string.build_stage_none),
+                                                    sourcePrefix = stringResource(R.string.build_source_list, "%s")
+                                                ),
+                                                endActions = {
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
+                                                                openModuleSetEditor(group)
+                                                            } else {
+                                                                editingCustomModuleGroup = group
+                                                                editingCustomModuleStages = group.stages
                                                             }
-                                                        ) {
-                                                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.build_edit_injection_stage))
                                                         }
-                                                        IconButton(
-                                                            onClick = {
-                                                                if (group.key in removingCustomModuleKeys) return@IconButton
-                                                                removingCustomModuleKeys =
-                                                                    (removingCustomModuleKeys + group.key).distinct()
-                                                                coroutineScope.launch {
-                                                                    delay(CATALOG_MODULE_REMOVE_DELAY_MS)
-                                                                    if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
-                                                                        vm.removeModuleSetSelection(group.groupRepoUrl.ifBlank { group.url })
-                                                                    } else {
-                                                                        vm.setCustomExternalModuleStages(group.url, emptyList())
-                                                                    }
-                                                                    removingCustomModuleKeys =
-                                                                        removingCustomModuleKeys - group.key
-                                                                }
-                                                            },
-                                                            enabled = group.key !in removingCustomModuleKeys
-                                                        ) {
-                                                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.build_remove_module))
-                                                        }
+                                                    ) {
+                                                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.build_edit_injection_stage))
                                                     }
-                                                )
-                                            }
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (group.key in removingCustomModuleKeys) return@IconButton
+                                                            removingCustomModuleKeys =
+                                                                (removingCustomModuleKeys + group.key).distinct()
+                                                            coroutineScope.launch {
+                                                                delay(CATALOG_MODULE_REMOVE_DELAY_MS)
+                                                                if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
+                                                                    vm.removeModuleSetSelection(group.groupRepoUrl.ifBlank { group.url })
+                                                                } else {
+                                                                    vm.setCustomExternalModuleStages(group.url, emptyList())
+                                                                }
+                                                                removingCustomModuleKeys =
+                                                                    removingCustomModuleKeys - group.key
+                                                            }
+                                                        },
+                                                        enabled = group.key !in removingCustomModuleKeys
+                                                    ) {
+                                                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.build_remove_module))
+                                                    }
+                                                }
+                                            )
                                         }
                                     }
                                 }
 
                                 if (customModuleGroups.isNotEmpty()) {
-                                    HorizontalDivider()
+                                    item(key = "divider") {
+                                        HorizontalDivider()
+                                    }
                                 }
 
                                 // Add custom module text field + button
-                                BuildTextFieldItem(
-                                    value = customModuleUrl,
-                                    onValueChange = { customModuleUrl = it },
-                                    label = stringResource(R.string.build_repo_url),
-                                    placeholder = "https://github.com/user/module"
-                                )
-                                top.yukonga.miuix.kmp.basic.Button(
-                                    onClick = {
-                                        val cleanUrl = customModuleUrl.trim()
-                                        if (cleanUrl.isNotEmpty()) {
-                                            coroutineScope.launch {
-                                                vm.checkCustomExternalModuleMetadata(cleanUrl)?.let { metadata ->
-                                                    pendingCustomModuleUrl = cleanUrl
-                                                    pendingCustomModuleMetadata = metadata
-                                                    selectedCustomModuleStages = metadata.recommendedStages
-                                                        .filter { it in metadata.supportedStages }
-                                                        .ifEmpty { listOf(metadata.defaultStage) }
+                                item(key = "add-field") {
+                                    BuildTextFieldItem(
+                                        value = customModuleUrl,
+                                        onValueChange = { customModuleUrl = it },
+                                        label = stringResource(R.string.build_repo_url),
+                                        placeholder = "https://github.com/user/module"
+                                    )
+                                }
+                                item(key = "add-button") {
+                                    top.yukonga.miuix.kmp.basic.Button(
+                                        onClick = {
+                                            val cleanUrl = customModuleUrl.trim()
+                                            if (cleanUrl.isNotEmpty()) {
+                                                coroutineScope.launch {
+                                                    vm.checkCustomExternalModuleMetadata(cleanUrl)?.let { metadata ->
+                                                        pendingCustomModuleUrl = cleanUrl
+                                                        pendingCustomModuleMetadata = metadata
+                                                        selectedCustomModuleStages = metadata.recommendedStages
+                                                            .filter { it in metadata.supportedStages }
+                                                            .ifEmpty { listOf(metadata.defaultStage) }
+                                                    }
                                                 }
                                             }
-                                        }
-                                    },
-                                    enabled = customModuleUrl.isNotBlank() && !state.validatingCustomExternalModule,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                                        .height(48.dp)
-                                ) {
-                                    top.yukonga.miuix.kmp.basic.Text(
-                                        text = if (state.validatingCustomExternalModule) {
-                                            stringResource(R.string.build_checking)
-                                        } else {
-                                            stringResource(R.string.build_check_module)
-                                        }
-                                    )
+                                        },
+                                        enabled = customModuleUrl.isNotBlank() && !state.validatingCustomExternalModule,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                                            .height(48.dp)
+                                    ) {
+                                        top.yukonga.miuix.kmp.basic.Text(
+                                            text = if (state.validatingCustomExternalModule) {
+                                                stringResource(R.string.build_checking)
+                                            } else {
+                                                stringResource(R.string.build_check_module)
+                                            }
+                                        )
+                                    }
                                 }
 
                                 state.customExternalModuleError?.let { err ->
-                                    Card(
-                                        colors = CardDefaults.defaultColors(
-                                            color = MiuixTheme.colorScheme.error.copy(alpha = 0.12f)
-                                        ),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 16.dp, vertical = 4.dp)
-                                    ) {
-                                        Row(
-                                            Modifier.padding(12.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                    item(key = "error") {
+                                        Card(
+                                            colors = CardDefaults.defaultColors(
+                                                color = MiuixTheme.colorScheme.error.copy(alpha = 0.12f)
+                                            ),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp, vertical = 4.dp)
                                         ) {
-                                            Icon(Icons.Default.Error, null, tint = MiuixTheme.colorScheme.error)
-                                            Spacer(Modifier.width(8.dp))
-                                            top.yukonga.miuix.kmp.basic.Text(
-                                                text = err,
-                                                style = MiuixTheme.textStyles.body2,
-                                                color = MiuixTheme.colorScheme.error,
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                            IconButton(onClick = { vm.clearCustomExternalModuleError() }) {
-                                                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close_error), tint = MiuixTheme.colorScheme.error)
+                                            Row(
+                                                Modifier.padding(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(Icons.Default.Error, null, tint = MiuixTheme.colorScheme.error)
+                                                Spacer(Modifier.width(8.dp))
+                                                top.yukonga.miuix.kmp.basic.Text(
+                                                    text = err,
+                                                    style = MiuixTheme.textStyles.body2,
+                                                    color = MiuixTheme.colorScheme.error,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                IconButton(onClick = { vm.clearCustomExternalModuleError() }) {
+                                                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close_error), tint = MiuixTheme.colorScheme.error)
+                                                }
                                             }
                                         }
                                     }
@@ -2240,7 +2256,7 @@ private fun BuildPlanToolsCardMiuix(
             AnimatedVisibility(
                 visible = expanded,
                 enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
-                exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top)
+                exit = fadeOut() + shrinkVertically() + shrinkVertically(shrinkTowards = Alignment.Top)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
