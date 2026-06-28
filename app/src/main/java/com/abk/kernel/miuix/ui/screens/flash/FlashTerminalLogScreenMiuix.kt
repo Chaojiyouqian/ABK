@@ -165,13 +165,12 @@ fun FlashTerminalLogScreenMiuix(
             RootUtils.ShellResult(false, listOf(error.message ?: error::class.java.simpleName))
         }
 
+        // onOutput 回调已在执行期间实时追加所有行，此处不再重复追加 result.output
         if (result.output.isEmpty()) {
             logState.appendLine(
                 if (result.success) flashCommandDoneNoOutput
                 else flashCommandFailedNoLog
             )
-        } else {
-            result.output.forEach { line -> logState.appendLine(line) }
         }
 
         if (result.success) {
