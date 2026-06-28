@@ -1457,7 +1457,7 @@ fun BuildScreenMiuix(
                     enter = fadeIn() + expandIn(expandFrom = Alignment.TopStart),
                     exit = fadeOut() + shrinkVertically() + shrinkOut(shrinkTowards = Alignment.TopStart)
                 ) {
-                    Column {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         SectionTitle(stringResource(R.string.build_zram_options))
                         Card(modifier = Modifier.fillMaxWidth()) {
                             SwitchPreference(
@@ -1465,7 +1465,11 @@ fun BuildScreenMiuix(
                                 checked = config.zramFullAlgo,
                                 onCheckedChange = { vm.updateBuildConfig(config.copy(zramFullAlgo = it)) }
                             )
-                            if (!config.zramFullAlgo) {
+                            AnimatedVisibility(
+                                visible = config.zramFullAlgo,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically()
+                            ) {
                                 BuildTextFieldItem(
                                     value = config.zramExtraAlgos,
                                     onValueChange = { vm.updateBuildConfig(config.copy(zramExtraAlgos = it)) },
@@ -1483,7 +1487,7 @@ fun BuildScreenMiuix(
                     enter = fadeIn() + expandIn(expandFrom = Alignment.TopStart),
                     exit = fadeOut() + shrinkVertically() + shrinkOut(shrinkTowards = Alignment.TopStart)
                 ) {
-                    Column {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         SectionTitle(stringResource(R.string.build_kpm_options))
                         Card(modifier = Modifier.fillMaxWidth()) {
                             BuildTextFieldItem(
@@ -1550,7 +1554,7 @@ fun BuildScreenMiuix(
                                                             }
                                                         }
                                                     ) {
-                                                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.build_edit_injection_stage))
+                                                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.build_edit_injection_stage), tint = MiuixTheme.colorScheme.onSurface)
                                                     }
                                                     IconButton(
                                                         onClick = {
@@ -1570,7 +1574,7 @@ fun BuildScreenMiuix(
                                                         },
                                                         enabled = group.key !in removingCustomModuleKeys
                                                     ) {
-                                                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.build_remove_module))
+                                                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.build_remove_module), tint = MiuixTheme.colorScheme.onSurface)
                                                     }
                                                 }
                                             )
@@ -1611,7 +1615,7 @@ fun BuildScreenMiuix(
                                                             }
                                                         }
                                                     ) {
-                                                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.build_edit_injection_stage))
+                                                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.build_edit_injection_stage), tint = MiuixTheme.colorScheme.onSurface)
                                                     }
                                                     IconButton(
                                                         onClick = {
@@ -1631,7 +1635,7 @@ fun BuildScreenMiuix(
                                                         },
                                                         enabled = group.key !in removingCustomModuleKeys
                                                     ) {
-                                                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.build_remove_module))
+                                                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.build_remove_module), tint = MiuixTheme.colorScheme.onSurface)
                                                     }
                                                 }
                                             )
