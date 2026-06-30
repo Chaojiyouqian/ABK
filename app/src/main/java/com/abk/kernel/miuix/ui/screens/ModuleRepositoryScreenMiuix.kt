@@ -1664,6 +1664,8 @@ private fun RuntimeModuleCardMiuix(
                 }
             }
 
+            HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+
             // Action buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),

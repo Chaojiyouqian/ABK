@@ -278,7 +278,10 @@ private fun SyncPromptDialog(
         onDismissRequest = onDismiss,
     ) {
         Column {
-            Text("${stringResource(R.string.sync_desc)}\n\n${stringResource(R.string.sync_behind_commits, behindBy)}")
+            Text(
+                "${stringResource(R.string.sync_desc)}\n\n${stringResource(R.string.sync_behind_commits, behindBy)}",
+                color = MiuixTheme.colorScheme.onSurface
+            )
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween

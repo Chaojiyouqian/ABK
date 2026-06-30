@@ -270,7 +270,7 @@ private fun RuntimeStatusHeroCardMiuix(
                     }
                     Spacer(Modifier.height(4.dp))
                 } else {
-                    Spacer(Modifier.height(42.dp))
+                    Spacer(Modifier.height(if (active) 63.dp else 38.dp))
                 }
             }
 
