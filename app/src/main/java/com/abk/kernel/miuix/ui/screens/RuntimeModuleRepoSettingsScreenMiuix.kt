@@ -24,11 +24,14 @@ import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -72,6 +75,12 @@ fun RuntimeModuleRepoSettingsScreenMiuix(vm: MainViewModel) {
     val navigator = LocalNavigator.current
     val scrollBehavior = MiuixScrollBehavior()
     var repositoryUrl by rememberSaveable { mutableStateOf("") }
+    var refreshingAll by remember { mutableStateOf(false) }
+    LaunchedEffect(state.refreshingRuntimeModuleRepositoryIds) {
+        if (refreshingAll && state.refreshingRuntimeModuleRepositoryIds.isEmpty()) {
+            refreshingAll = false
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -203,16 +212,28 @@ fun RuntimeModuleRepoSettingsScreenMiuix(vm: MainViewModel) {
                             Text(stringResource(R.string.add))
                         }
                         Button(
-                            onClick = { vm.refreshAllRuntimeModuleRepositories() },
-                            enabled = state.runtimeModuleRepositories.isNotEmpty(),
+                            onClick = {
+                                refreshingAll = true
+                                vm.refreshAllRuntimeModuleRepositories()
+                            },
+                            enabled = state.runtimeModuleRepositories.isNotEmpty() && !refreshingAll,
                             colors = ButtonDefaults.buttonColors(),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = null,
-                                modifier = Modifier.size(17.dp)
-                            )
+                            if (refreshingAll) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(17.dp),
+                                    progress = null,
+                                    size = 17.dp,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
                             Spacer(Modifier.width(6.dp))
                             Text(stringResource(R.string.refresh_all))
                         }
@@ -251,12 +272,14 @@ fun RuntimeModuleRepoSettingsScreenMiuix(vm: MainViewModel) {
                 }
             } else {
                 state.runtimeModuleRepositories.forEach { repository ->
-                    RuntimeModuleRepositoryCardMiuix(
-                        repository = repository,
-                        refreshing = repository.id in state.refreshingRuntimeModuleRepositoryIds,
-                        onRefresh = { vm.refreshRuntimeModuleRepository(repository.id) },
-                        onDelete = { vm.deleteRuntimeModuleRepository(repository.id) }
-                    )
+                    key(repository.id) {
+                        RuntimeModuleRepositoryCardMiuix(
+                            repository = repository,
+                            refreshing = repository.id in state.refreshingRuntimeModuleRepositoryIds && !refreshingAll,
+                            onRefresh = { vm.refreshRuntimeModuleRepository(repository.id) },
+                            onDelete = { vm.deleteRuntimeModuleRepository(repository.id) }
+                        )
+                    }
                 }
             }
 
@@ -406,10 +429,7 @@ private fun RuntimeModuleRepositoryCardMiuix(
                 }
                 Button(
                     onClick = onDelete,
-                    colors = ButtonDefaults.buttonColors(
-                        color = MiuixTheme.colorScheme.error,
-                        contentColor = Color.White
-                    ),
+                    colors = ButtonDefaults.buttonColorsPrimary(),
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(
