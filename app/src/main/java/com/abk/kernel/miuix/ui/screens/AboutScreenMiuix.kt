@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -37,9 +38,18 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.abk.kernel.miuix.util.BlurredBar
+import com.abk.kernel.miuix.util.rememberBlurBackdrop
+import com.abk.kernel.viewmodel.MainViewModel
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 
 @Composable
-fun AboutScreenMiuix() {
+fun AboutScreenMiuix(vm: MainViewModel) {
     val context = LocalContext.current
     val navigator = LocalNavigator.current
 
@@ -64,28 +74,48 @@ fun AboutScreenMiuix() {
         )
     }
 
+    val scrollBehavior = MiuixScrollBehavior()
+    val state by vm.uiState.collectAsState()
+    val surfaceColor = MiuixTheme.colorScheme.surface
+    val backdrop = rememberBlurBackdrop(state.miuixBlurEnabled, surfaceColor)
+    val barColor = if (backdrop != null) Color.Transparent else surfaceColor
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = stringResource(R.string.settings_about_title),
-                navigationIcon = {
-                    IconButton(onClick = { navigator.pop() }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = null
-                        )
+            BlurredBar(backdrop, surfaceColor) {
+                TopAppBar(
+                    color = barColor,
+                    title = stringResource(R.string.settings_about_title),
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        IconButton(onClick = { navigator.pop() }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = null
+                            )
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        Box(
+            modifier = Modifier.then(
+                if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
+            )
         ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection),
+                contentPadding = PaddingValues(
+                    top = padding.calculateTopPadding() + 16.dp,
+                    start = 20.dp,
+                    end = 20.dp,
+                    bottom = 16.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
             item {
                 Card {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -241,5 +271,6 @@ fun AboutScreenMiuix() {
                 Spacer(Modifier.size(80.dp))
             }
         }
+    }
     }
 }

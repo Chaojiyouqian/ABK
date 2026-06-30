@@ -3,6 +3,7 @@ package com.abk.kernel.miuix.ui.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -45,6 +46,13 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import top.yukonga.miuix.kmp.window.WindowDialog
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.graphics.Color
+import com.abk.kernel.miuix.util.BlurredBar
+import com.abk.kernel.miuix.util.rememberBlurBackdrop
+import com.abk.kernel.viewmodel.MainViewModel
+import com.abk.kernel.viewmodel.MainUiState
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 
 private data class MiuixOpenSourceNotice(
     val name: String,
@@ -59,11 +67,15 @@ private data class MiuixOpenSourceNoticeGroup(
 )
 
 @Composable
-fun OpenSourceLicensesScreenMiuix() {
+fun OpenSourceLicensesScreenMiuix(vm: MainViewModel) {
     val navigator = LocalNavigator.current
     val context = LocalContext.current
     val scrollBehavior = MiuixScrollBehavior()
     var selectedNotice by remember { mutableStateOf<MiuixOpenSourceNotice?>(null) }
+    val state by vm.uiState.collectAsState()
+    val surfaceColor = MiuixTheme.colorScheme.surface
+    val backdrop = rememberBlurBackdrop(state.miuixBlurEnabled, surfaceColor)
+    val barColor = if (backdrop != null) Color.Transparent else surfaceColor
 
     fun openUrl(url: String) {
         runCatching {
@@ -73,32 +85,43 @@ fun OpenSourceLicensesScreenMiuix() {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = stringResource(R.string.settings_open_source_licenses),
-                scrollBehavior = scrollBehavior,
-                navigationIcon = {
-                    IconButton(onClick = { navigator.pop() }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = null
-                        )
+            BlurredBar(backdrop, surfaceColor) {
+                TopAppBar(
+                    color = barColor,
+                    title = stringResource(R.string.settings_open_source_licenses),
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        IconButton(onClick = { navigator.pop() }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = null
+                            )
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { padding ->
         val groups = remember { miuixOpenSourceNoticeGroups() }
-        LazyColumn(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .overScrollVertical()
-                .scrollEndHaptic(),
-            contentPadding = PaddingValues(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            overscrollEffect = null
+        Box(
+            modifier = Modifier.then(
+                if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
+            )
         ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .overScrollVertical()
+                    .scrollEndHaptic(),
+                contentPadding = PaddingValues(
+                    top = padding.calculateTopPadding(),
+                    start = 20.dp,
+                    end = 20.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                overscrollEffect = null
+            ) {
             item { Spacer(Modifier.height(8.dp)) }
 
             item {
@@ -147,6 +170,7 @@ fun OpenSourceLicensesScreenMiuix() {
 
             item { Spacer(Modifier.height(60.dp)) }
         }
+    }
     }
 
     selectedNotice?.let { notice ->
