@@ -147,6 +147,9 @@ android {
         }
     }
     packaging {
+        dex {
+            useLegacyPackaging = true
+        }
         jniLibs {
             useLegacyPackaging = true
         }
