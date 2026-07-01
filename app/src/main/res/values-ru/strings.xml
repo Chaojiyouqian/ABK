@@ -102,6 +102,10 @@
     <string name="oobe_flash_detail">Артефакты workflow, доступ к fork и записи Actions появятся после входа и проверки fork.</string>
     <string name="oobe_continue_setup">Продолжить настройку GitHub</string>
     <string name="oobe_skip_for_now">Пропустить</string>
+    <string name="oobe_theme_title">Выберите стиль интерфейса</string>
+    <string name="oobe_theme_m3e">Material 3 Expressive</string>
+    <string name="oobe_theme_miuix">MIUIX</string>
+    <string name="oobe_theme_confirm">Подтвердить</string>
 
     <!-- Build -->
     <string name="build_title">Сборка ядра</string>

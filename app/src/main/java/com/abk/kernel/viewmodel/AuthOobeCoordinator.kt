@@ -99,7 +99,7 @@ class AuthOobeCoordinator(
 
     fun completeIfRequested(closeOobeWhenReady: Boolean) {
         if (closeOobeWhenReady) {
-            completeOobe()
+            updateState { it.copy(authStep = AuthStep.THEME_SELECT) }
         }
     }
 

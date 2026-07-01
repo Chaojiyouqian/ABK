@@ -62,7 +62,7 @@ import java.util.UUID
 
 // ── UI State ─────────────────────────────────────────────────────────────────
 
-enum class AuthStep { INTRO, LOGIN, FORK_CHECK }
+enum class AuthStep { INTRO, LOGIN, FORK_CHECK, THEME_SELECT }
 
 enum class WorkflowStepI18nRefreshReason {
     SYNC_GATE,
