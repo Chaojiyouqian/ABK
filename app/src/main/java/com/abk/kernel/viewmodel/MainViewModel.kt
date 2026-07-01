@@ -98,6 +98,7 @@ data class MainUiState(
     val behindBy: Int = 0,
     val showSyncPrompt: Boolean = false,
     val showOobe: Boolean = false,
+    val oobeFromBuild: Boolean = false,
     val oobeCompleted: Boolean = false,
     val isLoading: Boolean = false,
     val error: String? = null,

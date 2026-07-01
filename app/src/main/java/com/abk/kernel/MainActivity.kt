@@ -95,6 +95,7 @@ import com.abk.kernel.ui.screens.FlashScreen
 import com.abk.kernel.ui.screens.InstalledModulesScreen
 import com.abk.kernel.ui.screens.ModuleRepositoryScreen
 import com.abk.kernel.ui.screens.OobeScreen
+import com.abk.kernel.miuix.ui.screens.OobeScreenMiuix
 import com.abk.kernel.ui.screens.RootAuthorizationScreen
 import com.abk.kernel.ui.screens.RuntimeHomeScreen
 import com.abk.kernel.ui.screens.SettingsScreen
@@ -230,7 +231,11 @@ class MainActivity : ComponentActivity() {
                                             .background(androidx.compose.material3.MaterialTheme.colorScheme.surface)
                                             .zIndex(4f)
                                     ) {
-                                        OobeScreen(vm)
+                                        if (state.uiStyle == "miuix" && state.oobeFromBuild) {
+                                            OobeScreenMiuix(vm)
+                                        } else {
+                                            OobeScreen(vm)
+                                        }
                                     }
                                 }
                             }

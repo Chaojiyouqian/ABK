@@ -1,0 +1,821 @@
+package com.abk.kernel.miuix.ui.screens
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.automirrored.filled.CallSplit
+import androidx.compose.material.icons.filled.ForkRight
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.abk.kernel.BuildConfig
+import com.abk.kernel.R
+import com.abk.kernel.data.model.GitHubRepo
+import com.abk.kernel.miuix.ui.screens.flash.common.MiuixConfirmDialog
+import com.abk.kernel.viewmodel.AuthStep
+import com.abk.kernel.viewmodel.MainViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
+import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+private const val OOBE_SKIP_LOADING_DELAY_MS = 320L
+private const val OOBE_SKIP_EXIT_DELAY_MS = 280L
+
+@Composable
+fun OobeScreenMiuix(vm: MainViewModel) {
+    val state by vm.uiState.collectAsState()
+    val scope = rememberCoroutineScope()
+    var skipInFlight by remember { mutableStateOf(false) }
+
+    fun requestSkip() {
+        if (skipInFlight) return
+        skipInFlight = true
+        scope.launch {
+            delay(OOBE_SKIP_LOADING_DELAY_MS)
+            delay(OOBE_SKIP_EXIT_DELAY_MS)
+            vm.skipOobe()
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MiuixTheme.colorScheme.surface)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            when (state.authStep) {
+                AuthStep.LOGIN -> LoginScreenMiuix(
+                    isLoading = state.isLoading,
+                    userCode = state.userCode,
+                    verificationUri = state.verificationUri,
+                    isPolling = state.isPollingToken,
+                    error = state.error,
+                    onLogin = { if (!skipInFlight) vm.startDeviceFlow() },
+                    onSkip = ::requestSkip,
+                    skipInFlight = skipInFlight,
+                    onClearError = { vm.clearError() }
+                )
+                AuthStep.THEME_SELECT -> ThemeSelectScreenMiuix(
+                    currentStyle = state.uiStyle,
+                    onConfirm = { selected ->
+                        vm.setUiStyle(selected)
+                        requestSkip()
+                    }
+                )
+                AuthStep.FORK_CHECK -> ForkCheckScreenMiuix(
+                    isLoading = state.isLoading,
+                    forkRepo = state.forkRepo,
+                    behindBy = state.behindBy,
+                    showSyncDialog = false,
+                    error = state.error,
+                    onFork = { if (!skipInFlight) vm.forkRepo() },
+                    onSync = { if (!skipInFlight) vm.syncFork() },
+                    onSkip = ::requestSkip,
+                    showSkipAction = true,
+                    skipInFlight = skipInFlight,
+                    onClearError = { vm.clearError() }
+                )
+                else -> {}
+            }
+        }
+
+        AnimatedVisibility(
+            visible = skipInFlight && state.authStep != AuthStep.FORK_CHECK,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MiuixTheme.colorScheme.surface.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(28.dp),
+                            color = MiuixTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = stringResource(R.string.loading),
+                            style = MiuixTheme.textStyles.body1,
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Login ─────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun LoginScreenMiuix(
+    isLoading: Boolean,
+    userCode: String?,
+    verificationUri: String?,
+    isPolling: Boolean,
+    error: String?,
+    onLogin: () -> Unit,
+    onSkip: () -> Unit,
+    skipInFlight: Boolean,
+    onClearError: () -> Unit
+) {
+    val context = LocalContext.current
+    var showConsentDialog by remember { mutableStateOf(false) }
+
+    if (showConsentDialog) {
+        MiuixConfirmDialog(
+            title = stringResource(R.string.github_auth_title),
+            message = stringResource(R.string.github_auth_desc),
+            confirmBtnText = stringResource(R.string.confirm),
+            confirmBtnColor = null,
+            onConfirm = {
+                showConsentDialog = false
+                onLogin()
+            },
+            onDismiss = { showConsentDialog = false }
+        )
+    }
+
+    AuthShellMiuix {
+        Card(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                Modifier.padding(top = 16.dp, bottom = 46.dp, start = 16.dp, end = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.login_title),
+                    style = MiuixTheme.textStyles.subtitle,
+                    fontWeight = FontWeight.Bold,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = stringResource(R.string.login_desc),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        if (userCode != null) {
+            DeviceCodeCardMiuix(
+                code = userCode,
+                verificationUri = verificationUri ?: "https://github.com/login/device",
+                isPolling = isPolling,
+                context = context
+            )
+        }
+
+        if (error != null) {
+            Spacer(Modifier.height(12.dp))
+            ErrorCardMiuix(error = error, onClearError = onClearError)
+        }
+
+        Spacer(Modifier.height(18.dp))
+
+        if (userCode == null) {
+            Button(
+                onClick = { showConsentDialog = true },
+                enabled = !isLoading && !skipInFlight,
+                modifier = Modifier.fillMaxWidth().height(52.dp)
+            ) {
+        if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = MiuixTheme.colorScheme.primary
+                    )
+                } else {
+                    Icon(Icons.Default.Code, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(text = stringResource(R.string.login_github))
+                }
+            }
+        }
+
+        TextButton(
+            text = stringResource(R.string.oobe_skip_for_now),
+            onClick = onSkip,
+            enabled = !skipInFlight,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.textButtonColorsPrimary()
+        )
+    }
+}
+
+@Composable
+private fun DeviceCodeCardMiuix(
+    code: String,
+    verificationUri: String,
+    isPolling: Boolean,
+    context: Context
+) {
+    var copied by remember { mutableStateOf(false) }
+    Card(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            Modifier.padding(top = 16.dp, bottom = 46.dp, start = 16.dp, end = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.auth_code_title),
+                style = MiuixTheme.textStyles.body1,
+                fontWeight = FontWeight.SemiBold,
+                color = MiuixTheme.colorScheme.onSurface
+            )
+            Text(
+                text = stringResource(R.string.auth_code_desc),
+                style = MiuixTheme.textStyles.body2,
+                textAlign = TextAlign.Center,
+                color = MiuixTheme.colorScheme.onSurfaceSecondary
+            )
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = code,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                    style = MiuixTheme.textStyles.subtitle,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp,
+                    color = MiuixTheme.colorScheme.primary
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        cm.setPrimaryClip(ClipData.newPlainText("user_code", code))
+                        copied = true
+                    },
+                    modifier = Modifier.height(44.dp)
+                ) {
+                    Icon(
+                        if (copied) Icons.Default.CheckCircle else Icons.Default.ContentCopy,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = if (copied) stringResource(R.string.copied) else stringResource(R.string.copy)
+                    )
+                }
+                Button(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(verificationUri)))
+                        }
+                    },
+                    modifier = Modifier.height(44.dp)
+                ) {
+                    Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(text = stringResource(R.string.open_browser))
+                }
+            }
+            if (isPolling) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        color = MiuixTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = stringResource(R.string.waiting_auth),
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceSecondary
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Theme Select ──────────────────────────────────────────────────────────────
+
+@Composable
+private fun ThemeSelectScreenMiuix(
+    currentStyle: String,
+    onConfirm: (String) -> Unit
+) {
+    var selected by remember { mutableStateOf(currentStyle) }
+
+    AuthShellMiuix {
+        Card(
+            modifier = Modifier.fillMaxWidth()
+    ) {
+            Column(
+                Modifier.padding(top = 16.dp, bottom = 46.dp, start = 16.dp, end = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.oobe_theme_title),
+                    style = MiuixTheme.textStyles.subtitle,
+                    fontWeight = FontWeight.Bold,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        Card(
+            onClick = { selected = "material" },
+            modifier = Modifier.fillMaxWidth()
+    ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 46.dp, start = 16.dp, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Card(
+                    modifier = Modifier.size(24.dp),
+                    onClick = { selected = "material" }
+                ) {
+                    if (selected == "material") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(4.dp)
+                                .background(
+                                    color = MiuixTheme.colorScheme.primary,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                        )
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = stringResource(R.string.oobe_theme_m3e),
+                        style = MiuixTheme.textStyles.body1,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MiuixTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        Card(
+            onClick = { selected = "miuix" },
+            modifier = Modifier.fillMaxWidth()
+    ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 46.dp, start = 16.dp, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Card(
+                    modifier = Modifier.size(24.dp),
+                    onClick = { selected = "miuix" }
+                ) {
+                    if (selected == "miuix") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(4.dp)
+                                .background(
+                                    color = MiuixTheme.colorScheme.primary,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                        )
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = stringResource(R.string.oobe_theme_miuix),
+                        style = MiuixTheme.textStyles.body1,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MiuixTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        Button(
+            onClick = { onConfirm(selected) },
+            modifier = Modifier.fillMaxWidth().height(52.dp)
+        ) {
+            Text(text = stringResource(R.string.oobe_theme_confirm))
+        }
+    }
+}
+
+// ── Fork Check ────────────────────────────────────────────────────────────────
+
+@Composable
+private fun StatusBadgeMiuix(
+    modifier: Modifier = Modifier,
+    label: String,
+    icon: ImageVector,
+    color: Color = MiuixTheme.colorScheme.primary,
+    scale: Float = 1f,
+    heroStyle: Boolean = false
+) {
+    val horizontalPad = if (heroStyle) 10.dp else 8.dp * scale
+    val verticalPad = if (heroStyle) 5.dp else 1.dp * scale
+    val iconSize = if (heroStyle) 14.dp else 14.dp * scale
+    val cornerSize = if (heroStyle) 8.dp else 8.dp * scale
+    val textFontSize = if (heroStyle) 14.sp else MiuixTheme.textStyles.body2.fontSize * scale
+    val textFontWeight = if (heroStyle) FontWeight.Bold else FontWeight.Normal
+    val spacing = if (heroStyle) 4.dp else 4.dp * scale
+
+    val baseModifier = modifier
+        .wrapContentWidth()
+    val bgModifier = if (heroStyle) {
+        baseModifier
+            .border(BorderStroke(1.dp, color.copy(alpha = 0.35f)), RoundedCornerShape(cornerSize))
+            .background(color.copy(alpha = 0.12f), RoundedCornerShape(cornerSize))
+    } else {
+        baseModifier
+            .background(color.copy(alpha = 0.12f), RoundedCornerShape(cornerSize))
+    }
+
+    Row(
+        modifier = bgModifier.padding(start = horizontalPad, end = horizontalPad, top = verticalPad, bottom = verticalPad),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(spacing)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(iconSize)
+        )
+        Text(
+            text = label,
+            style = MiuixTheme.textStyles.body2.copy(fontSize = textFontSize),
+            fontWeight = textFontWeight,
+            color = color
+        )
+    }
+}
+
+@Composable
+private fun ForkCheckScreenMiuix(
+    isLoading: Boolean,
+    forkRepo: GitHubRepo?,
+    behindBy: Int,
+    showSyncDialog: Boolean,
+    error: String?,
+    onFork: () -> Unit,
+    onSync: () -> Unit,
+    onSkip: () -> Unit,
+    showSkipAction: Boolean = false,
+    skipInFlight: Boolean = false,
+    onClearError: () -> Unit
+) {
+    if (showSyncDialog) {
+        MiuixConfirmDialog(
+            title = stringResource(R.string.sync_title),
+            message = "${stringResource(R.string.sync_desc)}\n\n${stringResource(R.string.sync_behind_commits, behindBy)}",
+            confirmBtnText = stringResource(R.string.sync_action),
+            confirmBtnColor = null,
+            onConfirm = onSync,
+            onDismiss = onSkip
+        )
+    }
+
+    AuthShellMiuix {
+        if (isLoading) {
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    Modifier.padding(top = 16.dp, bottom = 46.dp, start = 16.dp, end = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.fork_checking_title),
+                        style = MiuixTheme.textStyles.subtitle,
+                        fontWeight = FontWeight.Bold,
+                        color = MiuixTheme.colorScheme.onSurface,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = stringResource(R.string.fork_checking_desc),
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (!skipInFlight) {
+                        Spacer(Modifier.height(6.dp))
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth(),
+                            progress = null,
+                            colors = ProgressIndicatorDefaults.progressIndicatorColors(
+                                foregroundColor = MiuixTheme.colorScheme.primary,
+                                backgroundColor = MiuixTheme.colorScheme.surface
+                            )
+                        )
+                    }
+                }
+            }
+        } else if (forkRepo == null) {
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    Modifier.padding(top = 15.dp, bottom = 35.dp, start = 16.dp, end = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ForkRight,
+                            contentDescription = null,
+                            tint = MiuixTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.fork_title),
+                                style = MiuixTheme.textStyles.subtitle,
+                                fontWeight = FontWeight.Medium,
+                                color = MiuixTheme.colorScheme.onSurface,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Text(
+                                text = stringResource(R.string.fork_desc),
+                                style = MiuixTheme.textStyles.body1,
+                                fontWeight = FontWeight.Normal,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                    StatusBadgeMiuix(
+                        modifier = Modifier.padding(top = 13.dp),
+                        heroStyle = true,
+                        label = stringResource(R.string.fork_create_badge),
+                        icon = Icons.AutoMirrored.Filled.CallSplit,
+                        color = MiuixTheme.colorScheme.primary
+                    )
+                }
+            }
+            Button(
+                onClick = onFork,
+                enabled = !skipInFlight,
+                modifier = Modifier.fillMaxWidth().height(52.dp).offset(y = (-3).dp),
+                colors = ButtonDefaults.buttonColors(
+                    color = MiuixTheme.colorScheme.primary,
+                    contentColor = Color.White
+                )
+            ) {
+                Icon(Icons.Default.ForkRight, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(text = stringResource(R.string.fork_action))
+            }
+        } else {
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    Modifier.padding(top = 16.dp, bottom = 46.dp, start = 16.dp, end = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (behindBy > 0) Icons.Default.Warning else Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = if (behindBy > 0) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.fork_ready_title),
+                                style = MiuixTheme.textStyles.subtitle,
+                                fontWeight = FontWeight.Medium,
+                                color = MiuixTheme.colorScheme.onSurface,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Text(
+                                text = if (behindBy > 0) {
+                                    stringResource(R.string.fork_ready_behind, behindBy)
+                                } else {
+                                    stringResource(R.string.fork_ready_ok)
+                                },
+                                style = MiuixTheme.textStyles.body1,
+                                fontWeight = FontWeight.Normal,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                    StatusBadgeMiuix(
+                        label = if (behindBy > 0) {
+                            stringResource(R.string.fork_sync_recommended)
+                        } else {
+                            stringResource(R.string.fork_enter_main)
+                        },
+                        icon = if (behindBy > 0) Icons.Default.Warning else Icons.Default.Verified,
+                        color = if (behindBy > 0) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "${stringResource(R.string.settings_fork_repo)}: ${forkRepo.fullName}",
+                        style = MiuixTheme.textStyles.body1,
+                        fontWeight = FontWeight.Normal,
+                        color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = "${stringResource(R.string.build_ksu_branch)}: ${forkRepo.defaultBranch}",
+                        style = MiuixTheme.textStyles.body1,
+                        fontWeight = FontWeight.Normal,
+                        color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = "${stringResource(R.string.status_fork)}: ${
+                            if (behindBy > 0) {
+                                stringResource(R.string.status_fork_behind, behindBy)
+                            } else {
+                                stringResource(R.string.status_synced)
+                            }
+                        }",
+                        style = MiuixTheme.textStyles.body1,
+                        fontWeight = FontWeight.Normal,
+                        color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+
+        if (error != null) {
+            ErrorCardMiuix(error = error, onClearError = onClearError)
+        }
+
+        if (showSkipAction) {
+            Button(
+                onClick = onSkip,
+                enabled = !skipInFlight,
+                modifier = Modifier.fillMaxWidth().offset(y = (-3).dp),
+                colors = ButtonDefaults.buttonColors(
+                    color = MiuixTheme.colorScheme.secondaryVariant,
+                    contentColor = MiuixTheme.colorScheme.onSecondaryVariant
+                )
+            ) {
+                if (skipInFlight) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MiuixTheme.colorScheme.primary,
+                        trackColor = MiuixTheme.colorScheme.secondaryVariant
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(text = stringResource(R.string.oobe_skip_for_now))
+            }
+        }
+    }
+}
+
+// ── Error Card ────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ErrorCardMiuix(error: String, onClearError: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(top = 14.dp, bottom = 44.dp, start = 14.dp, end = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Error,
+                contentDescription = null,
+                tint = MiuixTheme.colorScheme.error
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = error,
+                color = MiuixTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+                style = MiuixTheme.textStyles.body2
+            )
+            IconButton(onClick = onClearError) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = stringResource(R.string.close_error),
+                    tint = MiuixTheme.colorScheme.error
+                )
+            }
+        }
+    }
+}
+
+// ── Auth Shell ────────────────────────────────────────────────────────────────
+
+@Composable
+private fun AuthShellMiuix(content: @Composable ColumnScope.() -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MiuixTheme.colorScheme.surface),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+            content = content
+        )
+    }
+}

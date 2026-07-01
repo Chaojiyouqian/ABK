@@ -29,6 +29,7 @@ class AuthOobeCoordinator(
         updateState {
             it.copy(
                 showOobe = true,
+                oobeFromBuild = false,
                 authStep = AuthStep.INTRO,
                 error = null,
             )
@@ -41,6 +42,7 @@ class AuthOobeCoordinator(
         updateState {
             it.copy(
                 showOobe = true,
+                oobeFromBuild = true,
                 authStep = nextStep,
                 error = null,
             )
@@ -99,7 +101,12 @@ class AuthOobeCoordinator(
 
     fun completeIfRequested(closeOobeWhenReady: Boolean) {
         if (closeOobeWhenReady) {
-            updateState { it.copy(authStep = AuthStep.THEME_SELECT) }
+            val state = readState()
+            if (!state.oobeCompleted && !state.oobeFromBuild) {
+                updateState { it.copy(authStep = AuthStep.THEME_SELECT) }
+            } else {
+                completeOobe()
+            }
         }
     }
 
@@ -160,6 +167,7 @@ class AuthOobeCoordinator(
         updateState {
             it.copy(
                 showOobe = false,
+                oobeFromBuild = false,
                 authStep = AuthStep.INTRO,
                 deviceCode = null,
                 userCode = null,
