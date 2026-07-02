@@ -83,7 +83,7 @@ fun <T> AbkSingleChoiceSegmentedButtonRow(
                 val segmentShape = segmentedItemShape(index = index, count = options.size, radius = 24.dp)
                 val containerColor by animateColorAsState(
                     targetValue = if (selected) {
-                        uiSurfaceColor(colors.secondaryContainer.copy(alpha = 0.82f))
+                        colors.secondaryContainer
                     } else {
                         Color.Transparent
                     },

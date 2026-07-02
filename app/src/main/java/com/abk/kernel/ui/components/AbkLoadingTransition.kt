@@ -11,6 +11,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,12 +30,15 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.abk.kernel.ui.theme.uiSurfaceColor
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
 private val AbkLoadingAccent = Color(0xFFB6F0A2)
+private val AbkLoadingDarkContainer = Color(0xFF2B2E29)
+private val AbkLoadingDarkContent = Color(0xFFF5F6EE)
+private val AbkLoadingLightContainer = Color(0xFFF0ECE4)
+private val AbkLoadingLightContent = Color(0xFF2A2B27)
 
 @Composable
 fun AbkLoadingPill(
@@ -43,24 +47,24 @@ fun AbkLoadingPill(
     compact: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
-    val fallbackContainer = if (colors.surfaceContainerHighest.luminance() > 0.45f) {
-        colors.inverseSurface.copy(alpha = 0.9f)
+    val lightTheme = colors.surface.luminance() > 0.5f
+    val containerColor = if (lightTheme) {
+        AbkLoadingLightContainer
     } else {
-        colors.surfaceContainerHighest.copy(alpha = 0.94f)
+        AbkLoadingDarkContainer
     }
-    val containerColor = uiSurfaceColor(fallbackContainer)
-    val contentColor = if (containerColor.luminance() > 0.35f) {
-        colors.inverseOnSurface
+    val contentColor = if (lightTheme) {
+        AbkLoadingLightContent
     } else {
-        colors.onSurface
+        AbkLoadingDarkContent
     }
-    val horizontalPadding = if (compact) 16.dp else 20.dp
-    val verticalPadding = if (compact) 12.dp else 16.dp
-    val glyphSize = if (compact) 22.dp else 28.dp
+    val horizontalPadding = if (compact) 14.dp else 18.dp
+    val verticalPadding = if (compact) 10.dp else 12.dp
+    val glyphSize = if (compact) 16.dp else 18.dp
 
     Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(28.dp),
+        modifier = modifier.widthIn(min = if (compact) 0.dp else 148.dp),
+        shape = RoundedCornerShape(20.dp),
         color = containerColor,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
@@ -78,9 +82,9 @@ fun AbkLoadingPill(
                 text = text,
                 color = contentColor,
                 style = if (compact) {
-                    MaterialTheme.typography.titleMedium
+                    MaterialTheme.typography.bodyLarge
                 } else {
-                    MaterialTheme.typography.titleLarge
+                    MaterialTheme.typography.titleMedium
                 },
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
