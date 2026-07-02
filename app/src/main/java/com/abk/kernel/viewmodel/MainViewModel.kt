@@ -229,6 +229,10 @@ data class MainUiState(
     val rootGrantRuntimeBackend: String? = null,
     val rootGrantLoading: Boolean = false,
     val rootGrantError: String? = null,
+    val rootGrantDetailApp: RootGrantApp? = null,
+    val rootGrantDetailLoading: Boolean = false,
+    val rootGrantDetailWarning: String? = null,
+    val rootGrantRecoveryNotice: RootGrantRecoveryNotice? = null,
     val rootGrantSavingPackage: String? = null
 ) {
     val isDownloading: Boolean
@@ -752,6 +756,7 @@ class MainViewModel @JvmOverloads constructor(
                     buildConfig = initialConfig ?: it.buildConfig
                 )
             }
+            runtime.handlePendingRootGrantProfileRecovery()
         }
     }
 
@@ -769,6 +774,7 @@ class MainViewModel @JvmOverloads constructor(
                     buildConfig = initialConfig ?: it.buildConfig
                 )
             }
+            runtime.handlePendingRootGrantProfileRecovery()
         }
     }
 
@@ -786,7 +792,13 @@ class MainViewModel @JvmOverloads constructor(
     fun setRootGrantAllowed(packageName: String, allowed: Boolean) =
         runtime.setRootGrantAllowed(packageName, allowed)
 
+    fun openRootGrantProfile(packageName: String) = runtime.openRootGrantProfile(packageName)
+
+    fun clearRootGrantDetail() = runtime.clearRootGrantDetail()
+
     fun saveRootGrantProfile(profile: RootGrantProfile) = runtime.saveRootGrantProfile(profile)
+
+    fun dismissRootGrantRecoveryNotice() = runtime.dismissRootGrantRecoveryNotice()
 
     fun setAbkRuntimeModuleEnabled(moduleId: String, enabled: Boolean) =
         runtime.setAbkRuntimeModuleEnabled(moduleId, enabled)
@@ -2805,7 +2817,7 @@ class MainViewModel @JvmOverloads constructor(
         prefs.setDownloadDirectory(path)
     }
     fun setDownloadMirrorBaseUrl(url: String) = viewModelScope.launch {
-        prefs.setDownloadMirrorBaseUrl(url.trim())
+        prefs.setDownloadMirrorBaseUrl(url)
     }
     fun setPredictiveBackEnabled(v: Boolean) = viewModelScope.launch { prefs.setPredictiveBackEnabled(v) }
     fun setMiuixPredictiveBackEnabled(v: Boolean) = viewModelScope.launch { prefs.setMiuixPredictiveBackEnabled(v) }
@@ -5463,7 +5475,7 @@ private const val CANCEL_COMPLETION_POLL_INITIAL_DELAY_MS = 2_000L
 private const val CANCEL_COMPLETION_POLL_INTERVAL_MS = 5_000L
 private const val CANCEL_COMPLETION_POLL_MAX_ATTEMPTS = 24
 
-private fun normalizeMirrorBaseUrl(url: String): String {
+internal fun normalizeMirrorBaseUrl(url: String): String {
     val trimmed = url.trim()
     if (trimmed.isBlank()) return ""
     return if (trimmed.endsWith("/")) trimmed else "$trimmed/"
