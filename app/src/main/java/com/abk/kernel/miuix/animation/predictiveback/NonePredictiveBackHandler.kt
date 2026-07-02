@@ -16,8 +16,8 @@ import com.abk.kernel.ui.navigation3.LocalNavigator
 
 /**
  * OFF behavior — completely bypasses NavDisplay's predictive back machinery
- * by installing a plain [BackHandler] in the content decorator that calls
- * `navigator.pop()` the moment the gesture/btn commit happens.
+ * by installing a plain [BackHandler] in the content decorator that calls the
+ * injected back callback the moment the gesture/btn commit happens.
  *
  * Effect:
  * - During the edge-swipe gesture: nothing visible (no preview)
@@ -27,7 +27,9 @@ import com.abk.kernel.ui.navigation3.LocalNavigator
  *
  * This matches ReSukiSU's `NoPredictiveBackAnimation` handler semantics.
  */
-class NonePredictiveBackHandler : PredictiveBackHandler {
+class NonePredictiveBackHandler(
+    private val onBack: () -> Unit,
+) : PredictiveBackHandler {
     override suspend fun onBackPressed(
         transitionState: NavigationEventTransitionState?,
         currentPageKey: NavKey?,
@@ -47,10 +49,10 @@ class NonePredictiveBackHandler : PredictiveBackHandler {
         val canPop = navigator.backStack.size > 1
         // Using BackHandler (not PredictiveBackHandler) here completely intercepts
         // the system predictive back dispatch: the gesture is treated as a
-        // regular back press with no preview phase. The subsequent navigator.pop()
+        // regular back press with no preview phase. The subsequent onBack()
         // triggers the regular popTransitionSpec (default slide) on commit.
         BackHandler(enabled = canPop) {
-            navigator.pop()
+            onBack()
         }
         return this
     }

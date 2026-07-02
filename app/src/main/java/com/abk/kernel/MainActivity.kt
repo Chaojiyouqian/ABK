@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
@@ -197,17 +198,33 @@ class MainActivity : ComponentActivity() {
                             }
                             val rootGrantRecoveryNotice = state.rootGrantRecoveryNotice
                             if (rootGrantRecoveryNotice != null && !state.showOobe) {
-                                RootGrantRecoveryDialog(
-                                    title = rootGrantRecoveryNotice.title,
-                                    message = rootGrantRecoveryNotice.message,
-                                    onDismiss = vm::dismissRootGrantRecoveryNotice
-                                )
+                                if (state.uiStyle == "miuix") {
+                                    RootGrantRecoveryDialogMiuix(
+                                        title = rootGrantRecoveryNotice.title,
+                                        message = rootGrantRecoveryNotice.message,
+                                        onDismiss = vm::dismissRootGrantRecoveryNotice
+                                    )
+                                } else {
+                                    RootGrantRecoveryDialog(
+                                        title = rootGrantRecoveryNotice.title,
+                                        message = rootGrantRecoveryNotice.message,
+                                        onDismiss = vm::dismissRootGrantRecoveryNotice
+                                    )
+                                }
                             } else if (state.showSyncPrompt && !state.showOobe) {
-                                SyncPromptDialog(
-                                    behindBy = state.behindBy,
-                                    onSync = vm::syncFork,
-                                    onDismiss = vm::dismissSyncPrompt
-                                )
+                                if (state.uiStyle == "miuix") {
+                                    SyncPromptDialogMiuix(
+                                        behindBy = state.behindBy,
+                                        onSync = vm::syncFork,
+                                        onDismiss = vm::dismissSyncPrompt
+                                    )
+                                } else {
+                                    SyncPromptDialog(
+                                        behindBy = state.behindBy,
+                                        onSync = vm::syncFork,
+                                        onDismiss = vm::dismissSyncPrompt
+                                    )
+                                }
                             }
                             if (state.showOobe) {
                                 CompositionLocalProvider(LocalUiSurfaceAlpha provides 1f) {
@@ -276,7 +293,62 @@ private fun RootGrantRecoveryDialog(
 }
 
 @Composable
+private fun RootGrantRecoveryDialogMiuix(
+    title: String,
+    message: String,
+    onDismiss: () -> Unit
+) {
+    WindowDialog(
+        show = true,
+        title = title,
+        onDismissRequest = onDismiss
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            top.yukonga.miuix.kmp.basic.Text(
+                text = message,
+                color = MiuixTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(12.dp))
+            MiuixTextButton(
+                modifier = Modifier.fillMaxWidth(),
+                text = stringResource(android.R.string.ok),
+                colors = MiuixButtonDefaults.textButtonColorsPrimary(),
+                onClick = onDismiss
+            )
+        }
+    }
+}
+
+@Composable
 private fun SyncPromptDialog(
+    behindBy: Int,
+    onSync: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.sync_title)) },
+        text = {
+            Text(
+                "${stringResource(R.string.sync_desc)}\n\n" +
+                    stringResource(R.string.sync_behind_commits, behindBy)
+            )
+        },
+        confirmButton = {
+            Button(onClick = onSync) {
+                Text(stringResource(R.string.sync_action))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.skip))
+            }
+        }
+    )
+}
+
+@Composable
+private fun SyncPromptDialogMiuix(
     behindBy: Int,
     onSync: () -> Unit,
     onDismiss: () -> Unit
@@ -287,24 +359,22 @@ private fun SyncPromptDialog(
         onDismissRequest = onDismiss,
     ) {
         Column {
-            Text(
-                "${stringResource(R.string.sync_desc)}\n\n${stringResource(R.string.sync_behind_commits, behindBy)}",
+            top.yukonga.miuix.kmp.basic.Text(
+                text = "${stringResource(R.string.sync_desc)}\n\n${stringResource(R.string.sync_behind_commits, behindBy)}",
                 color = MiuixTheme.colorScheme.onSurface
             )
+            Spacer(Modifier.height(12.dp))
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 MiuixTextButton(
                     text = stringResource(R.string.skip),
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f)
+                    onClick = onDismiss
                 )
-                Spacer(modifier = Modifier.width(20.dp))
                 MiuixTextButton(
                     text = stringResource(R.string.sync_action),
                     onClick = onSync,
-                    modifier = Modifier.weight(1f),
                     colors = MiuixButtonDefaults.textButtonColorsPrimary()
                 )
             }

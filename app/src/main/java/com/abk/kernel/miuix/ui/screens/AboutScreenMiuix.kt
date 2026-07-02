@@ -14,12 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -36,6 +34,10 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.basic.Icon as MiuixIcon
+import top.yukonga.miuix.kmp.basic.IconButton as MiuixIconButton
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.runtime.collectAsState
@@ -88,10 +90,10 @@ fun AboutScreenMiuix(vm: MainViewModel) {
                     title = stringResource(R.string.settings_about_title),
                     scrollBehavior = scrollBehavior,
                     navigationIcon = {
-                        IconButton(onClick = { navigator.pop() }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = null
+                        MiuixIconButton(onClick = { navigator.pop() }) {
+                            MiuixIcon(
+                                imageVector = MiuixIcons.Back,
+                                contentDescription = stringResource(R.string.settings_back)
                             )
                         }
                     }
@@ -117,7 +119,7 @@ fun AboutScreenMiuix(vm: MainViewModel) {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
             item {
-                Card {
+                Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Image(
                             painter = painterResource(R.drawable.ic_launcher_foreground),
@@ -151,7 +153,7 @@ fun AboutScreenMiuix(vm: MainViewModel) {
             }
 
             item {
-                Card {
+                Card(modifier = Modifier.fillMaxWidth()) {
                     ArrowPreference(
                         title = stringResource(R.string.settings_source_repository),
                         summary = repoUrl,
@@ -244,7 +246,7 @@ fun AboutScreenMiuix(vm: MainViewModel) {
             }
 
             item {
-                Card {
+                Card(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = stringResource(R.string.settings_contributors_desc),
                         style = MiuixTheme.textStyles.body2,
