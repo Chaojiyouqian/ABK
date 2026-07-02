@@ -1,6 +1,7 @@
 package com.abk.kernel.ui.components
 
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -53,13 +54,18 @@ fun AbkSnackbarHost(
     hostState: SnackbarHostState,
     modifier: Modifier = Modifier
 ) {
+    val colors = MaterialTheme.colorScheme
     SnackbarHost(
         hostState = hostState,
         modifier = modifier.padding(horizontal = 16.dp),
         snackbar = { data ->
             Snackbar(
                 snackbarData = data,
-                modifier = Modifier.padding(vertical = 4.dp)
+                modifier = Modifier.padding(vertical = 4.dp),
+                containerColor = colors.surfaceContainerHigh,
+                contentColor = colors.onSurface,
+                actionContentColor = colors.primary,
+                dismissActionContentColor = colors.onSurfaceVariant,
             )
         }
     )
