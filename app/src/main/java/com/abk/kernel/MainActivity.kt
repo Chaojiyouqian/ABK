@@ -16,6 +16,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -33,8 +36,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -56,8 +57,6 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.SnackbarHostState
-import top.yukonga.miuix.kmp.basic.NavigationBar as MiuixNavigationBar
-import top.yukonga.miuix.kmp.basic.NavigationBarItem as MiuixNavigationBarItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,7 +66,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,7 +76,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -100,49 +97,18 @@ import com.abk.kernel.ui.screens.RootAuthorizationScreen
 import com.abk.kernel.ui.screens.RuntimeHomeScreen
 import com.abk.kernel.ui.screens.SettingsScreen
 import com.abk.kernel.ui.screens.StatusScreen
-import com.abk.kernel.miuix.component.AbkMiuixSnackbarHost
-import com.abk.kernel.miuix.component.showAbkMiuixSnackbar
+import com.abk.kernel.miuix.AbkMiuixMainContent
 import com.abk.kernel.miuix.theme.AbkMiuixTheme
-import com.abk.kernel.miuix.component.FloatingTabItem
-import com.abk.kernel.miuix.component.MiuixFloatingBottomBar
-import com.abk.kernel.miuix.util.BlurredBar
-import com.abk.kernel.miuix.util.rememberBlurBackdrop
 import com.abk.kernel.ui.theme.AbkTheme
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
-import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.basic.TextButton as MiuixTextButton
 import top.yukonga.miuix.kmp.basic.ButtonDefaults as MiuixButtonDefaults
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
-import androidx.compose.ui.graphics.Color
 import com.abk.kernel.ui.theme.LocalUiSurfaceAlpha
 import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
 import com.abk.kernel.miuix.viewmodel.MiuixSettingsViewModel
 import com.abk.kernel.viewmodel.MainViewModel
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.navigation3.runtime.NavKey
-import androidx.navigation3.runtime.NavEntryDecorator
-import androidx.navigation3.runtime.entryProvider
-import androidx.navigation3.runtime.rememberDecoratedNavEntries
-import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
-import androidx.navigation3.scene.NavigationBackHandler
-import androidx.navigation3.scene.Scene
-import androidx.navigation3.scene.SceneInfo
-import androidx.navigation3.scene.SinglePaneSceneStrategy
-import androidx.navigation3.scene.rememberSceneState
-import androidx.navigation3.ui.NavDisplay
-import androidx.navigation3.ui.NavDisplayTransitionEffects
-import androidx.navigationevent.compose.NavigationEventState
-import androidx.navigationevent.compose.rememberNavigationEventState
-import com.abk.kernel.miuix.animation.predictiveback.MiuixDefaultPredictiveBackHandler
-import com.abk.kernel.miuix.animation.predictiveback.NonePredictiveBackHandler
-import com.abk.kernel.miuix.animation.predictiveback.invokePopTransitionSpec
-import com.abk.kernel.miuix.animation.predictiveback.invokePredictivePopTransitionSpec
-import com.abk.kernel.miuix.animation.predictiveback.invokeTransitionSpec
-import com.abk.kernel.ui.navigation3.LocalNavigator
-import com.abk.kernel.ui.navigation3.Route
-import com.abk.kernel.ui.navigation3.rememberNavigator
 
 class MainActivity : ComponentActivity() {
 
@@ -210,12 +176,20 @@ class MainActivity : ComponentActivity() {
                             onDecline = { finishAffinity() }
                         )
                         else -> Box(modifier = Modifier.fillMaxSize()) {
-                            AbkMainScaffold(
-                                vm = vm,
-                                miuixVm = miuixVm,
-                                pendingModuleInstallUri = pendingModuleInstallUri,
-                                onModuleInstallUriConsumed = { pendingModuleInstallUri = null }
-                            )
+                            if (state.uiStyle == "miuix") {
+                                AbkMiuixMainContent(
+                                    vm = vm,
+                                    miuixVm = miuixVm,
+                                    pendingModuleInstallUri = pendingModuleInstallUri,
+                                    onModuleInstallUriConsumed = { pendingModuleInstallUri = null }
+                                )
+                            } else {
+                                AbkMainScaffold(
+                                    vm = vm,
+                                    pendingModuleInstallUri = pendingModuleInstallUri,
+                                    onModuleInstallUriConsumed = { pendingModuleInstallUri = null }
+                                )
+                            }
                             val rootGrantRecoveryNotice = state.rootGrantRecoveryNotice
                             if (rootGrantRecoveryNotice != null && !state.showOobe) {
                                 RootGrantRecoveryDialog(
@@ -444,7 +418,7 @@ private fun TermsText(text: String) {
     )
 }
 
-private enum class AbkTab(@StringRes val labelRes: Int) {
+internal enum class AbkTab(@StringRes val labelRes: Int) {
     Status(R.string.nav_status),
     Build(R.string.nav_build),
     Modules(R.string.nav_modules),
@@ -455,18 +429,14 @@ private enum class AbkTab(@StringRes val labelRes: Int) {
     Settings(R.string.nav_settings)
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun AbkMainScaffold(
     vm: MainViewModel,
-    miuixVm: MiuixSettingsViewModel,
     pendingModuleInstallUri: String? = null,
     onModuleInstallUriConsumed: () -> Unit = {}
 ) {
     val state by vm.uiState.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
-    val navigator = rememberNavigator()
-    val navIsOnSubPage = navigator.backStackSize() > 1
 
     LaunchedEffect(Unit) {
         vm.markMainUiEntered()
@@ -501,51 +471,29 @@ private fun AbkMainScaffold(
     val contentPadding = PaddingValues(
         bottom = with(density) { bottomBarHeightPx.toDp() }
     )
-    val miuixMode = state.uiStyle == "miuix"
     val childPageVisible = when (activeTab) {
-        AbkTab.Build -> navIsOnSubPage || buildPlanPageVisible
-        AbkTab.Modules -> navIsOnSubPage
-        AbkTab.Flash -> navIsOnSubPage || flashDetailPageVisible
-        AbkTab.InstalledModules -> navIsOnSubPage
-        AbkTab.Settings -> navIsOnSubPage || settingsChildPageVisible
-        AbkTab.RootAuth -> navIsOnSubPage || rootAuthDetailPageVisible
-        AbkTab.RuntimeHome -> if (miuixMode) navIsOnSubPage else managerPatchPageVisible
+        AbkTab.Build -> buildPlanPageVisible
+        AbkTab.Modules -> moduleRepositoryPageVisible
+        AbkTab.Flash -> flashDetailPageVisible
+        AbkTab.Settings -> settingsChildPageVisible
+        AbkTab.RootAuth -> rootAuthDetailPageVisible
+        AbkTab.RuntimeHome -> managerPatchPageVisible
         else -> false
     }
-    // Mutable state captured by closures; reassigned inside NavDisplay setup so any
-    // downstream composable (e.g., bottom bar graphicsLayer) can read the latest
-    // gesture state and recompose when it changes.
-    var gestureState: NavigationEventState<SceneInfo<NavKey>>? by remember {
-        mutableStateOf(null)
-    }
     val snackbarHostState = remember { SnackbarHostState() }
-    val miuixSnackbarHostState = remember {
-        top.yukonga.miuix.kmp.basic.SnackbarHostState()
-    }
 
     LaunchedEffect(state.snackbarMessage, state.snackbarLongDuration, state.error) {
         when (val snackbar = state.snackbarMessage) {
             null -> {
                 val error = state.error ?: return@LaunchedEffect
-                if (state.uiStyle == "miuix") {
-                    miuixSnackbarHostState.showAbkMiuixSnackbar(message = error, longDuration = true)
-                } else {
-                    snackbarHostState.showAbkSnackbar(message = error, longDuration = true)
-                }
+                snackbarHostState.showAbkSnackbar(message = error, longDuration = true)
                 vm.clearError()
             }
             else -> {
-                if (state.uiStyle == "miuix") {
-                    miuixSnackbarHostState.showAbkMiuixSnackbar(
-                        message = snackbar,
-                        longDuration = state.snackbarLongDuration,
-                    )
-                } else {
-                    snackbarHostState.showAbkSnackbar(
-                        message = snackbar,
-                        longDuration = state.snackbarLongDuration,
-                    )
-                }
+                snackbarHostState.showAbkSnackbar(
+                    message = snackbar,
+                    longDuration = state.snackbarLongDuration,
+                )
                 vm.clearSnackbar()
                 if (state.error != null) vm.clearError()
             }
@@ -574,8 +522,6 @@ private fun AbkMainScaffold(
                 settingsChildPageVisible = false
                 rootAuthDetailPageVisible = false
                 managerPatchPageVisible = false
-                // Flash NavHost is recreated on tab entry — clear stale saveable
-                // state so the bottom bar does not hide until a detail opens.
                 flashDetailPageVisible = false
             }
             AbkTab.Modules -> {
@@ -639,556 +585,178 @@ private fun AbkMainScaffold(
         BackHandler(onBack = ::handleTopLevelBack)
     }
 
-    val surfaceColor = if (miuixMode) MiuixTheme.colorScheme.surface else MaterialTheme.colorScheme.surface
-    val floatingGlassBackdrop = rememberLayerBackdrop {
-        drawRect(surfaceColor)
-        drawContent()
+    val navProgressAnim = remember { Animatable(1f) }
+    LaunchedEffect(childPageVisible) {
+        navProgressAnim.animateTo(
+            targetValue = if (childPageVisible) 0f else 1f,
+            animationSpec = tween(
+                durationMillis = 300,
+                easing = FastOutSlowInEasing
+            )
+        )
     }
-    val blurEnabledForGlass = miuixMode && state.miuixFloatingBottomBarEnabled && state.miuixLiquidGlassEnabled
-    val blurBackdrop = rememberBlurBackdrop(state.miuixBlurEnabled, surfaceColor)
-
-    // Bar slide offset (0f = visible, -1f = hidden left). Single LaunchedEffect drives it:
-    //   gesture in progress   → snapTo(-[1–progress]) to follow finger
-    //   gesture ends       → 200ms animate to final state (smooth finish)
-    //   regular push/pop  → 300ms slide animation
-    val barSlideOffset = remember { androidx.compose.animation.core.Animatable(0f) }
-    val lastGestureProgress = remember { mutableStateOf(0f) }
-    val predictiveBackProgress by remember {
-        androidx.compose.runtime.derivedStateOf {
-            val inProgress = gestureState?.transitionState
-                as? androidx.navigationevent.NavigationEventTransitionState.InProgress
-            if (inProgress?.direction == androidx.navigationevent.NavigationEventTransitionState.TRANSITIONING_BACK) {
-                inProgress.latestEvent.progress
-            } else 0f
-        }
-    }
-    LaunchedEffect(childPageVisible, predictiveBackProgress) {
-        if (predictiveBackProgress > 0f) {
-            barSlideOffset.snapTo(-(1f - predictiveBackProgress))
-            lastGestureProgress.value = predictiveBackProgress
-        } else {
-            val target = if (childPageVisible) -1f else 0f
-            if (miuixMode) {
-                // MIUIX mode: animate the transition
-                val fromGesture = lastGestureProgress.value > 0f
-                barSlideOffset.animateTo(
-                    targetValue = target,
-                    animationSpec = androidx.compose.animation.core.tween(
-                        durationMillis = if (fromGesture) 200 else 300,
-                        easing = androidx.compose.animation.core.FastOutSlowInEasing
-                    )
-                )
-                if (fromGesture) lastGestureProgress.value = 0f
-            } else {
-                // MD3 mode: snap immediately without animation
-                barSlideOffset.snapTo(target)
-                lastGestureProgress.value = 0f
-            }
-        }
-    }
+    val navProgress = navProgressAnim.value
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)))
     ) {
+        NavigationBar(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .onSizeChanged { bottomBarHeightPx = it.height }
+                .zIndex(if (childPageVisible) 0f else 2f)
+                .graphicsLayer {
+                    val hidden = 1f - navProgress
+                    translationY = hidden * bottomBarHeightPx
+                    alpha = 1f - (hidden * 0.15f)
+                },
+            containerColor = uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainer),
+            tonalElevation = 0.dp
+        ) {
+            visibleTabs.forEach { tab ->
+                NavigationBarItem(
+                    selected = activeTab == tab,
+                    onClick = { if (!childPageVisible && tab in visibleTabs) selectedTab = tab },
+                    enabled = !childPageVisible,
+                    alwaysShowLabel = false,
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    icon = {
+                        Icon(
+                            imageVector = when (tab) {
+                                AbkTab.Status -> Icons.Default.Home
+                                AbkTab.Build -> Icons.Default.RocketLaunch
+                                AbkTab.Modules -> Icons.Default.LibraryBooks
+                                AbkTab.Flash -> if (state.rootGranted) Icons.Default.FlashOn else Icons.Default.FolderOpen
+                                AbkTab.RuntimeHome -> Icons.Default.Memory
+                                AbkTab.InstalledModules -> Icons.Default.Extension
+                                AbkTab.RootAuth -> Icons.Default.AdminPanelSettings
+                                AbkTab.Settings -> Icons.Default.Settings
+                            },
+                            contentDescription = tab.displayLabel(state.rootGranted)
+                        )
+                    },
+                    label = {
+                        Text(
+                            text = tab.displayLabel(state.rootGranted),
+                            maxLines = 2,
+                            softWrap = true,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                )
+            }
+        }
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter)
-                .zIndex(2f)
-                .graphicsLayer {
-                    translationX = size.width * barSlideOffset.value
-                }
+                .fillMaxSize()
+                .zIndex(1f)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onSizeChanged { bottomBarHeightPx = it.height }
-            ) {
-            key(visibleTabs) {
-                when {
-                miuixMode && state.miuixFloatingBottomBarEnabled -> {
-                    MiuixFloatingBottomBar(
-                        modifier = Modifier.align(Alignment.Center),
-                        items = visibleTabs.map { tab ->
-                            FloatingTabItem(
-                                label = tab.displayLabel(state.rootGranted),
-                                icon = when (tab) {
-                                    AbkTab.Status -> Icons.Default.Home
-                                    AbkTab.Build -> Icons.Default.RocketLaunch
-                                    AbkTab.Modules -> Icons.Default.LibraryBooks
-                                    AbkTab.Flash -> if (state.rootGranted) Icons.Default.FlashOn else Icons.Default.FolderOpen
-                                    AbkTab.RuntimeHome -> Icons.Default.Memory
-                                    AbkTab.InstalledModules -> Icons.Default.Extension
-                                    AbkTab.RootAuth -> Icons.Default.AdminPanelSettings
-                                    AbkTab.Settings -> Icons.Default.Settings
-                                },
-                                onClick = { if (!childPageVisible && tab in visibleTabs) selectedTab = tab },
+            Box(modifier = Modifier.fillMaxSize()) {
+                AnimatedContent(
+                    targetState = activeTab,
+                    transitionSpec = {
+                        val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
+                        (
+                            fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) +
+                                slideInHorizontally(
+                                    animationSpec = motionScheme.defaultSpatialSpec()
+                                ) { width -> direction * width / 4 }
+                            ) togetherWith (
+                            fadeOut(animationSpec = motionScheme.fastEffectsSpec()) +
+                                slideOutHorizontally(
+                                    animationSpec = motionScheme.fastSpatialSpec()
+                                ) { width -> -direction * width / 6 }
                             )
-                        },
-                        selectedIndex = visibleTabs.indexOf(activeTab).coerceAtLeast(0),
-                        backdrop = floatingGlassBackdrop,
-                        isBlurEnabled = state.miuixLiquidGlassEnabled,
-                        isLiquidGlassEnabled = state.miuixLiquidGlassEnabled,
-                    )
-                }
-                miuixMode -> {
-                    BlurredBar(blurBackdrop, surfaceColor) {
-                        MiuixNavigationBar(
-                            modifier = Modifier.fillMaxWidth(),
-                            color = if (blurBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface
-                        ) {
-                            visibleTabs.forEach { tab ->
-                                val tabIcon = when (tab) {
-                                    AbkTab.Status -> Icons.Default.Home
-                                    AbkTab.Build -> Icons.Default.RocketLaunch
-                                    AbkTab.Modules -> Icons.Default.LibraryBooks
-                                    AbkTab.Flash -> if (state.rootGranted) Icons.Default.FlashOn else Icons.Default.FolderOpen
-                                    AbkTab.RuntimeHome -> Icons.Default.Memory
-                                    AbkTab.InstalledModules -> Icons.Default.Extension
-                                    AbkTab.RootAuth -> Icons.Default.AdminPanelSettings
-                                    AbkTab.Settings -> Icons.Default.Settings
+                    },
+                    label = "abk-tab"
+                ) { tab ->
+                    when (tab) {
+                        AbkTab.Status -> StatusScreen(
+                            vm = vm,
+                            outerPadding = contentPadding,
+                            runtimeNavigationEnabled = state.runtimeNavigationEnabled,
+                            onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) }
+                        )
+                        AbkTab.Build -> BuildScreen(
+                            vm = vm,
+                            outerPadding = contentPadding,
+                            onPlanPageVisibleChange = { buildPlanPageVisible = it },
+                            onNavigateToStatus = { selectedTab = AbkTab.Status }
+                        )
+                        AbkTab.Modules -> ModuleRepositoryScreen(
+                            vm = vm,
+                            mode = if (state.runtimeNavigationEnabled) {
+                                com.abk.kernel.ui.screens.ModuleRepositoryMode.RUNTIME_STANDARD
+                            } else {
+                                com.abk.kernel.ui.screens.ModuleRepositoryMode.BUILD_ABK
+                            },
+                            outerPadding = contentPadding,
+                            onRepositoryPageVisibleChange = { moduleRepositoryPageVisible = it }
+                        )
+                        AbkTab.Flash -> FlashScreen(
+                            vm = vm,
+                            outerPadding = contentPadding,
+                            onDetailPageVisibleChange = { flashDetailPageVisible = it }
+                        )
+                        AbkTab.RuntimeHome -> RuntimeHomeScreen(
+                            vm = vm,
+                            outerPadding = contentPadding,
+                            onSwitchToClassic = { vm.setRuntimeNavigationEnabled(false) },
+                            onManagerPatchPageVisibleChange = { managerPatchPageVisible = it }
+                        )
+                        AbkTab.InstalledModules -> InstalledModulesScreen(
+                            vm = vm,
+                            outerPadding = contentPadding,
+                            pendingModuleInstallUri = pendingModuleInstallUri,
+                            onPendingModuleInstallUriConsumed = onModuleInstallUriConsumed
+                        )
+                        AbkTab.RootAuth -> RootAuthorizationScreen(
+                            vm = vm,
+                            outerPadding = contentPadding,
+                            onDetailPageVisibleChange = { rootAuthDetailPageVisible = it }
+                        )
+                        AbkTab.Settings -> SettingsScreen(
+                            vm = vm,
+                            outerPadding = contentPadding,
+                            onChildPageVisibleChange = { settingsChildPageVisible = it },
+                            onOpenInstalledModules = {
+                                if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
+                                selectedTab = if (state.rootGranted) {
+                                    AbkTab.InstalledModules
+                                } else {
+                                    AbkTab.RuntimeHome
                                 }
-                                MiuixNavigationBarItem(
-                                    modifier = Modifier.weight(1f),
-                                    selected = activeTab == tab,
-                                    onClick = { if (!childPageVisible && tab in visibleTabs) selectedTab = tab },
-                                    enabled = !childPageVisible,
-                                    icon = tabIcon,
-                                    label = tab.displayLabel(state.rootGranted)
-                                )
-                            }
-                        }
-                    }
-                }
-                else -> {
-                    NavigationBar(
-                        containerColor = uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainer),
-                        tonalElevation = 0.dp
-                    ) {
-                        visibleTabs.forEach { tab ->
-                            NavigationBarItem(
-                                selected = activeTab == tab,
-                                onClick = { if (!childPageVisible && tab in visibleTabs) selectedTab = tab },
-                                enabled = !childPageVisible,
-                                alwaysShowLabel = false,
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                ),
-                                icon = {
-                                    Icon(
-                                        imageVector = when (tab) {
-                                            AbkTab.Status -> Icons.Default.Home
-                                            AbkTab.Build -> Icons.Default.RocketLaunch
-                                            AbkTab.Modules -> Icons.Default.LibraryBooks
-                                            AbkTab.Flash -> if (state.rootGranted) Icons.Default.FlashOn else Icons.Default.FolderOpen
-                                            AbkTab.RuntimeHome -> Icons.Default.Memory
-                                            AbkTab.InstalledModules -> Icons.Default.Extension
-                                            AbkTab.RootAuth -> Icons.Default.AdminPanelSettings
-                                            AbkTab.Settings -> Icons.Default.Settings
-                                        },
-                                        contentDescription = tab.displayLabel(state.rootGranted)
-                                    )
-                                },
-                                label = {
-                                    Text(
-                                        text = tab.displayLabel(state.rootGranted),
-                                        maxLines = 2,
-                                        softWrap = true,
-                                        overflow = TextOverflow.Ellipsis,
-                                        textAlign = TextAlign.Center,
-                                        style = MaterialTheme.typography.labelSmall
-                                    )
-                                }
-                            )
-                        }
-                    }
-                }
-                }
-            }
-        }
-        }
-        CompositionLocalProvider(LocalNavigator provides navigator) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .zIndex(1f)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .then(
-                            when {
-                                blurEnabledForGlass -> Modifier.layerBackdrop(floatingGlassBackdrop)
-                                blurBackdrop != null -> Modifier.layerBackdrop(blurBackdrop)
-                                else -> Modifier
                             }
                         )
-                ) {
-                    // ReSukiSU-style scene state integration for predictive back.
-                    // The handler is recreated on every state change (remember key), so
-                    // downstream closures below always read the latest handler via this val.
-                    val predictiveBackHandler = remember(state.miuixPredictiveBackEnabled) {
-                        if (state.miuixPredictiveBackEnabled) MiuixDefaultPredictiveBackHandler()
-                        else NonePredictiveBackHandler()
                     }
-                    val navigationScope = rememberCoroutineScope()
-                    val sceneBackgroundColor = if (state.uiStyle == "miuix") {
-                        MiuixTheme.colorScheme.surface
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainer
-                    }
-
-                    val entries = rememberDecoratedNavEntries(
-                        backStack = navigator.backStack,
-                        entryDecorators = listOf(
-                            rememberSaveableStateHolderNavEntryDecorator(),
-                            NavEntryDecorator<NavKey>(
-                                onPop = { key ->
-                                    predictiveBackHandler.onPagePop(key, navigationScope)
-                                },
-                                decorate = { entry ->
-                                    with(predictiveBackHandler) {
-                                        Box(
-                                            modifier = Modifier
-                                                .predictiveBackAnnotation(
-                                                    gestureState?.transitionState,
-                                                    entry.contentKey,
-                                                    navigator.current()
-                                                )
-                                                .background(sceneBackgroundColor)
-                                        ) {
-                                            entry.Content()
-                                        }
-                                    }
-                                }
-                            )
-                        ),
-                        entryProvider = entryProvider {
-                            entry<Route.Main> {
-                                if (state.uiStyle == "miuix") {
-                                    val pagerState = rememberPagerState(
-                                        initialPage = visibleTabs.indexOf(activeTab).coerceAtLeast(0),
-                                        pageCount = { visibleTabs.size }
-                                    )
-                                    var navigatingToTarget by remember { mutableStateOf(false) }
-
-                                    // Pager -> selectedTab: sync immediately when user scrolls
-                                    // changes currentPage, but skip during programmatic (tab click)
-                                    // animation to avoid overriding to an intermediate page.
-                                    LaunchedEffect(pagerState.currentPage) {
-                                        if (!navigatingToTarget &&
-                                            pagerState.currentPage in visibleTabs.indices
-                                        ) {
-                                            selectedTab = visibleTabs[pagerState.currentPage]
-                                        }
-                                    }
-
-                                    // selectedTab -> pager: animate to the correct page.
-                                    // Suppress the reverse sync while animating so intermediate
-                                    // page changes don't override the target tab selection.
-                                    LaunchedEffect(activeTab) {
-                                        val index = visibleTabs.indexOf(activeTab)
-                                        if (index >= 0 && pagerState.currentPage != index) {
-                                            navigatingToTarget = true
-                                            try {
-                                                pagerState.animateScrollToPage(index)
-                                            } finally {
-                                                navigatingToTarget = false
-                                            }
-                                        }
-                                    }
-
-                                    HorizontalPager(
-                                        state = pagerState,
-                                        modifier = Modifier.fillMaxSize(),
-                                        beyondViewportPageCount = visibleTabs.size
-                                    ) { page ->
-                                        when (visibleTabs[page]) {
-                                            AbkTab.Status -> com.abk.kernel.miuix.ui.screens.StatusScreenMiuix(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                runtimeNavigationEnabled = state.runtimeNavigationEnabled,
-                                                onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) }
-                                            )
-                                            AbkTab.Build -> com.abk.kernel.miuix.ui.screens.BuildScreenMiuix(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                onPlanPageVisibleChange = { buildPlanPageVisible = it },
-                                                onNavigateToStatus = { selectedTab = AbkTab.Status }
-                                            )
-                                            AbkTab.Modules -> com.abk.kernel.miuix.ui.screens.ModuleRepositoryScreenMiuix(
-                                                vm = vm,
-                                                mode = if (state.runtimeNavigationEnabled) {
-                                                    com.abk.kernel.ui.screens.ModuleRepositoryMode.RUNTIME_STANDARD
-                                                } else {
-                                                    com.abk.kernel.ui.screens.ModuleRepositoryMode.BUILD_ABK
-                                                },
-                                                outerPadding = contentPadding,
-                                                onRepositoryPageVisibleChange = { moduleRepositoryPageVisible = it }
-                                            )
-                                            AbkTab.Flash -> com.abk.kernel.miuix.ui.screens.FlashScreenMiuix(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                onDetailPageVisibleChange = { flashDetailPageVisible = it }
-                                            )
-                                            AbkTab.RuntimeHome -> com.abk.kernel.miuix.ui.screens.RuntimeHomeScreenMiuix(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                onSwitchToClassic = { vm.setRuntimeNavigationEnabled(false) },
-                                                navigator = navigator,
-                                            )
-                                            AbkTab.InstalledModules -> com.abk.kernel.miuix.ui.screens.InstalledModulesScreenMiuix(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                pendingModuleInstallUri = pendingModuleInstallUri,
-                                                onPendingModuleInstallUriConsumed = onModuleInstallUriConsumed
-                                            )
-                                            AbkTab.RootAuth -> com.abk.kernel.miuix.ui.screens.RootAuthorizationScreenMiuix(
-                                                vm = vm,
-                                                outerPadding = contentPadding
-                                            )
-                                            AbkTab.Settings -> com.abk.kernel.miuix.ui.screens.SettingsScreenMiuix(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                onOpenInstalledModules = {
-                                                    if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
-                                                    selectedTab = if (state.rootGranted) {
-                                                        AbkTab.InstalledModules
-                                                    } else {
-                                                        AbkTab.RuntimeHome
-                                                    }
-                                                }
-                                            )
-                                        }
-                                    }
-                                } else {
-                                    AnimatedContent(
-                                        targetState = activeTab,
-                                        transitionSpec = {
-                                            val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
-                                            (
-                                                fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) +
-                                                    slideInHorizontally(
-                                                        animationSpec = motionScheme.defaultSpatialSpec()
-                                                    ) { width -> direction * width / 4 }
-                                                ) togetherWith (
-                                                fadeOut(animationSpec = motionScheme.fastEffectsSpec()) +
-                                                    slideOutHorizontally(
-                                                        animationSpec = motionScheme.fastSpatialSpec()
-                                                    ) { width -> -direction * width / 6 }
-                                                )
-                                        },
-                                        label = "abk-tab"
-                                    ) { tab ->
-                                        when (tab) {
-                                            AbkTab.Status -> StatusScreen(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                runtimeNavigationEnabled = state.runtimeNavigationEnabled,
-                                                onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) }
-                                            )
-                                            AbkTab.Build -> BuildScreen(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                onPlanPageVisibleChange = { buildPlanPageVisible = it },
-                                                onNavigateToStatus = { selectedTab = AbkTab.Status }
-                                            )
-                                            AbkTab.Modules -> ModuleRepositoryScreen(
-                                                vm = vm,
-                                                mode = if (state.runtimeNavigationEnabled) {
-                                                    com.abk.kernel.ui.screens.ModuleRepositoryMode.RUNTIME_STANDARD
-                                                } else {
-                                                    com.abk.kernel.ui.screens.ModuleRepositoryMode.BUILD_ABK
-                                                },
-                                                outerPadding = contentPadding,
-                                                onRepositoryPageVisibleChange = { moduleRepositoryPageVisible = it }
-                                            )
-                                            AbkTab.Flash -> FlashScreen(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                onDetailPageVisibleChange = { flashDetailPageVisible = it }
-                                            )
-                                            AbkTab.RuntimeHome -> RuntimeHomeScreen(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                onSwitchToClassic = { vm.setRuntimeNavigationEnabled(false) },
-                                                onManagerPatchPageVisibleChange = { managerPatchPageVisible = it }
-                                            )
-                                            AbkTab.InstalledModules -> InstalledModulesScreen(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                pendingModuleInstallUri = pendingModuleInstallUri,
-                                                onPendingModuleInstallUriConsumed = onModuleInstallUriConsumed
-                                            )
-                                            AbkTab.RootAuth -> RootAuthorizationScreen(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                onDetailPageVisibleChange = { rootAuthDetailPageVisible = it }
-                                            )
-                                            AbkTab.Settings -> SettingsScreen(
-                                                vm = vm,
-                                                outerPadding = contentPadding,
-                                                onChildPageVisibleChange = { settingsChildPageVisible = it },
-                                                onOpenInstalledModules = {
-                                                    if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
-                                                    selectedTab = if (state.rootGranted) {
-                                                        AbkTab.InstalledModules
-                                                    } else {
-                                                        AbkTab.RuntimeHome
-                                                    }
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            entry<Route.ThemeSettings> {
-                                com.abk.kernel.miuix.ui.screens.ThemeSettingsScreenMiuix(
-                                    vm = vm,
-                                    miuixVm = miuixVm,
-                                    onBack = { navigator.pop() }
-                                )
-                            }
-                            entry<Route.AppProfileTemplates> {
-                                com.abk.kernel.miuix.ui.screens.AppProfileTemplatesScreenMiuix(vm = vm)
-                            }
-                            entry<Route.ManagerTools> {
-                                com.abk.kernel.miuix.ui.screens.ManagerToolsScreenMiuix(vm = vm)
-                            }
-                            entry<Route.About> {
-                                com.abk.kernel.miuix.ui.screens.AboutScreenMiuix(vm = vm)
-                            }
-                            entry<Route.OpenSourceLicenses> {
-                                com.abk.kernel.miuix.ui.screens.OpenSourceLicensesScreenMiuix(vm = vm)
-                            }
-                            entry<Route.ExtensionManager> {
-                                com.abk.kernel.miuix.ui.screens.ExtensionManagerScreenMiuix()
-                            }
-                            entry<Route.BuildPlanLibrary> {
-                                com.abk.kernel.miuix.ui.screens.BuildPlanLibraryScreenMiuix(vm = vm)
-                            }
-                            entry<Route.BuildQueue> {
-                                com.abk.kernel.miuix.ui.screens.BuildQueueScreenMiuix(vm = vm)
-                            }
-                            entry<Route.BuildModuleRepoSettings> {
-                                com.abk.kernel.miuix.ui.screens.BuildModuleRepoSettingsScreenMiuix(vm = vm)
-                            }
-                            entry<Route.RuntimeModuleRepoSettings> {
-                                com.abk.kernel.miuix.ui.screens.RuntimeModuleRepoSettingsScreenMiuix(vm = vm)
-                            }
-                            entry<Route.FlashWorkflowDetail> { route ->
-                                com.abk.kernel.miuix.ui.screens.flash.FlashWorkflowDetailScreenMiuix(
-                                    vm = vm,
-                                    route = route,
-                                    outerPadding = contentPadding,
-                                    onBack = { navigator.pop() }
-                                )
-                            }
-                            entry<Route.FlashPrebuiltDetail> { route ->
-                                com.abk.kernel.miuix.ui.screens.flash.FlashPrebuiltDetailScreenMiuix(
-                                    vm = vm,
-                                    route = route,
-                                    outerPadding = contentPadding,
-                                    onBack = { navigator.pop() }
-                                )
-                            }
-                            entry<Route.FlashTerminalLog> { route ->
-                                com.abk.kernel.miuix.ui.screens.flash.FlashTerminalLogScreenMiuix(
-                                    params = route.params,
-                                    onBack = { navigator.pop() }
-                                )
-                            }
-                            entry<Route.SuperUserProfile> { route ->
-                                com.abk.kernel.miuix.ui.screens.SuperUserProfileScreenMiuix(
-                                    vm = vm,
-                                    uid = route.uid,
-                                    onBack = { navigator.pop() }
-                                )
-                            }
-                            entry<Route.ManagerPatch> {
-                                com.abk.kernel.miuix.ui.screens.ManagerPatchScreenMiuix(
-                                    rootGranted = state.rootGranted,
-                                    hasNativeManagerPermission = state.hasNativeManagerPermission,
-                                    runtimeVariant = state.abkRuntimeStatus?.manager?.variant.orEmpty(),
-                                    backgroundUri = state.customBackgroundUri,
-                                    backgroundImageEnabled = state.backgroundImageEnabled,
-                                    onBack = { navigator.pop() }
-                                )
-                            }
-                            entry<Route.ModuleInstallLog> { route ->
-                                com.abk.kernel.miuix.ui.screens.runtime.ModuleInstallLogScreenMiuix(
-                                    params = route.params,
-                                    vm = vm,
-                                    onBack = { navigator.pop() }
-                                )
-                            }
-                        }
-                    )
-
-                    val sceneState = rememberSceneState(
-                        entries = entries,
-                        sceneStrategies = listOf(SinglePaneSceneStrategy()),
-                        onBack = { navigator.pop() }
-                    )
-                    gestureState = rememberNavigationEventState(
-                        currentInfo = SceneInfo(sceneState.currentScene),
-                        backInfo = sceneState.previousScenes.map { SceneInfo(it) }
-                    )
-
-                    NavigationBackHandler(
-                        sceneState = sceneState,
-                        state = gestureState!!,
-                        onBack = { navigator.pop() }
-                    )
-
-                    NavDisplay(
-                        sceneState = sceneState,
-                        navigationEventState = gestureState!!,
-                        transitionSpec = {
-                            val scope: AnimatedContentTransitionScope<Scene<NavKey>> = this
-                            predictiveBackHandler.invokeTransitionSpec(scope)
-                        },
-                        popTransitionSpec = {
-                            val scope: AnimatedContentTransitionScope<Scene<NavKey>> = this
-                            predictiveBackHandler.invokePopTransitionSpec(scope)
-                        },
-                        predictivePopTransitionSpec = { swipeEdge ->
-                            val scope: AnimatedContentTransitionScope<Scene<NavKey>> = this
-                            predictiveBackHandler.invokePredictivePopTransitionSpec(scope, swipeEdge)
-                        },
-                        transitionEffects = NavDisplayTransitionEffects.Default
-                    )
                 }
             }
         }
-        val snackbarModifier = Modifier
-            .align(Alignment.BottomCenter)
-            .padding(
-                bottom = with(density) { if (childPageVisible) 0.dp else bottomBarHeightPx.toDp() } + 10.dp
-            )
-            .zIndex(4f)
-        if (state.uiStyle == "miuix") {
-            AbkMiuixSnackbarHost(
-                hostState = miuixSnackbarHostState,
-                modifier = snackbarModifier
-            )
-        } else {
-            AbkSnackbarHost(
-                hostState = snackbarHostState,
-                modifier = snackbarModifier
-            )
-        }
+        AbkSnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(
+                    bottom = with(density) { if (childPageVisible) 0.dp else bottomBarHeightPx.toDp() } + 10.dp
+                )
+                .zIndex(4f)
+        )
     }
 }
 
 @Composable
-private fun AbkTab.displayLabel(rootGranted: Boolean): String = when (this) {
+internal fun AbkTab.displayLabel(rootGranted: Boolean): String = when (this) {
     AbkTab.Flash -> stringResource(if (rootGranted) labelRes else R.string.nav_files)
     else -> stringResource(labelRes)
 }
