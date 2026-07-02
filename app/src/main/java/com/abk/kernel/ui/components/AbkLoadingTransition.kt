@@ -34,7 +34,6 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-private val AbkLoadingAccent = Color(0xFFB6F0A2)
 private val AbkLoadingDarkContainer = Color(0xFF2B2E29)
 private val AbkLoadingDarkContent = Color(0xFFF5F6EE)
 private val AbkLoadingLightContainer = Color(0xFFF0ECE4)
@@ -58,6 +57,7 @@ fun AbkLoadingPill(
     } else {
         AbkLoadingDarkContent
     }
+    val accentColor = colors.secondary
     val horizontalPadding = if (compact) 14.dp else 18.dp
     val verticalPadding = if (compact) 10.dp else 12.dp
     val glyphSize = if (compact) 16.dp else 18.dp
@@ -76,7 +76,7 @@ fun AbkLoadingPill(
         ) {
             AbkLoadingGlyph(
                 modifier = Modifier.size(glyphSize),
-                tint = AbkLoadingAccent
+                tint = accentColor
             )
             Text(
                 text = text,
@@ -110,7 +110,7 @@ fun AbkCenteredLoadingTransition(
 @Composable
 private fun AbkLoadingGlyph(
     modifier: Modifier = Modifier,
-    tint: Color = AbkLoadingAccent
+    tint: Color
 ) {
     val transition = rememberInfiniteTransition(label = "abk-loading-glyph")
     val rotationDegrees by transition.animateFloat(
