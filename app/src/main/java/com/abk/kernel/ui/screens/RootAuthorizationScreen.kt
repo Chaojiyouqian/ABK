@@ -86,6 +86,8 @@ import coil.compose.AsyncImage
 import com.abk.kernel.R
 import com.abk.kernel.data.model.RootGrantApp
 import com.abk.kernel.data.model.RootGrantProfile
+import com.abk.kernel.ui.components.AbkCenteredLoadingTransition
+import com.abk.kernel.ui.components.AbkLoadingPill
 import com.abk.kernel.ui.components.AbkScreenHorizontalPadding
 import com.abk.kernel.ui.components.AppPageBackground
 import com.abk.kernel.ui.components.ObserveChildPageVisibility
@@ -372,34 +374,21 @@ private fun RootGrantInitialLoading() {
             .padding(vertical = 48.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            LoadingIndicator(Modifier.size(42.dp))
-            Text(
-                text = stringResource(R.string.root_auth_building_list),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        AbkLoadingPill(text = stringResource(R.string.root_auth_building_list))
     }
 }
 
 @Composable
 private fun RootGrantRefreshingRow() {
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
+        contentAlignment = Alignment.Center
     ) {
-        LoadingIndicator(Modifier.size(24.dp))
-        Text(
+        AbkLoadingPill(
             text = stringResource(R.string.root_auth_refreshing_list),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            compact = true
         )
     }
 }
@@ -408,25 +397,13 @@ private fun RootGrantRefreshingRow() {
 private fun RootGrantDetailLoadingPage(
     padding: PaddingValues
 ) {
-    Box(
+    AbkCenteredLoadingTransition(
+        text = stringResource(R.string.root_auth_loading_profile),
         modifier = Modifier
             .padding(padding)
             .fillMaxSize()
-            .padding(horizontal = AbkScreenHorizontalPadding),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            LoadingIndicator(Modifier.size(42.dp))
-            Text(
-                text = stringResource(R.string.root_auth_loading_profile),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
+            .padding(horizontal = AbkScreenHorizontalPadding)
+    )
 }
 
 @Composable

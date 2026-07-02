@@ -58,6 +58,8 @@ import com.abk.kernel.utils.DownloadDirectoryUtils
 import com.abk.kernel.utils.DownloadUtils
 import com.abk.kernel.utils.LocaleHelper
 import com.abk.kernel.ui.components.AbkScreenHorizontalPadding
+import com.abk.kernel.ui.components.AbkSegmentedButtonOption
+import com.abk.kernel.ui.components.AbkSingleChoiceSegmentedButtonRow
 import com.abk.kernel.ui.components.AppPageBackground
 import com.abk.kernel.ui.components.ObserveChildPageVisibility
 import com.abk.kernel.ui.components.childPageOverlayEnterTransition
@@ -2115,8 +2117,14 @@ private fun AppUpdateStabilityPicker(
     onSelect: (String) -> Unit
 ) {
     val options = listOf(
-        APP_UPDATE_STABILITY_STABLE to stringResource(R.string.settings_app_update_stable),
-        APP_UPDATE_STABILITY_UNSTABLE to stringResource(R.string.settings_app_update_unstable)
+        AbkSegmentedButtonOption(
+            value = APP_UPDATE_STABILITY_STABLE,
+            label = stringResource(R.string.settings_app_update_stable)
+        ),
+        AbkSegmentedButtonOption(
+            value = APP_UPDATE_STABILITY_UNSTABLE,
+            label = stringResource(R.string.settings_app_update_unstable)
+        )
     )
     Column(
         modifier = Modifier
@@ -2131,19 +2139,12 @@ private fun AppUpdateStabilityPicker(
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            options.forEach { (value, label) ->
-                FilterChip(
-                    selected = normalizeAppUpdateStability(selected) == value,
-                    onClick = { onSelect(value) },
-                    label = { Text(label, maxLines = 1) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
+        AbkSingleChoiceSegmentedButtonRow(
+            options = options,
+            selectedValue = normalizeAppUpdateStability(selected),
+            onSelect = onSelect,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -2153,8 +2154,14 @@ private fun AppUpdateLinePicker(
     onSelect: (String) -> Unit
 ) {
     val options = listOf(
-        APP_UPDATE_LINE_NORMAL to stringResource(R.string.settings_app_update_line_normal),
-        APP_UPDATE_LINE_DEV to stringResource(R.string.settings_app_update_line_dev)
+        AbkSegmentedButtonOption(
+            value = APP_UPDATE_LINE_NORMAL,
+            label = stringResource(R.string.settings_app_update_line_normal)
+        ),
+        AbkSegmentedButtonOption(
+            value = APP_UPDATE_LINE_DEV,
+            label = stringResource(R.string.settings_app_update_line_dev)
+        )
     )
     Column(
         modifier = Modifier
@@ -2169,19 +2176,12 @@ private fun AppUpdateLinePicker(
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            options.forEach { (value, label) ->
-                FilterChip(
-                    selected = normalizeAppUpdateLine(selected) == value,
-                    onClick = { onSelect(value) },
-                    label = { Text(label, maxLines = 1) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
+        AbkSingleChoiceSegmentedButtonRow(
+            options = options,
+            selectedValue = normalizeAppUpdateLine(selected),
+            onSelect = onSelect,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -2239,6 +2239,14 @@ private fun WorkflowForegroundRefreshIntervalPicker(
     selectedSec: Int,
     onSelect: (Int) -> Unit
 ) {
+    val options = PreferencesRepository.WORKFLOW_FOREGROUND_REFRESH_INTERVALS_SEC
+        .sorted()
+        .map { sec ->
+            AbkSegmentedButtonOption(
+                value = sec,
+                label = stringResource(R.string.settings_workflow_foreground_refresh_interval_sec, sec)
+            )
+        }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2252,24 +2260,12 @@ private fun WorkflowForegroundRefreshIntervalPicker(
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            PreferencesRepository.WORKFLOW_FOREGROUND_REFRESH_INTERVALS_SEC.sorted().forEach { sec ->
-                FilterChip(
-                    selected = selectedSec == sec,
-                    onClick = { onSelect(sec) },
-                    label = {
-                        Text(
-                            stringResource(R.string.settings_workflow_foreground_refresh_interval_sec, sec),
-                            maxLines = 1
-                        )
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
+        AbkSingleChoiceSegmentedButtonRow(
+            options = options,
+            selectedValue = selectedSec,
+            onSelect = onSelect,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
