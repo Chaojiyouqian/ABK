@@ -372,6 +372,7 @@ fun SuperUserProfileScreenMiuix(
                                 },
                                 items = profileModeOptions,
                                 selectedIndex = currentModeIndex,
+                                renderInRootScaffold = true,
                                 onSelectedIndexChange = { index ->
                                     profileType = when {
                                         allowSu && index == 0 -> "default"
@@ -407,6 +408,7 @@ fun SuperUserProfileScreenMiuix(
                                         title = stringResource(R.string.root_auth_template),
                                         items = listOf(templateName.ifBlank { stringResource(R.string.root_auth_default) }),
                                         selectedIndex = 0,
+                                        renderInRootScaffold = true,
                                         onSelectedIndexChange = { },
                                     )
                                     ArrowPreference(
@@ -461,6 +463,7 @@ fun SuperUserProfileScreenMiuix(
                                         title = "Mount Namespace",
                         items = listOf("Inherited", "Global", "Individual"),
                                         selectedIndex = namespaceIndex,
+                                        renderInRootScaffold = true,
                                         onSelectedIndexChange = { index ->
                                             namespaceIndex = index
                                             doSave()

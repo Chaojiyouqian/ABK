@@ -85,6 +85,7 @@ fun ThemeSettingsScreenMiuix(
                     title = stringResource(R.string.settings_ui_style),
                     items = uiStyleOptions.map { it.second },
                     selectedIndex = uiStyleIndex,
+                    renderInRootScaffold = true,
                     onSelectedIndexChange = { index ->
                         vm.setUiStyle(uiStyleOptions[index].first)
                     }
@@ -105,6 +106,7 @@ fun ThemeSettingsScreenMiuix(
                     title = stringResource(R.string.settings_appearance_mode),
                     items = themeModeOptions.map { it.second },
                     selectedIndex = themeModeIndex,
+                    renderInRootScaffold = true,
                     onSelectedIndexChange = { index ->
                         vm.setThemeMode(themeModeOptions[index].first)
                     }
@@ -158,6 +160,7 @@ fun ThemeSettingsScreenMiuix(
                             title = stringResource(R.string.settings_key_color),
                             items = colorItems,
                             selectedIndex = currentColorIndex,
+                            renderInRootScaffold = true,
                             onSelectedIndexChange = { index ->
                                 miuixVm.setMiuixThemeColor(colorValues[index])
                             }
@@ -179,6 +182,7 @@ fun ThemeSettingsScreenMiuix(
                                     title = stringResource(R.string.settings_color_style),
                                     items = paletteStyles.map { it.name },
                                     selectedIndex = paletteIndex,
+                                    renderInRootScaffold = true,
                                     onSelectedIndexChange = { index ->
                                         miuixVm.setMiuixColorStyle(paletteStyles[index].name)
                                     }
@@ -195,6 +199,7 @@ fun ThemeSettingsScreenMiuix(
                                     title = stringResource(R.string.settings_color_spec),
                                     items = colorSpecs.map { it.name },
                                     selectedIndex = specIndex,
+                                    renderInRootScaffold = true,
                                     onSelectedIndexChange = { index ->
                                         miuixVm.setMiuixColorSpec(colorSpecs[index].name)
                                     }

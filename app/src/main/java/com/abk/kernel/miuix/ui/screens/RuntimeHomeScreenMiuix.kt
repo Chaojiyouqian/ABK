@@ -100,7 +100,7 @@ fun RuntimeHomeScreenMiuix(
                     color = barColor,
                     title = "AnyBase Kernel",
                     scrollBehavior = scrollBehavior,
-                    navigationIcon = {
+                    actions = {
                         IconButton(onClick = onSwitchToClassic) {
                             Icon(
                                 imageVector = Icons.Default.SwapHoriz,

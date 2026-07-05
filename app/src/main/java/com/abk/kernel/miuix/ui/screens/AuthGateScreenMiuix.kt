@@ -658,7 +658,7 @@ private fun ForkCheckScreenMiuix(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    Modifier.padding(top = 16.dp, bottom = 46.dp, start = 16.dp, end = 16.dp),
+                    Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Row(
@@ -703,33 +703,6 @@ private fun ForkCheckScreenMiuix(
                         },
                         icon = if (behindBy > 0) Icons.Default.Warning else Icons.Default.Verified,
                         color = if (behindBy > 0) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = "${stringResource(R.string.settings_fork_repo)}: ${forkRepo.fullName}",
-                        style = MiuixTheme.textStyles.body1,
-                        fontWeight = FontWeight.Normal,
-                        color = MiuixTheme.colorScheme.onSurfaceSecondary,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Text(
-                        text = "${stringResource(R.string.build_ksu_branch)}: ${forkRepo.defaultBranch}",
-                        style = MiuixTheme.textStyles.body1,
-                        fontWeight = FontWeight.Normal,
-                        color = MiuixTheme.colorScheme.onSurfaceSecondary,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Text(
-                        text = "${stringResource(R.string.status_fork)}: ${
-                            if (behindBy > 0) {
-                                stringResource(R.string.status_fork_behind, behindBy)
-                            } else {
-                                stringResource(R.string.status_synced)
-                            }
-                        }",
-                        style = MiuixTheme.textStyles.body1,
-                        fontWeight = FontWeight.Normal,
-                        color = MiuixTheme.colorScheme.onSurfaceSecondary,
-                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }

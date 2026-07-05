@@ -581,6 +581,7 @@ fun AbkRootPatchScreenMiuix(
                                     },
                                     items = slotItems,
                                     selectedIndex = slotIndex,
+                                    renderInRootScaffold = true,
                                     onSelectedIndexChange = { index ->
                                         selectedAnyKernelSlotTargetName = if (index == 0) {
                                             RootUtils.Ak3SlotTarget.CURRENT.name
@@ -610,6 +611,7 @@ fun AbkRootPatchScreenMiuix(
                             },
                             items = partitionItems,
                             selectedIndex = partitionIndex,
+                            renderInRootScaffold = true,
                             onSelectedIndexChange = { index ->
                                 hasCustomPartitionSelection = true
                                 selectedPartition = partitionOptions[index]
@@ -711,6 +713,7 @@ fun AbkRootPatchScreenMiuix(
                                     title = "KMI",
                                     items = kmiDisplayItems,
                                     selectedIndex = kmiIndex,
+                                    renderInRootScaffold = true,
                                     onSelectedIndexChange = { index ->
                                         val selected = kmiItems[index]
                                         if (selected in kmiOptions) {

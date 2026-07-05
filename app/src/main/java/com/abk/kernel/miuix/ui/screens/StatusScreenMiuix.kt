@@ -112,7 +112,7 @@ fun StatusScreenMiuix(
                     color = barColor,
                     title = stringResource(R.string.app_name),
                     scrollBehavior = scrollBehavior,
-                    navigationIcon = {
+                    actions = {
                         IconButton(onClick = onToggleRuntimeNavigation) {
                             Icon(
                                 imageVector = if (runtimeNavigationEnabled) {

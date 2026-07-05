@@ -4,15 +4,25 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandIn
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +39,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -89,6 +100,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -100,6 +112,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
@@ -140,6 +155,7 @@ import com.abk.kernel.viewmodel.BuildPlanShareScope
 import com.abk.kernel.viewmodel.MainViewModel
 import com.abk.kernel.ui.navigation3.LocalNavigator
 import com.abk.kernel.ui.navigation3.Route
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Card
@@ -237,18 +253,7 @@ fun BuildScreenMiuix(
     var editingModuleSetMetadata by remember { mutableStateOf<ExternalModuleMetadata?>(null) }
     var editingModuleSetChildIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var editingModuleSetStageSelections by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
-    var removingCustomModuleKeys by rememberSaveable { mutableStateOf(emptyList<String>()) }
-
     val coroutineScope = rememberCoroutineScope()
-    val catalogModules = remember(state.buildModuleRepositories) {
-        mergeBuildCatalogModules(state.buildModuleRepositories)
-    }
-    val catalogModuleByUrl = remember(catalogModules) {
-        catalogModules.associateBy { it.module.repoUrl.trim().lowercase() }
-    }
-    val customModuleGroups = remember(config.customExternalModules, catalogModuleByUrl) {
-        groupBuildCustomExternalModules(config.customExternalModules, catalogModuleByUrl)
-    }
 
     val activeBuild = state.buildStatus in listOf(BuildStatus.QUEUED, BuildStatus.IN_PROGRESS)
     val pendingQueueCount = state.buildQueue.count { it.status == BuildQueueItemStatus.PENDING }
@@ -258,6 +263,23 @@ fun BuildScreenMiuix(
             BuildQueueItemStatus.DISPATCHING,
             BuildQueueItemStatus.RUNNING
         )
+    }
+
+    // ── Callbacks for BuildTargetContentMiuix (extracted target section) ──
+    val onCheckCustomModuleMetadata: (String) -> Unit = { url ->
+        coroutineScope.launch {
+            vm.checkCustomExternalModuleMetadata(url)?.let { metadata ->
+                pendingCustomModuleUrl = url
+                pendingCustomModuleMetadata = metadata
+                selectedCustomModuleStages = metadata.recommendedStages
+                    .filter { it in metadata.supportedStages }
+                    .ifEmpty { listOf(metadata.defaultStage) }
+            }
+        }
+    }
+    val onEditCustomModuleStages: (BuildCustomModuleGroup) -> Unit = { group ->
+        editingCustomModuleGroup = group
+        editingCustomModuleStages = group.stages
     }
 
     LaunchedEffect(config, rawConfig) {
@@ -1123,6 +1145,21 @@ fun BuildScreenMiuix(
                 )
 
                 // ═══ 3. Build Target Selector ═══════════════════════════════
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 4.dp, bottom = 0.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.build_target_title),
+                        style = MiuixTheme.textStyles.subtitle,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = stringResource(R.string.build_target_desc),
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceSecondary
+                    )
+                }
                 BuildTargetSelectorMiuix(
                     selected = config.buildTarget,
                     onSelect = { target ->
@@ -1204,518 +1241,32 @@ fun BuildScreenMiuix(
                     }
                 }
 
-                // ═══ 5. Kernel Version Section ══════════════════════════════
-                SectionTitle(stringResource(R.string.build_kernel_version_config))
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    if (isOnePlusBuild) {
-                        val deviceOptions = KernelSupport.onePlusDeviceManifestOptions
-                        val deviceLabels = deviceOptions.map { KernelSupport.onePlusDeviceLabel(it) }
-                        val deviceIndex = deviceOptions.indexOf(config.onePlusDeviceManifest).coerceAtLeast(0)
-                        OverlayDropdownPreference(
-                            title = stringResource(R.string.build_oneplus_device_manifest),
-                            items = deviceLabels,
-                            selectedIndex = deviceIndex,
-                            maxHeight = 336.dp,
-                            onSelectedIndexChange = { index ->
-                                val manifest = deviceOptions[index]
-                                val profile = KernelSupport.onePlusDeviceProfile(manifest)
-                                vm.updateBuildConfig(
-                                    KernelSupport.normalize(
-                                        config.copy(
-                                            onePlusDeviceManifest = manifest,
-                                            onePlusCpu = profile?.cpu ?: config.onePlusCpu,
-                                            androidVersion = profile?.androidVersion ?: config.androidVersion,
-                                            kernelVersion = profile?.kernelVersion ?: config.kernelVersion
-                                        )
-                                    )
-                                )
-                            }
+                // ═══ 5-10. Target Content (animated slide) ═════════════════════
+                AnimatedContent(
+                    targetState = config.buildTarget,
+                    transitionSpec = {
+                        val targetOrder = listOf(BUILD_TARGET_GKI, BUILD_TARGET_ONEPLUS)
+                        val targetIndex = targetOrder.indexOf(targetState)
+                        val initialIndex = targetOrder.indexOf(initialState).coerceAtLeast(0)
+                        val direction = if (targetIndex > initialIndex) 1 else -1
+                        (
+                            slideInHorizontally { width -> direction * width / 4 } + fadeIn()
+                        ) togetherWith (
+                            slideOutHorizontally { width -> -direction * width / 4 } + fadeOut()
                         )
-                        ArrowPreference(
-                            title = stringResource(R.string.build_oneplus_cpu),
-                            summary = config.onePlusCpu
-                        )
-                        ArrowPreference(
-                            title = stringResource(R.string.build_android_version),
-                            summary = config.androidVersion
-                        )
-                        ArrowPreference(
-                            title = stringResource(R.string.build_kernel_version),
-                            summary = config.kernelVersion
-                        )
-                    } else {
-                        val androidOptions = KernelSupport.androidVersions()
-                        val androidIndex = androidOptions.indexOf(config.androidVersion).coerceAtLeast(0)
-                        OverlayDropdownPreference(
-                            title = stringResource(R.string.build_android_version),
-                            items = androidOptions,
-                            selectedIndex = androidIndex,
-                            onSelectedIndexChange = { index ->
-                                val v = androidOptions[index]
-                                vm.updateBuildConfig(
-                                    KernelSupport.normalize(
-                                        config.copy(
-                                            androidVersion = v,
-                                            kernelVersion = KernelSupport.kernelForAndroid(v)
-                                        )
-                                    )
-                                )
-                            }
-                        )
-                        val kernelOptions = KernelSupport.kernelVersions()
-                        val kernelIndex = kernelOptions.indexOf(config.kernelVersion).coerceAtLeast(0)
-                        OverlayDropdownPreference(
-                            title = stringResource(R.string.build_kernel_version),
-                            items = kernelOptions,
-                            selectedIndex = kernelIndex,
-                            onSelectedIndexChange = { index ->
-                                val v = kernelOptions[index]
-                                vm.updateBuildConfig(
-                                    KernelSupport.normalize(
-                                        config.copy(
-                                            androidVersion = KernelSupport.androidForKernel(v),
-                                            kernelVersion = v
-                                        )
-                                    )
-                                )
-                            }
-                        )
-                        val subIndex = subLevelOptions.indexOf(config.subLevel).coerceAtLeast(0)
-                        OverlayDropdownPreference(
-                            title = stringResource(R.string.build_sub_level),
-                            items = subLevelOptions,
-                            selectedIndex = subIndex,
-                            maxHeight = 240.dp,
-                            onSelectedIndexChange = { index ->
-                                vm.updateBuildConfig(KernelSupport.normalize(config.copy(subLevel = subLevelOptions[index])))
-                            }
-                        )
-                        val patchIndex = osPatchOptions.indexOf(config.osPatchLevel).coerceAtLeast(0)
-                        OverlayDropdownPreference(
-                            title = stringResource(R.string.build_security_patch_level),
-                            items = osPatchOptions,
-                            selectedIndex = patchIndex,
-                            onSelectedIndexChange = { index ->
-                                vm.updateBuildConfig(config.copy(osPatchLevel = osPatchOptions[index]))
-                            }
-                        )
-                    }
-                }
-
-                // ═══ 6. KernelSU Section ════════════════════════════════════
-                SectionTitle(stringResource(R.string.build_kernelsu_config))
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    val noRootScheme = config.kernelsuVariant == KSU_VARIANT_NONE
-                    val variantIndex = ksuVariantOptions.indexOf(config.kernelsuVariant).coerceAtLeast(0)
-                    OverlayDropdownPreference(
-                        title = stringResource(R.string.build_kernelsu_variant),
-                        items = ksuVariantOptions.map { ksuVariantDisplayName(it) },
-                        selectedIndex = variantIndex,
-                        onSelectedIndexChange = { index ->
-                            vm.updateBuildConfig(KernelSupport.normalize(config.copy(kernelsuVariant = ksuVariantOptions[index])))
-                        }
+                    },
+                    label = "buildTargetSlide"
+                ) { _ ->
+                    BuildTargetContentMiuix(
+                        modifier = Modifier.fillMaxWidth(),
+                        config = config,
+                        vm = vm,
+                        customModuleUrl = customModuleUrl,
+                        onCustomModuleUrlChange = { customModuleUrl = it },
+                        onCheckCustomModuleMetadata = onCheckCustomModuleMetadata,
+                        onEditCustomModuleStages = onEditCustomModuleStages,
+                        onOpenModuleSetEditor = ::openModuleSetEditor,
                     )
-                    if (!noRootScheme && !isOnePlusBuild) {
-                        val branchIndex = ksuBranchOptions.indexOf(KernelSupport.normalizeKsuBranch(config.kernelsuBranch)).coerceAtLeast(0)
-                        OverlayDropdownPreference(
-                            title = stringResource(R.string.build_ksu_branch),
-                            items = ksuBranchOptions,
-                            selectedIndex = branchIndex,
-                            onSelectedIndexChange = { index ->
-                                vm.updateBuildConfig(
-                                    KernelSupport.normalize(config.copy(kernelsuBranch = ksuBranchOptions[index]))
-                                )
-                            }
-                        )
-                    }
-                }
-
-                // ═══ 7. Features Section ════════════════════════════════════
-                SectionTitle(stringResource(R.string.build_features))
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    val noRootScheme = config.kernelsuVariant == KSU_VARIANT_NONE
-                    val kpmSupported = KernelSupport.isKpmSupported(
-                        config.buildTarget,
-                        config.kernelsuVariant,
-                        config.kernelsuBranch
-                    )
-                    if (isOnePlusBuild) {
-                        val proxyAllowed = !config.onePlusCpu.startsWith("mt")
-                        val onePlusSusfsSupported = KernelSupport.onePlusSusfsSupported(config.androidVersion, config.kernelVersion)
-                        SwitchPreference(
-                            title = stringResource(R.string.build_enable_susfs),
-                            checked = !config.cancelSusfs && onePlusSusfsSupported,
-                            onCheckedChange = { vm.updateBuildConfig(KernelSupport.normalize(config.copy(cancelSusfs = !it))) }
-                        )
-                        SwitchPreference(
-                            title = stringResource(R.string.build_enable_kpm),
-                            checked = config.useKpm,
-                            onCheckedChange = {
-                                if (kpmSupported && !noRootScheme) {
-                                    vm.updateBuildConfig(KernelSupport.normalize(config.copy(useKpm = it)))
-                                }
-                            }
-                        )
-                        SwitchPreference(
-                            title = stringResource(R.string.build_oneplus_lz4kd),
-                            checked = config.onePlusUseLz4kd,
-                            onCheckedChange = { vm.updateBuildConfig(config.copy(onePlusUseLz4kd = it)) }
-                        )
-                        SwitchPreference(
-                            title = stringResource(R.string.build_enable_bbg),
-                            checked = config.useBbg,
-                            onCheckedChange = { vm.updateBuildConfig(config.copy(useBbg = it)) }
-                        )
-                        SwitchPreference(
-                            title = stringResource(R.string.build_oneplus_bbr),
-                            checked = config.onePlusUseBbr,
-                            onCheckedChange = { vm.updateBuildConfig(config.copy(onePlusUseBbr = it)) }
-                        )
-                        SwitchPreference(
-                            title = stringResource(R.string.build_oneplus_proxy_optimization),
-                            checked = config.onePlusUseProxyOptimization,
-                            onCheckedChange = {
-                                if (proxyAllowed) {
-                                    vm.updateBuildConfig(KernelSupport.normalize(config.copy(onePlusUseProxyOptimization = it)))
-                                }
-                            }
-                        )
-                        SwitchPreference(
-                            title = stringResource(R.string.build_oneplus_unicode_bypass),
-                            checked = config.onePlusUseUnicodeBypass,
-                            onCheckedChange = { vm.updateBuildConfig(config.copy(onePlusUseUnicodeBypass = it)) }
-                        )
-                    } else {
-                        SwitchPreference(
-                            title = stringResource(R.string.build_enable_susfs),
-                            checked = !config.cancelSusfs,
-                            onCheckedChange = {
-                                if (!noRootScheme) {
-                                    vm.updateBuildConfig(KernelSupport.normalize(config.copy(cancelSusfs = !it)))
-                                }
-                            }
-                        )
-                        SwitchPreference(
-                            title = stringResource(R.string.build_enable_zram),
-                            checked = config.useZram,
-                            onCheckedChange = { vm.updateBuildConfig(config.copy(useZram = it)) }
-                        )
-                        SwitchPreference(
-                            title = stringResource(R.string.build_enable_bbg),
-                            checked = config.useBbg,
-                            onCheckedChange = { vm.updateBuildConfig(config.copy(useBbg = it)) }
-                        )
-                        SwitchPreference(
-                            title = stringResource(R.string.build_enable_ddk),
-                            checked = config.useDdk,
-                            onCheckedChange = { vm.updateBuildConfig(config.copy(useDdk = it)) }
-                        )
-                        SwitchPreference(
-                            title = stringResource(R.string.build_enable_ntsync),
-                            checked = config.useNtsync,
-                            onCheckedChange = { vm.updateBuildConfig(config.copy(useNtsync = it)) }
-                        )
-                        SwitchPreference(
-                            title = stringResource(R.string.build_enable_networking),
-                            checked = config.useNetworking,
-                            onCheckedChange = { vm.updateBuildConfig(config.copy(useNetworking = it)) }
-                        )
-                        SwitchPreference(
-                            title = stringResource(R.string.build_enable_kpm),
-                            checked = config.useKpm,
-                            onCheckedChange = {
-                                if (kpmSupported && !noRootScheme) {
-                                    vm.updateBuildConfig(KernelSupport.normalize(config.copy(useKpm = it)))
-                                }
-                            }
-                        )
-                        SwitchPreference(
-                            title = stringResource(R.string.build_enable_rekernel),
-                            checked = config.useRekernel,
-                            onCheckedChange = { vm.updateBuildConfig(config.copy(useRekernel = it)) }
-                        )
-                        val virtIndex = virtualizationSupportOptions.indexOf(config.virtualizationSupport).coerceAtLeast(0)
-                        OverlayDropdownPreference(
-                            title = stringResource(R.string.build_virtualization_support),
-                            items = virtualizationSupportOptions.map { virtualizationSupportLabel(it) },
-                            selectedIndex = virtIndex,
-                            onSelectedIndexChange = { index ->
-                                vm.updateBuildConfig(config.copy(virtualizationSupport = virtualizationSupportOptions[index]))
-                            }
-                        )
-                        SwitchPreference(
-                            title = stringResource(R.string.build_enable_oneplus_8e),
-                            checked = config.suppOp,
-                            onCheckedChange = { vm.updateBuildConfig(config.copy(suppOp = it)) }
-                        )
-                    }
-                }
-
-                // ═══ 8. ZRAM Options (conditional) ══════════════════════════
-                AnimatedVisibility(
-                    visible = !isOnePlusBuild && config.useZram,
-                    enter = fadeIn() + expandIn(expandFrom = Alignment.TopStart),
-                    exit = fadeOut() + shrinkVertically() + shrinkOut(shrinkTowards = Alignment.TopStart)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SectionTitle(stringResource(R.string.build_zram_options))
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            SwitchPreference(
-                                title = stringResource(R.string.build_zram_full_algo),
-                                checked = config.zramFullAlgo,
-                                onCheckedChange = { vm.updateBuildConfig(config.copy(zramFullAlgo = it)) }
-                            )
-                            AnimatedVisibility(
-                                visible = config.zramFullAlgo,
-                                enter = fadeIn() + expandVertically(),
-                                exit = fadeOut() + shrinkVertically()
-                            ) {
-                                BuildTextFieldItem(
-                                    value = config.zramExtraAlgos,
-                                    onValueChange = { vm.updateBuildConfig(config.copy(zramExtraAlgos = it)) },
-                                    label = stringResource(R.string.build_zram_custom_algo),
-                                    placeholder = stringResource(R.string.build_zram_algo_placeholder)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // ═══ 9. KPM Options (conditional) ═══════════════════════════
-                AnimatedVisibility(
-                    visible = !isOnePlusBuild && config.useKpm,
-                    enter = fadeIn() + expandIn(expandFrom = Alignment.TopStart),
-                    exit = fadeOut() + shrinkVertically() + shrinkOut(shrinkTowards = Alignment.TopStart)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SectionTitle(stringResource(R.string.build_kpm_options))
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            BuildTextFieldItem(
-                                value = config.kpmPassword,
-                                onValueChange = { vm.updateBuildConfig(config.copy(kpmPassword = it)) },
-                                label = stringResource(R.string.build_kpm_password),
-                                placeholder = stringResource(R.string.build_kpm_password_placeholder)
-                            )
-                        }
-                    }
-                }
-
-                // ═══ 10. Custom Modules Section (GKI only) ══════════════════
-                if (!isOnePlusBuild) {
-                    SectionTitle(stringResource(R.string.build_custom_modules))
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        SwitchPreference(
-                            title = stringResource(R.string.build_enable_custom_modules),
-                            checked = config.useCustomExternalModules,
-                            onCheckedChange = { vm.updateBuildConfig(config.copy(useCustomExternalModules = it)) }
-                        )
-                        AnimatedVisibility(
-                            visible = config.useCustomExternalModules,
-                            enter = fadeIn() + expandVertically(),
-                            exit = fadeOut() + shrinkVertically()
-                        ) {
-                            val catalogGroups = customModuleGroups.filter { it.catalogModule != null }
-                            val manualGroups = customModuleGroups.filter { it.catalogModule == null }
-                            LazyColumn(
-                                modifier = Modifier.heightIn(max = 4000.dp),
-                                userScrollEnabled = false,
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                if (catalogGroups.isNotEmpty()) {
-                                    item(key = "catalog-header") {
-                                        top.yukonga.miuix.kmp.basic.Text(
-                                            text = stringResource(R.string.build_add_from_module_repo),
-                                            style = MiuixTheme.textStyles.subtitle,
-                                            fontWeight = FontWeight.SemiBold,
-                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                                        )
-                                    }
-                                    items(catalogGroups, key = { it.key }) { group ->
-                                        AnimatedVisibility(
-                                            visible = group.key !in removingCustomModuleKeys,
-                                            enter = fadeIn() + expandVertically(),
-                                            exit = fadeOut() + shrinkVertically()
-                                        ) {
-                                            ArrowPreference(
-                                                modifier = Modifier.animateItem(),
-                                                title = group.displayName(stringResource(R.string.build_external_module_default)),
-                                                summary = group.subtitle(
-                                                    noStageLabel = stringResource(R.string.build_stage_none),
-                                                    sourcePrefix = stringResource(R.string.build_source_list, "%s")
-                                                ),
-                                                endActions = {
-                                                    IconButton(
-                                                        onClick = {
-                                                            if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
-                                                                openModuleSetEditor(group)
-                                                            } else {
-                                                                editingCustomModuleGroup = group
-                                                                editingCustomModuleStages = group.stages
-                                                            }
-                                                        }
-                                                    ) {
-                                                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.build_edit_injection_stage), tint = MiuixTheme.colorScheme.onSurface)
-                                                    }
-                                                    IconButton(
-                                                        onClick = {
-                                                            if (group.key in removingCustomModuleKeys) return@IconButton
-                                                            removingCustomModuleKeys =
-                                                                (removingCustomModuleKeys + group.key).distinct()
-                                                            coroutineScope.launch {
-                                                                delay(CATALOG_MODULE_REMOVE_DELAY_MS)
-                                                                if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
-                                                                    vm.removeModuleSetSelection(group.groupRepoUrl.ifBlank { group.url })
-                                                                } else {
-                                                                    vm.setCustomExternalModuleStages(group.url, emptyList())
-                                                                }
-                                                                removingCustomModuleKeys =
-                                                                    removingCustomModuleKeys - group.key
-                                                            }
-                                                        },
-                                                        enabled = group.key !in removingCustomModuleKeys
-                                                    ) {
-                                                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.build_remove_module), tint = MiuixTheme.colorScheme.onSurface)
-                                                    }
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-
-                                if (manualGroups.isNotEmpty()) {
-                                    item(key = "manual-header") {
-                                        top.yukonga.miuix.kmp.basic.Text(
-                                            text = stringResource(R.string.build_manual_add),
-                                            style = MiuixTheme.textStyles.subtitle,
-                                            fontWeight = FontWeight.SemiBold,
-                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                                        )
-                                    }
-                                    items(manualGroups, key = { it.key }) { group ->
-                                        AnimatedVisibility(
-                                            visible = group.key !in removingCustomModuleKeys,
-                                            enter = fadeIn() + expandVertically(),
-                                            exit = fadeOut() + shrinkVertically()
-                                        ) {
-                                            ArrowPreference(
-                                                modifier = Modifier.animateItem(),
-                                                title = group.displayName(stringResource(R.string.build_external_module_default)),
-                                                summary = group.subtitle(
-                                                    noStageLabel = stringResource(R.string.build_stage_none),
-                                                    sourcePrefix = stringResource(R.string.build_source_list, "%s")
-                                                ),
-                                                endActions = {
-                                                    IconButton(
-                                                        onClick = {
-                                                            if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
-                                                                openModuleSetEditor(group)
-                                                            } else {
-                                                                editingCustomModuleGroup = group
-                                                                editingCustomModuleStages = group.stages
-                                                            }
-                                                        }
-                                                    ) {
-                                                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.build_edit_injection_stage), tint = MiuixTheme.colorScheme.onSurface)
-                                                    }
-                                                    IconButton(
-                                                        onClick = {
-                                                            if (group.key in removingCustomModuleKeys) return@IconButton
-                                                            removingCustomModuleKeys =
-                                                                (removingCustomModuleKeys + group.key).distinct()
-                                                            coroutineScope.launch {
-                                                                delay(CATALOG_MODULE_REMOVE_DELAY_MS)
-                                                                if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
-                                                                    vm.removeModuleSetSelection(group.groupRepoUrl.ifBlank { group.url })
-                                                                } else {
-                                                                    vm.setCustomExternalModuleStages(group.url, emptyList())
-                                                                }
-                                                                removingCustomModuleKeys =
-                                                                    removingCustomModuleKeys - group.key
-                                                            }
-                                                        },
-                                                        enabled = group.key !in removingCustomModuleKeys
-                                                    ) {
-                                                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.build_remove_module), tint = MiuixTheme.colorScheme.onSurface)
-                                                    }
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-
-                                // Add custom module text field + button
-                                item(key = "add-field") {
-                                    BuildTextFieldItem(
-                                        value = customModuleUrl,
-                                        onValueChange = { customModuleUrl = it },
-                                        label = stringResource(R.string.build_repo_url),
-                                        placeholder = "https://github.com/user/module"
-                                    )
-                                }
-                                item(key = "add-button") {
-                                    top.yukonga.miuix.kmp.basic.Button(
-                                        onClick = {
-                                            val cleanUrl = customModuleUrl.trim()
-                                            if (cleanUrl.isNotEmpty()) {
-                                                coroutineScope.launch {
-                                                    vm.checkCustomExternalModuleMetadata(cleanUrl)?.let { metadata ->
-                                                        pendingCustomModuleUrl = cleanUrl
-                                                        pendingCustomModuleMetadata = metadata
-                                                        selectedCustomModuleStages = metadata.recommendedStages
-                                                            .filter { it in metadata.supportedStages }
-                                                            .ifEmpty { listOf(metadata.defaultStage) }
-                                                    }
-                                                }
-                                            }
-                                        },
-                                        enabled = customModuleUrl.isNotBlank() && !state.validatingCustomExternalModule,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                                            .height(48.dp)
-                                    ) {
-                                        top.yukonga.miuix.kmp.basic.Text(
-                                            text = if (state.validatingCustomExternalModule) {
-                                                stringResource(R.string.build_checking)
-                                            } else {
-                                                stringResource(R.string.build_check_module)
-                                            }
-                                        )
-                                    }
-                                }
-
-                                state.customExternalModuleError?.let { err ->
-                                    item(key = "error") {
-                                        Card(
-                                            colors = CardDefaults.defaultColors(
-                                                color = MiuixTheme.colorScheme.error.copy(alpha = 0.12f)
-                                            ),
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 16.dp, vertical = 4.dp)
-                                        ) {
-                                            Row(
-                                                Modifier.padding(12.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Icon(Icons.Default.Error, null, tint = MiuixTheme.colorScheme.error)
-                                                Spacer(Modifier.width(8.dp))
-                                                top.yukonga.miuix.kmp.basic.Text(
-                                                    text = err,
-                                                    style = MiuixTheme.textStyles.body2,
-                                                    color = MiuixTheme.colorScheme.error,
-                                                    modifier = Modifier.weight(1f)
-                                                )
-                                                IconButton(onClick = { vm.clearCustomExternalModuleError() }) {
-                                                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close_error), tint = MiuixTheme.colorScheme.error)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
 
                 // ═══ 11. Optional Config Section ════════════════════════════
@@ -1769,6 +1320,581 @@ fun BuildScreenMiuix(
             }
             }
         }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Extracted target-related content composable for AnimatedContent slide
+// ═════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun BuildTargetContentMiuix(
+    modifier: Modifier = Modifier,
+    config: KernelBuildConfig,
+    vm: MainViewModel,
+    customModuleUrl: String,
+    onCustomModuleUrlChange: (String) -> Unit,
+    onCheckCustomModuleMetadata: (url: String) -> Unit,
+    onEditCustomModuleStages: (group: BuildCustomModuleGroup) -> Unit,
+    onOpenModuleSetEditor: (group: BuildCustomModuleGroup) -> Unit,
+) {
+    val state by vm.uiState.collectAsState()
+    val isOnePlusBuild = config.buildTarget == BUILD_TARGET_ONEPLUS
+
+    val subLevelOptions = remember(config.androidVersion, config.kernelVersion) {
+        KernelSupport.subLevelOptions(config.androidVersion, config.kernelVersion)
+    }
+    val osPatchOptions = remember(config.androidVersion, config.kernelVersion, config.subLevel) {
+        KernelSupport.patchLevelOptions(config.androidVersion, config.kernelVersion, config.subLevel)
+    }
+    val ksuVariantOptions = remember(config.buildTarget) {
+        if (config.buildTarget == BUILD_TARGET_ONEPLUS) {
+            KernelSupport.onePlusKsuVariantOptions()
+        } else {
+            KernelSupport.ksuVariantOptions()
+        }
+    }
+    val ksuBranchOptions = remember { KernelSupport.ksuBranchOptions() }
+    val virtualizationSupportOptions = remember(config.kernelVersion) {
+        KernelSupport.virtualizationSupportOptions(config.kernelVersion)
+    }
+
+    val catalogModules = remember(state.buildModuleRepositories) {
+        mergeBuildCatalogModules(state.buildModuleRepositories)
+    }
+    val catalogModuleByUrl = remember(catalogModules) {
+        catalogModules.associateBy { it.module.repoUrl.trim().lowercase() }
+    }
+    val customModuleGroups = remember(config.customExternalModules, catalogModuleByUrl) {
+        groupBuildCustomExternalModules(config.customExternalModules, catalogModuleByUrl)
+    }
+
+    var removingCustomModuleKeys by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    val coroutineScope = rememberCoroutineScope()
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // ═══ 5. Kernel Version Section ══════════════════════════════
+        SectionTitle(stringResource(R.string.build_kernel_version_config))
+        Card(modifier = Modifier.fillMaxWidth()) {
+            if (isOnePlusBuild) {
+                val deviceOptions = KernelSupport.onePlusDeviceManifestOptions
+                val deviceLabels = deviceOptions.map { KernelSupport.onePlusDeviceLabel(it) }
+                val deviceIndex = deviceOptions.indexOf(config.onePlusDeviceManifest).coerceAtLeast(0)
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.build_oneplus_device_manifest),
+                    items = deviceLabels,
+                    selectedIndex = deviceIndex,
+                    renderInRootScaffold = true,
+                    maxHeight = 336.dp,
+                    onSelectedIndexChange = { index ->
+                        val manifest = deviceOptions[index]
+                        val profile = KernelSupport.onePlusDeviceProfile(manifest)
+                        vm.updateBuildConfig(
+                            KernelSupport.normalize(
+                                config.copy(
+                                    onePlusDeviceManifest = manifest,
+                                    onePlusCpu = profile?.cpu ?: config.onePlusCpu,
+                                    androidVersion = profile?.androidVersion ?: config.androidVersion,
+                                    kernelVersion = profile?.kernelVersion ?: config.kernelVersion
+                                )
+                            )
+                        )
+                    }
+                )
+                ArrowPreference(
+                    title = stringResource(R.string.build_oneplus_cpu),
+                    summary = config.onePlusCpu
+                )
+                ArrowPreference(
+                    title = stringResource(R.string.build_android_version),
+                    summary = config.androidVersion
+                )
+                ArrowPreference(
+                    title = stringResource(R.string.build_kernel_version),
+                    summary = config.kernelVersion
+                )
+            } else {
+                val androidOptions = KernelSupport.androidVersions()
+                val androidIndex = androidOptions.indexOf(config.androidVersion).coerceAtLeast(0)
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.build_android_version),
+                    items = androidOptions,
+                    selectedIndex = androidIndex,
+                    renderInRootScaffold = true,
+                    onSelectedIndexChange = { index ->
+                        val v = androidOptions[index]
+                        vm.updateBuildConfig(
+                            KernelSupport.normalize(
+                                config.copy(
+                                    androidVersion = v,
+                                    kernelVersion = KernelSupport.kernelForAndroid(v)
+                                )
+                            )
+                        )
+                    }
+                )
+                val kernelOptions = KernelSupport.kernelVersions()
+                val kernelIndex = kernelOptions.indexOf(config.kernelVersion).coerceAtLeast(0)
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.build_kernel_version),
+                    items = kernelOptions,
+                    selectedIndex = kernelIndex,
+                    renderInRootScaffold = true,
+                    onSelectedIndexChange = { index ->
+                        val v = kernelOptions[index]
+                        vm.updateBuildConfig(
+                            KernelSupport.normalize(
+                                config.copy(
+                                    androidVersion = KernelSupport.androidForKernel(v),
+                                    kernelVersion = v
+                                )
+                            )
+                        )
+                    }
+                )
+                val subIndex = subLevelOptions.indexOf(config.subLevel).coerceAtLeast(0)
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.build_sub_level),
+                    items = subLevelOptions,
+                    selectedIndex = subIndex,
+                    renderInRootScaffold = true,
+                    maxHeight = 240.dp,
+                    onSelectedIndexChange = { index ->
+                        vm.updateBuildConfig(KernelSupport.normalize(config.copy(subLevel = subLevelOptions[index])))
+                    }
+                )
+                val patchIndex = osPatchOptions.indexOf(config.osPatchLevel).coerceAtLeast(0)
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.build_security_patch_level),
+                    items = osPatchOptions,
+                    selectedIndex = patchIndex,
+                    renderInRootScaffold = true,
+                    onSelectedIndexChange = { index ->
+                        vm.updateBuildConfig(config.copy(osPatchLevel = osPatchOptions[index]))
+                    }
+                )
+            }
+        }
+
+        // ═══ 6. KernelSU Section ════════════════════════════════════
+        SectionTitle(stringResource(R.string.build_kernelsu_config))
+        Card(modifier = Modifier.fillMaxWidth()) {
+            val noRootScheme = config.kernelsuVariant == KSU_VARIANT_NONE
+            val variantIndex = ksuVariantOptions.indexOf(config.kernelsuVariant).coerceAtLeast(0)
+            OverlayDropdownPreference(
+                title = stringResource(R.string.build_kernelsu_variant),
+                items = ksuVariantOptions.map { ksuVariantDisplayName(it) },
+                selectedIndex = variantIndex,
+                renderInRootScaffold = true,
+                onSelectedIndexChange = { index ->
+                    vm.updateBuildConfig(KernelSupport.normalize(config.copy(kernelsuVariant = ksuVariantOptions[index])))
+                }
+            )
+            AnimatedVisibility(
+                visible = !noRootScheme && !isOnePlusBuild,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                val branchIndex = ksuBranchOptions.indexOf(KernelSupport.normalizeKsuBranch(config.kernelsuBranch)).coerceAtLeast(0)
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.build_ksu_branch),
+                    items = ksuBranchOptions,
+                    selectedIndex = branchIndex,
+                    renderInRootScaffold = true,
+                    onSelectedIndexChange = { index ->
+                        vm.updateBuildConfig(
+                            KernelSupport.normalize(config.copy(kernelsuBranch = ksuBranchOptions[index]))
+                        )
+                    }
+                )
+            }
+        }
+
+        // ═══ 7. Features Section ════════════════════════════════════
+        SectionTitle(stringResource(R.string.build_features))
+        Card(modifier = Modifier.fillMaxWidth()) {
+            val noRootScheme = config.kernelsuVariant == KSU_VARIANT_NONE
+            val kpmSupported = KernelSupport.isKpmSupported(
+                config.buildTarget,
+                config.kernelsuVariant,
+                config.kernelsuBranch
+            )
+            if (isOnePlusBuild) {
+                val proxyAllowed = !config.onePlusCpu.startsWith("mt")
+                val onePlusSusfsSupported = KernelSupport.onePlusSusfsSupported(config.androidVersion, config.kernelVersion)
+                SwitchPreference(
+                    title = stringResource(R.string.build_enable_susfs),
+                    checked = !config.cancelSusfs && onePlusSusfsSupported,
+                    onCheckedChange = { vm.updateBuildConfig(KernelSupport.normalize(config.copy(cancelSusfs = !it))) },
+                    enabled = !noRootScheme && onePlusSusfsSupported
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.build_enable_kpm),
+                    checked = config.useKpm,
+                    onCheckedChange = {
+                        if (kpmSupported && !noRootScheme) {
+                            vm.updateBuildConfig(KernelSupport.normalize(config.copy(useKpm = it)))
+                        }
+                    },
+                    enabled = kpmSupported && !noRootScheme
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.build_oneplus_lz4kd),
+                    checked = config.onePlusUseLz4kd,
+                    onCheckedChange = { vm.updateBuildConfig(config.copy(onePlusUseLz4kd = it)) }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.build_enable_bbg),
+                    checked = config.useBbg,
+                    onCheckedChange = { vm.updateBuildConfig(config.copy(useBbg = it)) }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.build_oneplus_bbr),
+                    checked = config.onePlusUseBbr,
+                    onCheckedChange = { vm.updateBuildConfig(config.copy(onePlusUseBbr = it)) }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.build_oneplus_proxy_optimization),
+                    checked = config.onePlusUseProxyOptimization,
+                    onCheckedChange = {
+                        if (proxyAllowed) {
+                            vm.updateBuildConfig(KernelSupport.normalize(config.copy(onePlusUseProxyOptimization = it)))
+                        }
+                    }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.build_oneplus_unicode_bypass),
+                    checked = config.onePlusUseUnicodeBypass,
+                    onCheckedChange = { vm.updateBuildConfig(config.copy(onePlusUseUnicodeBypass = it)) }
+                )
+            } else {
+                SwitchPreference(
+                    title = stringResource(R.string.build_enable_susfs),
+                    checked = !config.cancelSusfs,
+                    onCheckedChange = {
+                        if (!noRootScheme) {
+                            vm.updateBuildConfig(KernelSupport.normalize(config.copy(cancelSusfs = !it)))
+                        }
+                    },
+                    enabled = !noRootScheme
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.build_enable_zram),
+                    checked = config.useZram,
+                    onCheckedChange = { vm.updateBuildConfig(config.copy(useZram = it)) }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.build_enable_bbg),
+                    checked = config.useBbg,
+                    onCheckedChange = { vm.updateBuildConfig(config.copy(useBbg = it)) }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.build_enable_ddk),
+                    checked = config.useDdk,
+                    onCheckedChange = { vm.updateBuildConfig(config.copy(useDdk = it)) }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.build_enable_ntsync),
+                    checked = config.useNtsync,
+                    onCheckedChange = { vm.updateBuildConfig(config.copy(useNtsync = it)) }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.build_enable_networking),
+                    checked = config.useNetworking,
+                    onCheckedChange = { vm.updateBuildConfig(config.copy(useNetworking = it)) }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.build_enable_kpm),
+                    checked = config.useKpm,
+                    onCheckedChange = {
+                        if (kpmSupported && !noRootScheme) {
+                            vm.updateBuildConfig(KernelSupport.normalize(config.copy(useKpm = it)))
+                        }
+                    },
+                    enabled = kpmSupported && !noRootScheme
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.build_enable_rekernel),
+                    checked = config.useRekernel,
+                    onCheckedChange = { vm.updateBuildConfig(config.copy(useRekernel = it)) }
+                )
+                val virtIndex = virtualizationSupportOptions.indexOf(config.virtualizationSupport).coerceAtLeast(0)
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.build_virtualization_support),
+                    items = virtualizationSupportOptions.map { virtualizationSupportLabel(it) },
+                    selectedIndex = virtIndex,
+                    renderInRootScaffold = true,
+                    onSelectedIndexChange = { index ->
+                        vm.updateBuildConfig(config.copy(virtualizationSupport = virtualizationSupportOptions[index]))
+                    }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.build_enable_oneplus_8e),
+                    checked = config.suppOp,
+                    onCheckedChange = { vm.updateBuildConfig(config.copy(suppOp = it)) }
+                )
+            }
+        }
+
+        // ═══ 8. ZRAM Options (conditional) ══════════════════════════
+        AnimatedVisibility(
+            visible = !isOnePlusBuild && config.useZram,
+            enter = fadeIn() + expandIn(expandFrom = Alignment.TopStart),
+            exit = fadeOut() + shrinkVertically() + shrinkOut(shrinkTowards = Alignment.TopStart)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SectionTitle(stringResource(R.string.build_zram_options))
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    SwitchPreference(
+                        title = stringResource(R.string.build_zram_full_algo),
+                        checked = config.zramFullAlgo,
+                        onCheckedChange = { vm.updateBuildConfig(config.copy(zramFullAlgo = it)) }
+                    )
+                    AnimatedVisibility(
+                        visible = config.zramFullAlgo,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        BuildTextFieldItem(
+                            value = config.zramExtraAlgos,
+                            onValueChange = { vm.updateBuildConfig(config.copy(zramExtraAlgos = it)) },
+                            label = stringResource(R.string.build_zram_custom_algo),
+                            placeholder = stringResource(R.string.build_zram_algo_placeholder)
+                        )
+                    }
+                }
+            }
+        }
+
+        // ═══ 9. KPM Options (conditional) ═══════════════════════════
+        AnimatedVisibility(
+            visible = !isOnePlusBuild && config.useKpm,
+            enter = fadeIn() + expandIn(expandFrom = Alignment.TopStart),
+            exit = fadeOut() + shrinkVertically() + shrinkOut(shrinkTowards = Alignment.TopStart)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SectionTitle(stringResource(R.string.build_kpm_options))
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    BuildTextFieldItem(
+                        value = config.kpmPassword,
+                        onValueChange = { vm.updateBuildConfig(config.copy(kpmPassword = it)) },
+                        label = stringResource(R.string.build_kpm_password),
+                        placeholder = stringResource(R.string.build_kpm_password_placeholder)
+                    )
+                }
+            }
+        }
+
+        // ═══ 10. Custom Modules Section (GKI only) ══════════════════
+        if (!isOnePlusBuild) {
+            SectionTitle(stringResource(R.string.build_custom_modules))
+            Card(modifier = Modifier.fillMaxWidth()) {
+                SwitchPreference(
+                    title = stringResource(R.string.build_enable_custom_modules),
+                    checked = config.useCustomExternalModules,
+                    onCheckedChange = { vm.updateBuildConfig(config.copy(useCustomExternalModules = it)) }
+                )
+                AnimatedVisibility(
+                    visible = config.useCustomExternalModules,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    val catalogGroups = customModuleGroups.filter { it.catalogModule != null }
+                    val manualGroups = customModuleGroups.filter { it.catalogModule == null }
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 4000.dp),
+                        userScrollEnabled = false,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (catalogGroups.isNotEmpty()) {
+                            item(key = "catalog-header") {
+                                top.yukonga.miuix.kmp.basic.Text(
+                                    text = stringResource(R.string.build_add_from_module_repo),
+                                    style = MiuixTheme.textStyles.subtitle,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                )
+                            }
+                            items(catalogGroups, key = { it.key }) { group ->
+                                AnimatedVisibility(
+                                    visible = group.key !in removingCustomModuleKeys,
+                                    enter = fadeIn() + expandVertically(),
+                                    exit = fadeOut() + shrinkVertically()
+                                ) {
+                                    ArrowPreference(
+                                        modifier = Modifier.animateItem(),
+                                        title = group.displayName(stringResource(R.string.build_external_module_default)),
+                                        summary = group.subtitle(
+                                            noStageLabel = stringResource(R.string.build_stage_none),
+                                            sourcePrefix = stringResource(R.string.build_source_list, "%s")
+                                        ),
+                                        endActions = {
+                                            IconButton(
+                                                onClick = {
+                                                    if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
+                                                        onOpenModuleSetEditor(group)
+                                                    } else {
+                                                        onEditCustomModuleStages(group)
+                                                    }
+                                                }
+                                            ) {
+                                                Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.build_edit_injection_stage), tint = MiuixTheme.colorScheme.onSurface)
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    if (group.key in removingCustomModuleKeys) return@IconButton
+                                                    removingCustomModuleKeys =
+                                                        (removingCustomModuleKeys + group.key).distinct()
+                                                    coroutineScope.launch {
+                                                        delay(CATALOG_MODULE_REMOVE_DELAY_MS)
+                                                        if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
+                                                            vm.removeModuleSetSelection(group.groupRepoUrl.ifBlank { group.url })
+                                                        } else {
+                                                            vm.setCustomExternalModuleStages(group.url, emptyList())
+                                                        }
+                                                        removingCustomModuleKeys =
+                                                            removingCustomModuleKeys - group.key
+                                                    }
+                                                },
+                                                enabled = group.key !in removingCustomModuleKeys
+                                            ) {
+                                                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.build_remove_module), tint = MiuixTheme.colorScheme.onSurface)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        if (manualGroups.isNotEmpty()) {
+                            item(key = "manual-header") {
+                                top.yukonga.miuix.kmp.basic.Text(
+                                    text = stringResource(R.string.build_manual_add),
+                                    style = MiuixTheme.textStyles.subtitle,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                )
+                            }
+                            items(manualGroups, key = { it.key }) { group ->
+                                AnimatedVisibility(
+                                    visible = group.key !in removingCustomModuleKeys,
+                                    enter = fadeIn() + expandVertically(),
+                                    exit = fadeOut() + shrinkVertically()
+                                ) {
+                                    ArrowPreference(
+                                        modifier = Modifier.animateItem(),
+                                        title = group.displayName(stringResource(R.string.build_external_module_default)),
+                                        summary = group.subtitle(
+                                            noStageLabel = stringResource(R.string.build_stage_none),
+                                            sourcePrefix = stringResource(R.string.build_source_list, "%s")
+                                        ),
+                                        endActions = {
+                                            IconButton(
+                                                onClick = {
+                                                    if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
+                                                        onOpenModuleSetEditor(group)
+                                                    } else {
+                                                        onEditCustomModuleStages(group)
+                                                    }
+                                                }
+                                            ) {
+                                                Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.build_edit_injection_stage), tint = MiuixTheme.colorScheme.onSurface)
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    if (group.key in removingCustomModuleKeys) return@IconButton
+                                                    removingCustomModuleKeys =
+                                                        (removingCustomModuleKeys + group.key).distinct()
+                                                    coroutineScope.launch {
+                                                        delay(CATALOG_MODULE_REMOVE_DELAY_MS)
+                                                        if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
+                                                            vm.removeModuleSetSelection(group.groupRepoUrl.ifBlank { group.url })
+                                                        } else {
+                                                            vm.setCustomExternalModuleStages(group.url, emptyList())
+                                                        }
+                                                        removingCustomModuleKeys =
+                                                            removingCustomModuleKeys - group.key
+                                                    }
+                                                },
+                                                enabled = group.key !in removingCustomModuleKeys
+                                            ) {
+                                                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.build_remove_module), tint = MiuixTheme.colorScheme.onSurface)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Add custom module text field + button
+                        item(key = "add-field") {
+                            BuildTextFieldItem(
+                                value = customModuleUrl,
+                                onValueChange = onCustomModuleUrlChange,
+                                label = stringResource(R.string.build_repo_url),
+                                placeholder = "https://github.com/user/module"
+                            )
+                        }
+                        item(key = "add-button") {
+                            top.yukonga.miuix.kmp.basic.Button(
+                                onClick = {
+                                    val cleanUrl = customModuleUrl.trim()
+                                    if (cleanUrl.isNotEmpty()) {
+                                        onCheckCustomModuleMetadata(cleanUrl)
+                                    }
+                                },
+                                enabled = customModuleUrl.isNotBlank() && !state.validatingCustomExternalModule,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                                    .height(48.dp)
+                            ) {
+                                top.yukonga.miuix.kmp.basic.Text(
+                                    text = if (state.validatingCustomExternalModule) {
+                                        stringResource(R.string.build_checking)
+                                    } else {
+                                        stringResource(R.string.build_check_module)
+                                    }
+                                )
+                            }
+                        }
+
+                        state.customExternalModuleError?.let { err ->
+                            item(key = "error") {
+                                Card(
+                                    colors = CardDefaults.defaultColors(
+                                        color = MiuixTheme.colorScheme.error.copy(alpha = 0.12f)
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                                ) {
+                                    Row(
+                                        Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Error, null, tint = MiuixTheme.colorScheme.error)
+                                        Spacer(Modifier.width(8.dp))
+                                        top.yukonga.miuix.kmp.basic.Text(
+                                            text = err,
+                                            style = MiuixTheme.textStyles.body2,
+                                            color = MiuixTheme.colorScheme.error,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        IconButton(onClick = { vm.clearCustomExternalModuleError() }) {
+                                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close_error), tint = MiuixTheme.colorScheme.error)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -2333,39 +2459,99 @@ private fun BuildTargetSelectorMiuix(
     selected: String,
     onSelect: (String) -> Unit,
 ) {
+    val targets = listOf(BUILD_TARGET_GKI, BUILD_TARGET_ONEPLUS)
+    val selectedIndex = targets.indexOf(selected).coerceAtLeast(0)
+
+    var rowWidthPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val gapPx = with(density) { 8.dp.roundToPx() }
+    val buttonWidthPx = if (rowWidthPx > gapPx) (rowWidthPx - gapPx) / 2 else rowWidthPx / 2
+    val pillWidthDp = with(density) { buttonWidthPx.toDp() }
+
+    val pillTargetOffsetPx = if (selectedIndex == 0) 0f else (buttonWidthPx + gapPx).toFloat()
+    val pillOffsetX by animateFloatAsState(
+        targetValue = pillTargetOffsetPx,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 300f),
+        label = "pillSlide"
+    )
+
+    val selectedBgColor by animateColorAsState(
+        targetValue = MiuixTheme.colorScheme.primary,
+        animationSpec = tween(300),
+        label = "selectedBg"
+    )
+
     Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(16.dp)
         ) {
-            listOf(BUILD_TARGET_GKI, BUILD_TARGET_ONEPLUS).forEach { target ->
-                val isSelected = selected == target
-                val btnColors = if (isSelected) {
-                    top.yukonga.miuix.kmp.basic.ButtonDefaults.buttonColors()
-                } else {
-                    top.yukonga.miuix.kmp.basic.ButtonDefaults.buttonColors(
-                        color = MiuixTheme.colorScheme.surfaceVariant,
-                        contentColor = MiuixTheme.colorScheme.onSurface
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(MiuixTheme.colorScheme.surfaceVariant)
+            )
+
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(pillOffsetX.roundToInt(), 0) }
+                    .width(pillWidthDp)
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(selectedBgColor)
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged { rowWidthPx = it.width },
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                targets.forEach { target ->
+                    val isSelected = selected == target
+                    val contentColor by animateColorAsState(
+                        targetValue = if (isSelected) MiuixTheme.colorScheme.onPrimary
+                        else MiuixTheme.colorScheme.onSurface,
+                        animationSpec = tween(300),
+                        label = "contentColor_${target}"
                     )
-                }
-                top.yukonga.miuix.kmp.basic.Button(
-                    onClick = { onSelect(target) },
-                    modifier = Modifier.weight(1f).height(44.dp),
-                    colors = btnColors
-                ) {
-                    top.yukonga.miuix.kmp.basic.Icon(
-                        imageVector = if (target == BUILD_TARGET_ONEPLUS) Icons.Default.PhoneAndroid else Icons.Default.Memory,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    top.yukonga.miuix.kmp.basic.Text(
-                        text = buildTargetLabel(target),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onSelect(target) }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        ) {
+                            top.yukonga.miuix.kmp.basic.Icon(
+                                imageVector = if (target == BUILD_TARGET_ONEPLUS)
+                                    Icons.Default.PhoneAndroid
+                                else
+                                    Icons.Default.Memory,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = contentColor
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = buildTargetLabel(target),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = contentColor
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -2447,9 +2633,16 @@ private fun BuildKindProgressBlockMiuix(
                     if (status in listOf(BuildStatus.QUEUED, BuildStatus.IN_PROGRESS) &&
                         (currentRun?.id ?: 0L) > 0L && activeRunCount <= 1
                     ) {
+                        val cancelling = (currentRun?.id ?: 0L) in cancellingRunIds
                         Spacer(Modifier.weight(1f))
                         top.yukonga.miuix.kmp.basic.TextButton(
-                            text = stringResource(R.string.status_cancel),
+                            modifier = Modifier.widthIn(min = 96.dp).height(40.dp),
+                            text = if (cancelling) {
+                                stringResource(R.string.status_cancelling)
+                            } else {
+                                stringResource(R.string.status_cancel)
+                            },
+                            enabled = (currentRun?.id ?: 0L) > 0L && !cancelling,
                             onClick = { onCancel(currentRun?.id ?: 0L) }
                         )
                     }

@@ -466,6 +466,7 @@ private fun MiuixPrebuiltFilterCard(
                 title = stringResource(R.string.build_android_version),
                 items = androidLabels,
                 selectedIndex = androidIndex,
+                renderInRootScaffold = true,
                 onSelectedIndexChange = { index ->
                     onFilterChange(filter.copy(androidVersion = androidValues[index]))
                 }
@@ -476,6 +477,7 @@ private fun MiuixPrebuiltFilterCard(
                 title = stringResource(R.string.build_kernel_version),
                 items = kernelLabels,
                 selectedIndex = kernelIndex,
+                renderInRootScaffold = true,
                 onSelectedIndexChange = { index ->
                     onFilterChange(filter.copy(kernelVersion = kernelValues[index]))
                 }
@@ -486,6 +488,7 @@ private fun MiuixPrebuiltFilterCard(
                 title = stringResource(R.string.flash_minor_version),
                 items = subLevelLabels,
                 selectedIndex = subLevelIndex,
+                renderInRootScaffold = true,
                 onSelectedIndexChange = { index ->
                     onFilterChange(filter.copy(subLevel = subLevelValues[index]))
                 }

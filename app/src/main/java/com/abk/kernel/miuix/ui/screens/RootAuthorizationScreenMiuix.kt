@@ -389,7 +389,7 @@ fun RootAuthorizationScreenMiuix(
                 } else {
                     PullToRefresh(
                         isRefreshing = isRefreshing,
-                        onRefresh = { vm.refreshRootGrantApps() },
+                        onRefresh = { vm.refreshRootGrantApps(force = true) },
                         refreshTexts = listOf(refreshListText, refreshListText, refreshListText, refreshListText),
                         contentPadding = PaddingValues(
                             top = innerPadding.calculateTopPadding() + 6.dp,

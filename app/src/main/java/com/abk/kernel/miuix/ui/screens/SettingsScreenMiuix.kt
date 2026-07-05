@@ -354,6 +354,7 @@ fun SettingsScreenMiuix(
                             title = stringResource(R.string.settings_workflow_foreground_refresh_interval),
                             items = intervalOptions.map { stringResource(R.string.settings_workflow_foreground_refresh_interval_sec, it) },
                             selectedIndex = selectedIndex,
+                            renderInRootScaffold = true,
                             onSelectedIndexChange = { index ->
                                 vm.setWorkflowForegroundRefreshIntervalSec(intervalOptions[index])
                             }
@@ -422,6 +423,7 @@ fun SettingsScreenMiuix(
                         title = stringResource(R.string.settings_app_update_stability),
                         items = stabilityOptions.map { it.second },
                         selectedIndex = stabilityIndex,
+                        renderInRootScaffold = true,
                         onSelectedIndexChange = { index ->
                             vm.setAppUpdateStability(stabilityOptions[index].first)
                         }
@@ -438,6 +440,7 @@ fun SettingsScreenMiuix(
                         title = stringResource(R.string.settings_app_update_line),
                         items = lineOptions.map { it.second },
                         selectedIndex = lineIndex,
+                        renderInRootScaffold = true,
                         onSelectedIndexChange = { index ->
                             vm.setAppUpdateLine(lineOptions[index].first)
                         }
@@ -598,6 +601,7 @@ fun SettingsScreenMiuix(
                                             startAction = { Icon(managerSettingIcon(item.id), contentDescription = null, tint = iconTint) },
                                             items = options,
                                             selectedIndex = selectedIndex,
+                                            renderInRootScaffold = true,
                                             onSelectedIndexChange = { index ->
                                                 if (item.enabled && !actionInFlight) {
                                                     vm.setManagerSettingMode(item.id, index)
@@ -644,6 +648,7 @@ fun SettingsScreenMiuix(
                         title = stringResource(R.string.settings_language),
                         items = languageOptions.map { it.second },
                         selectedIndex = languageIndex,
+                        renderInRootScaffold = true,
                         onSelectedIndexChange = { index ->
                             val lang = languageOptions[index].first
                             LocaleHelper.setLanguage(langCtx, lang)
