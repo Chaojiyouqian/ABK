@@ -43,6 +43,7 @@ class BuildPlanLogicTest {
                 zramExtraAlgos = "lz4,zstd",
                 kpmPassword = "super-secret",
                 virtualizationSupport = "678",
+                customKernelConfig = "CONFIG_USER_NS=y\n# CONFIG_EXAMPLE is not set",
                 useCustomExternalModules = true,
                 customExternalModules = listOf(
                     CustomExternalModule(" https://github.com/example/module.git ", "before-build")
@@ -67,6 +68,7 @@ class BuildPlanLogicTest {
         assertEquals(config.zramExtraAlgos, decoded.config.zramExtraAlgos)
         assertEquals(config.kpmPassword, decoded.config.kpmPassword)
         assertEquals(config.virtualizationSupport, decoded.config.virtualizationSupport)
+        assertEquals(config.customKernelConfig, decoded.config.customKernelConfig)
         assertEquals(
             listOf(CustomExternalModule("https://github.com/example/module.git", CustomExternalModuleStage.BEFORE_BUILD)),
             decoded.config.customExternalModules
@@ -118,6 +120,7 @@ class BuildPlanLogicTest {
             useDdk = true,
             kernelsuBranch = KSU_BRANCH_CUSTOM,
             customRef = "  main:5  ",
+            customKernelConfig = " CONFIG_USER_NS=y\r\n# CONFIG_IPV6 is not set ",
             useCustomExternalModules = true,
             customExternalModules = listOf(
                 CustomExternalModule(" https://github.com/example/a.git ", "after-patch"),
@@ -132,6 +135,7 @@ class BuildPlanLogicTest {
         assertEquals("true", inputs["use_ddk"])
         assertEquals(KSU_BRANCH_CUSTOM, inputs["kernelsu_branch"])
         assertEquals("main:5", inputs["custom_ref"])
+        assertEquals("CONFIG_USER_NS=y\n# CONFIG_IPV6 is not set", inputs["custom_kernel_config"])
         assertEquals("true", inputs["use_custom_external_modules"])
         assertEquals(
             "module:https://github.com/example/a.git;after_patch|module:https://github.com/example/b.git;before_build",

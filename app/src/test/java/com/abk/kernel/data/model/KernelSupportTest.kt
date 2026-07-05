@@ -21,6 +21,7 @@ class KernelSupportTest {
                 cancelSusfs = false,
                 kpmPassword = "secret",
                 virtualizationSupport = "678",
+                customKernelConfig = "  \r\nCONFIG_USER_NS=y\r\n# CONFIG_EXAMPLE is not set\r\n  ",
                 customExternalModules = listOf(
                     CustomExternalModule("  ", "before_build"),
                     CustomExternalModule(" https://github.com/example/module.git ", "before-build"),
@@ -39,6 +40,7 @@ class KernelSupportTest {
         assertTrue(normalized.cancelSusfs)
         assertEquals("", normalized.kpmPassword)
         assertEquals("on", normalized.virtualizationSupport)
+        assertEquals("CONFIG_USER_NS=y\n# CONFIG_EXAMPLE is not set", normalized.customKernelConfig)
         assertEquals(
             listOf(CustomExternalModule("https://github.com/example/module.git", CustomExternalModuleStage.BEFORE_BUILD)),
             normalized.customExternalModules

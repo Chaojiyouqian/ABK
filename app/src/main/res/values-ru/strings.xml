@@ -213,6 +213,7 @@
     <string name="build_enable_kpm">Включить KPM</string>
     <string name="build_enable_rekernel">Включить драйвер Re-Kernel (тест)</string>
     <string name="build_virtualization_support">Поддержка виртуализации</string>
+    <string name="build_virtualization_userns_hint">Виртуализация больше не включает USER_NS автоматически. Если он нужен DroidSpaces/Wayland, добавьте CONFIG_USER_NS=y в пользовательские параметры ядра ниже.</string>
     <string name="build_enable_oneplus_8e">Включить поддержку OnePlus 8E</string>
     <string name="build_oneplus_lz4kd">Включить lz4kd</string>
     <string name="build_oneplus_bbr">Включить BBR</string>
@@ -275,6 +276,10 @@
     <string name="build_custom_version_optional">Своё название версии (необязательно)</string>
     <string name="build_custom_time_optional">Своё время сборки (необязательно)</string>
     <string name="build_time_placeholder">Пусто/N = текущее UTC</string>
+    <string name="build_custom_kernel_config">Пользовательские параметры ядра</string>
+    <string name="build_custom_kernel_config_placeholder">По одному на строку, например CONFIG_USER_NS=y или # CONFIG_IPV6 is not set</string>
+    <string name="build_custom_kernel_config_hint">Поддерживаются только CONFIG_FOO=... и # CONFIG_BAR is not set. Эти строки переопределяют итоговый defconfig прямо перед компиляцией.</string>
+    <string name="build_custom_kernel_config_count">Настроено %1$d пользовательских параметров ядра</string>
     <string name="build_add_queue">Добавить в очередь</string>
     <string name="build_queue_title">Очередь сборок</string>
     <string name="build_plan_library">Библиотека пресетов</string>
@@ -330,6 +335,7 @@
     <string name="build_config_preview">Предпросмотр конфигурации</string>
     <string name="build_feature_networking">Сетевые улучшения</string>
     <string name="build_feature_virtualization">Виртуализация %1$s</string>
+    <string name="build_feature_custom_kernel_config">Пользовательская конфигурация %1$d</string>
     <string name="build_base_config">Базовая конфигурация</string>
     <string name="build_summary_external_modules">Внешние модули: %1$d</string>
     <string name="build_hero_desc">Запускает GitHub Actions и автоматически упорядочивает img, AK3, менеджер и модули SUSFS.</string>

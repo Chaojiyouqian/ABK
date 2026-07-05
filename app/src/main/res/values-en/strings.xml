@@ -213,6 +213,7 @@
     <string name="build_enable_kpm">Enable KPM</string>
     <string name="build_enable_rekernel">Enable Re-Kernel driver (test)</string>
     <string name="build_virtualization_support">Virtualization support</string>
+    <string name="build_virtualization_userns_hint">Virtualization no longer enables USER_NS automatically. If DroidSpaces/Wayland needs it, add CONFIG_USER_NS=y in custom kernel options below.</string>
     <string name="build_enable_oneplus_8e">Enable OnePlus 8E support</string>
     <string name="build_oneplus_lz4kd">Enable lz4kd</string>
     <string name="build_oneplus_bbr">Enable BBR</string>
@@ -275,6 +276,10 @@
     <string name="build_custom_version_optional">Custom version name (optional)</string>
     <string name="build_custom_time_optional">Custom build time (optional)</string>
     <string name="build_time_placeholder">Empty/N = current UTC time</string>
+    <string name="build_custom_kernel_config">Custom kernel options</string>
+    <string name="build_custom_kernel_config_placeholder">One entry per line, for example CONFIG_USER_NS=y or # CONFIG_IPV6 is not set</string>
+    <string name="build_custom_kernel_config_hint">Only CONFIG_FOO=... and # CONFIG_BAR is not set are supported. These lines override the final defconfig right before compilation.</string>
+    <string name="build_custom_kernel_config_count">%1$d custom kernel options configured</string>
     <string name="build_add_queue">Add to queue</string>
     <string name="build_queue_title">Build queue</string>
     <string name="build_plan_library">Plan library</string>
@@ -330,6 +335,7 @@
     <string name="build_config_preview">Config preview</string>
     <string name="build_feature_networking">Networking</string>
     <string name="build_feature_virtualization">Virtualization %1$s</string>
+    <string name="build_feature_custom_kernel_config">%1$d custom config</string>
     <string name="build_base_config">Base config</string>
     <string name="build_summary_external_modules">External modules %1$d</string>
     <string name="build_hero_desc">Triggers GitHub Actions and automatically organizes img, AK3, manager, and SUSFS modules.</string>
