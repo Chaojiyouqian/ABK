@@ -141,6 +141,9 @@ fun BuildScreen(
     val buildTimePreview = remember(context, config.buildTime) {
         buildTimePreview(context, config.buildTime)
     }
+    val customKernelConfigEntryCount = remember(config.customKernelConfig) {
+        countCustomKernelConfigEntries(config.customKernelConfig)
+    }
     var showConfirmDialog by remember { mutableStateOf(false) }
     var showBuildSubmittedDialog by rememberSaveable { mutableStateOf(false) }
     var showSavePlanDialog by remember { mutableStateOf(false) }
@@ -1332,6 +1335,11 @@ fun BuildScreen(
                         options = virtualizationSupportOptions,
                         onSelect = { vm.updateBuildConfig(config.copy(virtualizationSupport = it)) }
                     )
+                    Text(
+                        text = stringResource(R.string.build_virtualization_userns_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     SwitchRow(stringResource(R.string.build_enable_oneplus_8e), config.suppOp) {
                         vm.updateBuildConfig(config.copy(suppOp = it))
                     }
@@ -1607,6 +1615,24 @@ fun BuildScreen(
                     singleLine = true
                 )
                 ConfigPreviewText(buildTimePreview)
+                OutlinedTextField(
+                    value = config.customKernelConfig,
+                    onValueChange = { vm.updateBuildConfig(config.copy(customKernelConfig = it)) },
+                    label = { Text(stringResource(R.string.build_custom_kernel_config)) },
+                    placeholder = { Text(stringResource(R.string.build_custom_kernel_config_placeholder)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 4,
+                    maxLines = 8
+                )
+                Text(
+                    text = if (customKernelConfigEntryCount > 0) {
+                        stringResource(R.string.build_custom_kernel_config_count, customKernelConfigEntryCount)
+                    } else {
+                        stringResource(R.string.build_custom_kernel_config_hint)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             }
 
@@ -2438,6 +2464,10 @@ private fun buildPlanSummary(config: KernelBuildConfig): String {
     if (config.virtualizationSupport != "off") {
         enabled += stringResource(R.string.build_feature_virtualization, virtualizationSupportLabel(config.virtualizationSupport))
     }
+    val customKernelConfigEntryCount = countCustomKernelConfigEntries(config.customKernelConfig)
+    if (customKernelConfigEntryCount > 0) {
+        enabled += stringResource(R.string.build_feature_custom_kernel_config, customKernelConfigEntryCount)
+    }
     val featureSummary = enabled.ifEmpty { listOf(stringResource(R.string.build_base_config)) }.joinToString("、")
     val externalModuleCount = if (config.useCustomExternalModules) config.customExternalModules.size else 0
     val ksuSummary = when {
@@ -2563,6 +2593,15 @@ private fun virtualizationSupportLabel(value: String): String = when (value) {
     "345" -> stringResource(R.string.build_virtualization_slot_345)
     else -> value
 }
+
+private fun countCustomKernelConfigEntries(value: String): Int =
+    value
+        .replace("\r\n", "\n")
+        .replace('\r', '\n')
+        .replace('|', '\n')
+        .lineSequence()
+        .map { it.trim() }
+        .count { it.isNotEmpty() }
 
 private fun buildVersionPreview(context: Context, config: KernelBuildConfig): String {
     val compact = config.version.filterNot { it.isWhitespace() }

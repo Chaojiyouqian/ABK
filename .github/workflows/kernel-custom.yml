@@ -95,6 +95,11 @@ on:
           - "123"
           - "345"
         default: "off"
+      custom_kernel_config:
+        description: "自定义内核选项（支持多行或 | 分隔，仅支持 CONFIG_FOO=... 与 # CONFIG_BAR is not set）"
+        required: false
+        type: string
+        default: ""
 
       # ==================== 功能开关 ====================
       use_zram:
@@ -200,6 +205,7 @@ jobs:
       supp_op: ${{ inputs.supp_op || false }}
       enable_susfs: ${{ !inputs.cancel_susfs }}
       virtualization_support: ${{ inputs.virtualization_support || 'off' }}
+      custom_kernel_config: ${{ inputs.custom_kernel_config || '' }}
       zram_full_algo: ${{ inputs.zram_full_algo || false }}
       zram_extra_algos: ${{ inputs.zram_extra_algos || '' }}
       kpm_password: ${{ inputs.kpm_password || '' }}
