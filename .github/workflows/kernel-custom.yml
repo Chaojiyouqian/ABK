@@ -167,12 +167,6 @@ on:
         type: string
         default: ""
 
-      # ==================== 自定义外部模块 ====================
-      use_custom_external_modules:
-        description: "启用自定义外部模块注入"
-        required: false
-        type: boolean
-        default: false
       custom_external_modules:
         description: "自定义外部模块（兼容旧 repo;stage，也支持 module:repo;stage 与 set:repo#child;stage，用 | 分隔）"
         required: false
@@ -209,7 +203,7 @@ jobs:
       zram_full_algo: ${{ inputs.zram_full_algo || false }}
       zram_extra_algos: ${{ inputs.zram_extra_algos || '' }}
       kpm_password: ${{ inputs.kpm_password || '' }}
-      use_custom_external_modules: ${{ inputs.use_custom_external_modules || false }}
+      use_custom_external_modules: ${{ inputs.custom_external_modules != '' }}
       custom_external_modules: ${{ inputs.custom_external_modules || '' }}
 
   get-ksu-manager:

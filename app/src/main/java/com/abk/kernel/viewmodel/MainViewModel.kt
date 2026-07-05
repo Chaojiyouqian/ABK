@@ -5342,7 +5342,6 @@ internal fun KernelBuildConfig.toInputMap(): Map<String, String> {
         "kpm_password" to config.kpmPassword,
         "virtualization_support" to config.virtualizationSupport,
         "custom_kernel_config" to config.customKernelConfig,
-        "use_custom_external_modules" to config.useCustomExternalModules.toString(),
         "custom_ref" to if (config.kernelsuBranch == KSU_BRANCH_CUSTOM) {
             config.customRef.trim()
         } else {

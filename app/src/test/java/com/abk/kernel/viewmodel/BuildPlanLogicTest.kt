@@ -136,7 +136,6 @@ class BuildPlanLogicTest {
         assertEquals(KSU_BRANCH_CUSTOM, inputs["kernelsu_branch"])
         assertEquals("main:5", inputs["custom_ref"])
         assertEquals("CONFIG_USER_NS=y\n# CONFIG_IPV6 is not set", inputs["custom_kernel_config"])
-        assertEquals("true", inputs["use_custom_external_modules"])
         assertEquals(
             "module:https://github.com/example/a.git;after_patch|module:https://github.com/example/b.git;before_build",
             inputs["custom_external_modules"]
