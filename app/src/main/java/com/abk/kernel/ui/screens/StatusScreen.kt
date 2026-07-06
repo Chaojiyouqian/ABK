@@ -15,8 +15,10 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -28,9 +30,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +55,7 @@ import com.abk.kernel.ui.components.ExpressiveSectionCard
 import com.abk.kernel.ui.components.ExpressiveStatusChip
 import com.abk.kernel.ui.components.ExpressiveTopBar
 import com.abk.kernel.ui.components.ShimmerLinearProgress
+import com.abk.kernel.ui.dashboard.DashboardGridMetrics
 import com.abk.kernel.ui.dashboard.DashboardGrid
 import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
@@ -55,8 +63,17 @@ import com.abk.kernel.utils.RootUtils
 import com.abk.kernel.viewmodel.MainUiState
 import com.abk.kernel.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
+
+private data class HiddenWidgetDragState(
+    val widgetId: String,
+    val pointerX: Float,
+    val pointerY: Float,
+    val materialized: Boolean
+)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -69,6 +86,8 @@ fun StatusScreen(
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val scrollState = rememberScrollState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val widgetLabels = mapOf(
         StatusDashboardWidgets.HERO to stringResource(R.string.status_widget_hero),
@@ -84,6 +103,11 @@ fun StatusScreen(
     }
     var actionMenuExpanded by remember { mutableStateOf(false) }
     var widgetsTrayExpanded by remember { mutableStateOf(false) }
+    var viewportHeightPx by remember { mutableStateOf(0f) }
+    var activeDragPointerY by remember { mutableStateOf<Float?>(null) }
+    var gridMetrics by remember { mutableStateOf<DashboardGridMetrics?>(null) }
+    var trayTopY by remember { mutableStateOf(Float.MAX_VALUE) }
+    var hiddenWidgetDrag by remember { mutableStateOf<HiddenWidgetDragState?>(null) }
     val actionMenuRotation by animateFloatAsState(
         targetValue = if (actionMenuExpanded) 45f else 0f,
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
@@ -131,6 +155,33 @@ fun StatusScreen(
         if (!state.statusDashboardEditMode) {
             actionMenuExpanded = false
             widgetsTrayExpanded = false
+            hiddenWidgetDrag = null
+            activeDragPointerY = null
+        }
+    }
+    LaunchedEffect(activeDragPointerY, viewportHeightPx) {
+        val triggerY = activeDragPointerY ?: return@LaunchedEffect
+        if (viewportHeightPx <= 0f) return@LaunchedEffect
+        val thresholdPx = with(density) { 88.dp.toPx() }
+        while (activeDragPointerY != null) {
+            val currentY = activeDragPointerY ?: break
+            val topDistance = currentY
+            val bottomDistance = viewportHeightPx - currentY
+            val delta = when {
+                topDistance < thresholdPx -> {
+                    val ratio = 1f - (topDistance / thresholdPx).coerceIn(0f, 1f)
+                    -((4f) + ratio * 28f)
+                }
+                bottomDistance < thresholdPx -> {
+                    val ratio = 1f - (bottomDistance / thresholdPx).coerceIn(0f, 1f)
+                    (4f) + ratio * 28f
+                }
+                else -> 0f
+            }
+            if (delta != 0f) {
+                scrollState.scrollBy(delta)
+            }
+            delay(16)
         }
     }
 
@@ -165,12 +216,12 @@ fun StatusScreen(
         }
     ) { padding ->
         val editorDockHeight = 92.dp
-        val widgetsTrayHeight = if (state.statusDashboardEditMode && widgetsTrayExpanded) 132.dp else 0.dp
         Box(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() }
         ) {
             val ksuVersion = remember(state.rootGranted) {
                 if (state.rootGranted) RootUtils.getKsuVersion() else "N/A"
@@ -181,11 +232,11 @@ fun StatusScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
                     .padding(horizontal = AbkScreenHorizontalPadding)
                     .padding(
                         bottom = if (state.statusDashboardEditMode) {
-                            editorDockHeight + widgetsTrayHeight + 32.dp
+                            editorDockHeight + 28.dp
                         } else {
                             80.dp + outerPadding.calculateBottomPadding()
                         }
@@ -229,35 +280,19 @@ fun StatusScreen(
                     onMoveItem = vm::moveStatusDashboardWidget,
                     onResizeItem = vm::resizeStatusDashboardWidget,
                     onSetItemSpanMode = vm::setStatusDashboardWidgetSpanMode,
-                    onHideItem = { widgetId -> vm.setStatusDashboardWidgetVisible(widgetId, false) }
+                    onHideItem = { widgetId -> vm.setStatusDashboardWidgetVisible(widgetId, false) },
+                    onGridMetricsChanged = { metrics -> gridMetrics = metrics },
+                    onDragPointerYChanged = { activeDragPointerY = it }
                 ) { widgetId, interactionsEnabled ->
-                    when (widgetId) {
-                        StatusDashboardWidgets.HERO -> StatusHeroWidget(
-                            state = state,
-                            vm = vm,
-                            actionsEnabled = interactionsEnabled
-                        )
-                        StatusDashboardWidgets.METRICS -> StatusMetricsWidget(
-                            state = state,
-                            ksuVersion = ksuVersion
-                        )
-                        StatusDashboardWidgets.BUILD_ACTIVITY -> StatusBuildActivityWidget(
-                            state = state,
-                            vm = vm,
-                            actionsEnabled = interactionsEnabled,
-                            showManagerPlaceholder = state.statusDashboardEditMode
-                        )
-                        StatusDashboardWidgets.DEVICE_REPOSITORY -> StatusDeviceRepositoryWidget(
-                            state = state,
-                            kernelVersion = kernelVersion,
-                            ksuVersion = ksuVersion
-                        )
-                        StatusDashboardWidgets.RECENT_RUNS -> StatusRecentRunsWidget(
-                            state = state,
-                            actionsEnabled = interactionsEnabled,
-                            onCancel = vm::cancelWorkflowRun
-                        )
-                    }
+                    StatusWidgetContent(
+                        widgetId = widgetId,
+                        state = state,
+                        vm = vm,
+                        ksuVersion = ksuVersion,
+                        kernelVersion = kernelVersion,
+                        actionsEnabled = interactionsEnabled,
+                        showManagerPlaceholder = state.statusDashboardEditMode
+                    )
                 }
             }
 
@@ -266,16 +301,45 @@ fun StatusScreen(
                     visible = widgetsTrayExpanded,
                     hiddenItems = dashboardLayout.items.filter { !it.visible }.map { it.widgetId },
                     widgetLabels = widgetLabels,
-                    onShowWidget = { widgetId -> vm.setStatusDashboardWidgetVisible(widgetId, true) },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(horizontal = 16.dp, vertical = editorDockHeight)
-                )
-                StatusEditorBottomDock(
+                    dashboardLayout = dashboardLayout,
+                    state = state,
+                    vm = vm,
+                    ksuVersion = ksuVersion,
+                    kernelVersion = kernelVersion,
+                    onHiddenWidgetDrag = { dragState ->
+                        hiddenWidgetDrag = dragState
+                        activeDragPointerY = dragState?.pointerY
+                    },
+                    onHiddenWidgetDrop = { dragState ->
+                        activeDragPointerY = null
+                        hiddenWidgetDrag = null
+                        val metrics = gridMetrics ?: return@StatusEditorWidgetsTray
+                        if (!dragState.materialized || dragState.pointerY >= trayTopY) return@StatusEditorWidgetsTray
+                        val item = dashboardLayout.items.firstOrNull { it.widgetId == dragState.widgetId } ?: return@StatusEditorWidgetsTray
+                        val targetX = ((dragState.pointerX - metrics.originX) / (metrics.cellWidthPx + metrics.gapPx))
+                            .roundToInt()
+                            .coerceIn(0, (metrics.columns - item.w).coerceAtLeast(0))
+                        val targetY = ((dragState.pointerY - metrics.originY) / (metrics.rowHeightPx + metrics.gapPx))
+                            .roundToInt()
+                            .coerceAtLeast(0)
+                        vm.placeStatusDashboardHiddenWidget(
+                            widgetId = dragState.widgetId,
+                            targetX = targetX,
+                            targetY = targetY
+                        )
+                    },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .onGloballyPositioned { trayTopY = it.positionInRoot().y }
                 )
+                if (!widgetsTrayExpanded) {
+                    StatusEditorBottomDock(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                }
                 StatusEditorFabMenu(
                     expanded = actionMenuExpanded,
                     rotation = actionMenuRotation,
@@ -300,8 +364,57 @@ fun StatusScreen(
                         .align(Alignment.BottomEnd)
                         .padding(end = 24.dp, bottom = 28.dp)
                 )
+                HiddenWidgetFloatingPreview(
+                    dragState = hiddenWidgetDrag,
+                    trayTopY = trayTopY,
+                    gridMetrics = gridMetrics,
+                    layout = dashboardLayout,
+                    state = state,
+                    vm = vm,
+                    ksuVersion = ksuVersion,
+                    kernelVersion = kernelVersion
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun StatusWidgetContent(
+    widgetId: String,
+    state: MainUiState,
+    vm: MainViewModel,
+    ksuVersion: String,
+    kernelVersion: String,
+    actionsEnabled: Boolean,
+    showManagerPlaceholder: Boolean
+) {
+    when (widgetId) {
+        StatusDashboardWidgets.HERO -> StatusHeroWidget(
+            state = state,
+            vm = vm,
+            actionsEnabled = actionsEnabled
+        )
+        StatusDashboardWidgets.METRICS -> StatusMetricsWidget(
+            state = state,
+            ksuVersion = ksuVersion
+        )
+        StatusDashboardWidgets.BUILD_ACTIVITY -> StatusBuildActivityWidget(
+            state = state,
+            vm = vm,
+            actionsEnabled = actionsEnabled,
+            showManagerPlaceholder = showManagerPlaceholder
+        )
+        StatusDashboardWidgets.DEVICE_REPOSITORY -> StatusDeviceRepositoryWidget(
+            state = state,
+            kernelVersion = kernelVersion,
+            ksuVersion = ksuVersion
+        )
+        StatusDashboardWidgets.RECENT_RUNS -> StatusRecentRunsWidget(
+            state = state,
+            actionsEnabled = actionsEnabled,
+            onCancel = vm::cancelWorkflowRun
+        )
     }
 }
 
@@ -310,7 +423,13 @@ private fun StatusEditorWidgetsTray(
     visible: Boolean,
     hiddenItems: List<String>,
     widgetLabels: Map<String, String>,
-    onShowWidget: (String) -> Unit,
+    dashboardLayout: com.abk.kernel.dashboard.DashboardLayout,
+    state: MainUiState,
+    vm: MainViewModel,
+    ksuVersion: String,
+    kernelVersion: String,
+    onHiddenWidgetDrag: (HiddenWidgetDragState?) -> Unit,
+    onHiddenWidgetDrop: (HiddenWidgetDragState) -> Unit,
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
@@ -323,64 +442,32 @@ private fun StatusEditorWidgetsTray(
     ) {
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
-            color = uiSurfaceColor(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)),
+            color = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
+            border = BorderStroke(2.dp, Color(0xFFF6B94C)),
             tonalElevation = 0.dp,
-            shadowElevation = 10.dp
+            shadowElevation = 0.dp
         ) {
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .height(80.dp)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = stringResource(R.string.status_layout_hidden_widgets),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                if (hiddenItems.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.status_layout_hidden_widgets_empty),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                hiddenItems.forEach { widgetId ->
+                    HiddenWidgetThumbnail(
+                        widgetId = widgetId,
+                        label = widgetLabels[widgetId] ?: widgetId,
+                        layout = dashboardLayout,
+                        state = state,
+                        vm = vm,
+                        ksuVersion = ksuVersion,
+                        kernelVersion = kernelVersion,
+                        onDragChanged = onHiddenWidgetDrag,
+                        onDragReleased = onHiddenWidgetDrop
                     )
-                } else {
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        hiddenItems.forEach { widgetId ->
-                            Surface(
-                                modifier = Modifier.widthIn(min = 160.dp),
-                                shape = MaterialTheme.shapes.large,
-                                color = uiSurfaceColor(MaterialTheme.colorScheme.surfaceVariant)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Text(
-                                        text = widgetLabels[widgetId] ?: widgetId,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Medium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.status_layout_hidden_widgets_drag_hint),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    TextButton(
-                                        onClick = { onShowWidget(widgetId) },
-                                        contentPadding = PaddingValues(0.dp)
-                                    ) {
-                                        Text(stringResource(R.string.status_layout_show_widget))
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -397,33 +484,24 @@ private fun StatusEditorBottomDock(
             .height(80.dp)
             .drawBehind {
                 val accent = Color(0xFFF6B94C)
-                val stripeWidth = size.width / 18f
-                val stripeHeight = size.height / 2f
-                var x = -size.height
+                val stripeWidth = size.width / 10f
+                var x = -size.height * 1.5f
                 while (x < size.width + size.height) {
                     drawLine(
-                        color = accent.copy(alpha = 0.22f),
+                        color = accent,
                         start = androidx.compose.ui.geometry.Offset(x, size.height),
-                        end = androidx.compose.ui.geometry.Offset(x + stripeHeight, 0f),
-                        strokeWidth = stripeWidth / 2f
+                        end = androidx.compose.ui.geometry.Offset(x + size.height, 0f),
+                        strokeWidth = stripeWidth
                     )
-                    x += stripeWidth * 1.8f
+                    x += stripeWidth * 2f
                 }
             },
-        shape = MaterialTheme.shapes.extraLarge,
-        color = Color(0xFF666A73).copy(alpha = 0.88f),
+        shape = RoundedCornerShape(28.dp),
+        color = Color.Transparent,
         border = BorderStroke(2.dp, Color(0xFFF6B94C)),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = stringResource(R.string.status_layout_bottom_dock),
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White
-            )
-        }
-    }
+    ) {}
 }
 
 @Composable
@@ -437,37 +515,37 @@ private fun StatusEditorFabMenu(
     onToggleWidgets: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier = modifier.size(220.dp), contentAlignment = Alignment.BottomEnd) {
+    Box(modifier = modifier.size(156.dp), contentAlignment = Alignment.BottomEnd) {
         StatusEditorMiniFab(
             visible = expanded,
             icon = Icons.Default.UploadFile,
             contentDescription = stringResource(R.string.status_layout_import),
-            offsetX = (-10).dp,
-            offsetY = (-156).dp,
+            offsetX = (-4).dp,
+            offsetY = (-96).dp,
             onClick = onImport
         )
         StatusEditorMiniFab(
             visible = expanded,
             icon = Icons.Default.Share,
             contentDescription = stringResource(R.string.status_layout_share),
-            offsetX = (-74).dp,
-            offsetY = (-128).dp,
+            offsetX = (-44).dp,
+            offsetY = (-82).dp,
             onClick = onShare
         )
         StatusEditorMiniFab(
             visible = expanded,
             icon = Icons.Default.Save,
             contentDescription = stringResource(R.string.status_layout_save_exit),
-            offsetX = (-126).dp,
-            offsetY = (-74).dp,
+            offsetX = (-78).dp,
+            offsetY = (-48).dp,
             onClick = onSaveAndExit
         )
         StatusEditorMiniFab(
             visible = expanded,
             icon = Icons.Default.Widgets,
             contentDescription = stringResource(R.string.status_layout_widgets),
-            offsetX = (-154).dp,
-            offsetY = (-10).dp,
+            offsetX = (-92).dp,
+            offsetY = (-4).dp,
             onClick = onToggleWidgets
         )
         FloatingActionButton(
@@ -501,11 +579,178 @@ private fun StatusEditorMiniFab(
     ) {
         SmallFloatingActionButton(
             onClick = onClick,
-            containerColor = uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainerHigh),
-            contentColor = MaterialTheme.colorScheme.onSurface
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
         ) {
             Icon(icon, contentDescription = contentDescription)
         }
+    }
+}
+
+@Composable
+private fun HiddenWidgetThumbnail(
+    widgetId: String,
+    label: String,
+    layout: com.abk.kernel.dashboard.DashboardLayout,
+    state: MainUiState,
+    vm: MainViewModel,
+    ksuVersion: String,
+    kernelVersion: String,
+    onDragChanged: (HiddenWidgetDragState?) -> Unit,
+    onDragReleased: (HiddenWidgetDragState) -> Unit
+) {
+    var originX by remember { mutableStateOf(0f) }
+    var originY by remember { mutableStateOf(0f) }
+    val item = remember(layout.items, widgetId) {
+        layout.items.firstOrNull { it.widgetId == widgetId }
+    } ?: return
+
+    Column(
+        modifier = Modifier
+            .width(110.dp)
+            .onGloballyPositioned { coordinates ->
+                val position = coordinates.positionInRoot()
+                originX = position.x
+                originY = position.y
+            }
+            .pointerInput(widgetId, item.w, item.h) {
+                var dragX = 0f
+                var dragY = 0f
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        dragX = originX + offset.x
+                        dragY = originY + offset.y
+                        onDragChanged(
+                            HiddenWidgetDragState(
+                                widgetId = widgetId,
+                                pointerX = dragX,
+                                pointerY = dragY,
+                                materialized = false
+                            )
+                        )
+                    },
+                    onDragCancel = {
+                        onDragChanged(null)
+                    },
+                    onDragEnd = {
+                        val finalState = HiddenWidgetDragState(
+                            widgetId = widgetId,
+                            pointerX = dragX,
+                            pointerY = dragY,
+                            materialized = true
+                        )
+                        onDragReleased(finalState)
+                    }
+                ) { change, dragAmount ->
+                    change.consume()
+                    dragX += dragAmount.x
+                    dragY += dragAmount.y
+                    onDragChanged(
+                        HiddenWidgetDragState(
+                            widgetId = widgetId,
+                            pointerX = dragX,
+                            pointerY = dragY,
+                            materialized = true
+                        )
+                    )
+                }
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp),
+            shape = MaterialTheme.shapes.large,
+            color = uiSurfaceColor(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(MaterialTheme.shapes.large)
+                    .padding(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(
+                            scaleX = 0.30f,
+                            scaleY = 0.30f,
+                            transformOrigin = TransformOrigin(0f, 0f)
+                        )
+                ) {
+                    StatusWidgetContent(
+                        widgetId = widgetId,
+                        state = state,
+                        vm = vm,
+                        ksuVersion = ksuVersion,
+                        kernelVersion = kernelVersion,
+                        actionsEnabled = false,
+                        showManagerPlaceholder = true
+                    )
+                }
+            }
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun HiddenWidgetFloatingPreview(
+    dragState: HiddenWidgetDragState?,
+    trayTopY: Float,
+    gridMetrics: DashboardGridMetrics?,
+    layout: com.abk.kernel.dashboard.DashboardLayout,
+    state: MainUiState,
+    vm: MainViewModel,
+    ksuVersion: String,
+    kernelVersion: String
+) {
+    val activeDrag = dragState ?: return
+    if (!activeDrag.materialized || activeDrag.pointerY >= trayTopY) return
+    val metrics = gridMetrics ?: return
+    val density = LocalDensity.current
+    val item = layout.items.firstOrNull { it.widgetId == activeDrag.widgetId } ?: return
+    val previewWidthDp = with(density) {
+        (metrics.cellWidthPx * item.w + metrics.gapPx * (item.w - 1)).toDp()
+    }
+    val previewHeightDp = with(density) {
+        (metrics.rowHeightPx * item.h + metrics.gapPx * (item.h - 1)).toDp()
+    }
+    val gridStepX = metrics.cellWidthPx + metrics.gapPx
+    val gridStepY = metrics.rowHeightPx + metrics.gapPx
+    val snappedX = ((activeDrag.pointerX - metrics.originX) / gridStepX)
+        .roundToInt()
+        .coerceIn(0, (metrics.columns - item.w).coerceAtLeast(0))
+    val snappedY = ((activeDrag.pointerY - metrics.originY) / gridStepY)
+        .roundToInt()
+        .coerceAtLeast(0)
+    val snappedLeftPx = metrics.originX + snappedX * gridStepX
+    val snappedTopPx = metrics.originY + snappedY * gridStepY
+    val previewLeftDp = with(density) { snappedLeftPx.toDp() }
+    val previewTopDp = with(density) { snappedTopPx.toDp() }
+
+    Box(
+        modifier = Modifier
+            .offset(x = previewLeftDp, y = previewTopDp)
+            .size(previewWidthDp, previewHeightDp)
+            .graphicsLayer { alpha = 0.92f }
+    ) {
+        StatusWidgetContent(
+            widgetId = activeDrag.widgetId,
+            state = state,
+            vm = vm,
+            ksuVersion = ksuVersion,
+            kernelVersion = kernelVersion,
+            actionsEnabled = false,
+            showManagerPlaceholder = true
+        )
     }
 }
 

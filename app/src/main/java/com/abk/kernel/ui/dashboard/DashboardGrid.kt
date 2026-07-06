@@ -36,8 +36,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -47,6 +49,17 @@ import com.abk.kernel.dashboard.DashboardLayoutItem
 import com.abk.kernel.ui.theme.uiSurfaceColor
 import kotlin.math.max
 import kotlin.math.roundToInt
+
+data class DashboardGridMetrics(
+    val originX: Float,
+    val originY: Float,
+    val widthPx: Float,
+    val heightPx: Float,
+    val cellWidthPx: Float,
+    val rowHeightPx: Float,
+    val gapPx: Float,
+    val columns: Int
+)
 
 @Composable
 fun DashboardGrid(
@@ -63,6 +76,8 @@ fun DashboardGrid(
     onResizeItem: (String, Int, Int) -> Unit,
     onSetItemSpanMode: (String, DashboardItemSpanMode) -> Unit,
     onHideItem: (String) -> Unit,
+    onGridMetricsChanged: (DashboardGridMetrics) -> Unit = {},
+    onDragPointerYChanged: (Float?) -> Unit = {},
     modifier: Modifier = Modifier,
     content: @Composable (widgetId: String, interactionsEnabled: Boolean) -> Unit
 ) {
@@ -96,6 +111,21 @@ fun DashboardGrid(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(gridHeight)
+                .onGloballyPositioned { coordinates ->
+                    val position = coordinates.positionInRoot()
+                    onGridMetricsChanged(
+                        DashboardGridMetrics(
+                            originX = position.x,
+                            originY = position.y,
+                            widthPx = coordinates.size.width.toFloat(),
+                            heightPx = coordinates.size.height.toFloat(),
+                            cellWidthPx = columnStepPx - gapPx,
+                            rowHeightPx = rowStepPx - gapPx,
+                            gapPx = gapPx,
+                            columns = layout.densityPreset.columns
+                        )
+                    )
+                }
                 .clip(MaterialTheme.shapes.extraLarge)
                 .background(uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainerLowest))
                 .drawBehind {
@@ -140,7 +170,8 @@ fun DashboardGrid(
                     onMoveItem = { x, y -> onMoveItem(item.widgetId, x, y) },
                     onResizeItem = { w, h -> onResizeItem(item.widgetId, w, h) },
                     onSetSpanMode = { spanMode -> onSetItemSpanMode(item.widgetId, spanMode) },
-                    onHideItem = { onHideItem(item.widgetId) }
+                    onHideItem = { onHideItem(item.widgetId) },
+                    onDragPointerYChanged = onDragPointerYChanged
                 ) {
                     content(item.widgetId, !editable)
                 }
@@ -183,6 +214,7 @@ private fun DashboardGridItem(
     onResizeItem: (Int, Int) -> Unit,
     onSetSpanMode: (DashboardItemSpanMode) -> Unit,
     onHideItem: () -> Unit,
+    onDragPointerYChanged: (Float?) -> Unit,
     content: @Composable () -> Unit
 ) {
     val density = LocalDensity.current
@@ -195,6 +227,7 @@ private fun DashboardGridItem(
     var previewState by remember(item.widgetId, item.x, item.y, item.w, item.h) {
         mutableStateOf<GridPreviewState?>(null)
     }
+    var overlayOriginY by remember { mutableStateOf(0f) }
 
     val displayX = previewState?.x ?: item.x
     val displayY = previewState?.y ?: item.y
@@ -250,6 +283,9 @@ private fun DashboardGridItem(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .onGloballyPositioned { coordinates ->
+                        overlayOriginY = coordinates.positionInRoot().y
+                    }
                     .pointerInput(item.widgetId, item.x, item.y, item.w, item.h) {
                         var accumulatedDx = 0f
                         var accumulatedDy = 0f
@@ -267,9 +303,11 @@ private fun DashboardGridItem(
                                 )
                             },
                             onDragCancel = {
+                                onDragPointerYChanged(null)
                                 previewState = null
                             },
                             onDragEnd = {
+                                onDragPointerYChanged(null)
                                 previewState?.takeIf { it.valid }?.let { preview ->
                                     onMoveItem(preview.x, preview.y)
                                 }
@@ -277,6 +315,7 @@ private fun DashboardGridItem(
                             }
                         ) { change, dragAmount ->
                             change.consume()
+                            onDragPointerYChanged(overlayOriginY + change.position.y)
                             accumulatedDx += dragAmount.x
                             accumulatedDy += dragAmount.y
                             val current = previewState ?: GridPreviewState(
@@ -394,9 +433,9 @@ private fun DashboardGridItem(
                                 onDragStart = {
                                     accumulatedDx = 0f
                                     accumulatedDy = 0f
-                                    previewState = GridPreviewState(
-                                        x = item.x,
-                                        y = item.y,
+                                previewState = GridPreviewState(
+                                    x = item.x,
+                                    y = item.y,
                                         w = item.w,
                                         h = item.h,
                                         valid = true,
@@ -404,9 +443,11 @@ private fun DashboardGridItem(
                                     )
                                 },
                                 onDragCancel = {
+                                    onDragPointerYChanged(null)
                                     previewState = null
                                 },
                                 onDragEnd = {
+                                    onDragPointerYChanged(null)
                                     previewState?.takeIf { it.valid }?.let { preview ->
                                         onResizeItem(preview.w, preview.h)
                                     }
@@ -414,6 +455,7 @@ private fun DashboardGridItem(
                                 }
                             ) { change, dragAmount ->
                                 change.consume()
+                                onDragPointerYChanged(overlayOriginY + change.position.y)
                                 accumulatedDx += dragAmount.x
                                 accumulatedDy += dragAmount.y
                                 val current = previewState ?: GridPreviewState(

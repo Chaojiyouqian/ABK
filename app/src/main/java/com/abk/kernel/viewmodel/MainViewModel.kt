@@ -4026,6 +4026,34 @@ class MainViewModel @JvmOverloads constructor(
         }
     }
 
+    fun placeStatusDashboardHiddenWidget(widgetId: String, targetX: Int, targetY: Int) {
+        val draft = _uiState.value.statusDashboardDraftLayout ?: return
+        val visibleLayout = DashboardLayoutEngine.setItemVisibility(
+            layout = draft,
+            widgetId = widgetId,
+            visible = true,
+            definitions = StatusDashboardWidgets.definitions
+        )
+        if (!DashboardLayoutEngine.canMoveItem(
+                layout = visibleLayout,
+                widgetId = widgetId,
+                targetX = targetX,
+                targetY = targetY,
+                definitions = StatusDashboardWidgets.definitions
+            )
+        ) {
+            return
+        }
+        val placedLayout = DashboardLayoutEngine.moveItemExact(
+            layout = visibleLayout,
+            widgetId = widgetId,
+            targetX = targetX,
+            targetY = targetY,
+            definitions = StatusDashboardWidgets.definitions
+        )
+        _uiState.update { it.copy(statusDashboardDraftLayout = placedLayout) }
+    }
+
     fun setStatusDashboardDensityPreset(preset: DashboardDensityPreset) {
         val currentState = _uiState.value
         val baseLayout = currentState.statusDashboardDraftLayout ?: currentState.statusDashboardLayout
