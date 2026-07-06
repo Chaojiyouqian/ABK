@@ -291,6 +291,10 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setStatusPageGridDensityPreset(preset: DashboardDensityPreset) = context.dataStore.edit {
         it[KEY_STATUS_PAGE_GRID_DENSITY_PRESET] = preset.rawValue
     }
+    suspend fun saveStatusPageLayoutState(json: String, preset: DashboardDensityPreset) = context.dataStore.edit {
+        it[KEY_STATUS_PAGE_LAYOUT_JSON] = json
+        it[KEY_STATUS_PAGE_GRID_DENSITY_PRESET] = preset.rawValue
+    }
     suspend fun setRuntimeNavigationEnabled(v: Boolean) = context.dataStore.edit {
         it[KEY_RUNTIME_NAVIGATION_ENABLED] = v
     }

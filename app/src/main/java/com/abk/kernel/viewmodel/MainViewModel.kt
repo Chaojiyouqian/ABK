@@ -622,17 +622,15 @@ class MainViewModel @JvmOverloads constructor(
                                 hideMissingWidgets = false
                             ).layout
                         }
-                        ?: defaultLayout
-                    if (restoredLayout.densityPreset == densityPreset) {
+                    if (restoredLayout != null) {
                         DashboardLayoutEngine.sanitize(
                             layout = restoredLayout,
                             definitions = StatusDashboardWidgets.definitions,
-                            defaultLayout = defaultLayout
+                            defaultLayout = StatusDashboardWidgets.defaultLayout(restoredLayout.densityPreset)
                         )
                     } else {
-                        DashboardLayoutEngine.remapDensity(
-                            layout = restoredLayout,
-                            targetDensityPreset = densityPreset,
+                        DashboardLayoutEngine.sanitize(
+                            layout = defaultLayout,
                             definitions = StatusDashboardWidgets.definitions,
                             defaultLayout = defaultLayout
                         )
@@ -4220,8 +4218,10 @@ class MainViewModel @JvmOverloads constructor(
 
     private suspend fun persistStatusDashboardLayout(layout: DashboardLayout) {
         val normalized = normalizeStatusDashboardLayout(layout)
-        prefs.saveStatusPageLayoutJson(DashboardLayoutCodec.export(normalized))
-        prefs.setStatusPageGridDensityPreset(normalized.densityPreset)
+        prefs.saveStatusPageLayoutState(
+            json = DashboardLayoutCodec.export(normalized),
+            preset = normalized.densityPreset
+        )
     }
 
     private suspend fun persistStatusDashboardLayoutSafely(layout: DashboardLayout): Boolean =

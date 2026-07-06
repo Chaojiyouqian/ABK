@@ -322,29 +322,6 @@ fun StatusScreen(
                     onHiddenWidgetDrag = { dragState ->
                         hiddenWidgetDrag = dragState
                         activeDragPointerY = dragState?.pointerY
-                        val metrics = gridMetrics
-                        if (dragState != null && metrics != null && dragState.pointerY < trayTopY) {
-                            val item = dashboardLayout.items.firstOrNull { it.widgetId == dragState.widgetId } ?: return@StatusEditorWidgetsTray
-                            val targetX = ((dragState.pointerX - metrics.originX) / (metrics.cellWidthPx + metrics.gapPx))
-                                .roundToInt()
-                                .coerceIn(0, (metrics.columns - item.w).coerceAtLeast(0))
-                            val targetY = ((dragState.pointerY - metrics.originY) / (metrics.rowHeightPx + metrics.gapPx))
-                                .roundToInt()
-                                .coerceAtLeast(0)
-                            if (item.visible) {
-                                vm.moveStatusDashboardWidget(
-                                    widgetId = dragState.widgetId,
-                                    targetX = targetX,
-                                    targetY = targetY
-                                )
-                            } else {
-                                vm.placeStatusDashboardHiddenWidget(
-                                    widgetId = dragState.widgetId,
-                                    targetX = targetX,
-                                    targetY = targetY
-                                )
-                            }
-                        }
                     },
                     onHiddenWidgetDrop = { dragState ->
                         activeDragPointerY = null
@@ -352,18 +329,14 @@ fun StatusScreen(
                         val metrics = gridMetrics ?: return@StatusEditorWidgetsTray
                         if (!dragState.leftTray || dragState.pointerY >= trayTopY) return@StatusEditorWidgetsTray
                         val item = dashboardLayout.items.firstOrNull { it.widgetId == dragState.widgetId } ?: return@StatusEditorWidgetsTray
-                        val targetX = ((dragState.pointerX - metrics.originX) / (metrics.cellWidthPx + metrics.gapPx))
-                            .roundToInt()
-                            .coerceIn(0, (metrics.columns - item.w).coerceAtLeast(0))
-                        val targetY = ((dragState.pointerY - metrics.originY) / (metrics.rowHeightPx + metrics.gapPx))
-                            .roundToInt()
-                            .coerceAtLeast(0)
+                        val target = computeHiddenWidgetDropTarget(metrics, item, dragState.pointerX, dragState.pointerY)
                         vm.placeStatusDashboardHiddenWidget(
                             widgetId = dragState.widgetId,
-                            targetX = targetX,
-                            targetY = targetY
+                            targetX = target.first,
+                            targetY = target.second
                         )
                     },
+                    activeDragWidgetId = hiddenWidgetDrag?.widgetId,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -462,6 +435,7 @@ private fun StatusEditorWidgetsTray(
     kernelVersion: String,
     onHiddenWidgetDrag: (HiddenWidgetDragState?) -> Unit,
     onHiddenWidgetDrop: (HiddenWidgetDragState) -> Unit,
+    activeDragWidgetId: String?,
     modifier: Modifier = Modifier
 ) {
     val dockShape = RoundedCornerShape(28.dp)
@@ -514,6 +488,7 @@ private fun StatusEditorWidgetsTray(
                         vm = vm,
                         ksuVersion = ksuVersion,
                         kernelVersion = kernelVersion,
+                        isDragging = activeDragWidgetId == widgetId,
                         onDragChanged = onHiddenWidgetDrag,
                         onDragReleased = onHiddenWidgetDrop
                     )
@@ -658,6 +633,7 @@ private fun HiddenWidgetThumbnail(
     vm: MainViewModel,
     ksuVersion: String,
     kernelVersion: String,
+    isDragging: Boolean,
     onDragChanged: (HiddenWidgetDragState?) -> Unit,
     onDragReleased: (HiddenWidgetDragState) -> Unit
 ) {
@@ -723,7 +699,8 @@ private fun HiddenWidgetThumbnail(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(58.dp),
+                .height(58.dp)
+                .graphicsLayer { alpha = if (isDragging) 0f else 1f },
             shape = MaterialTheme.shapes.large,
             color = uiSurfaceColor(MaterialTheme.colorScheme.surfaceVariant)
         ) {
@@ -1390,4 +1367,19 @@ private fun shareStatusLayout(
         putExtra(Intent.EXTRA_TEXT, payload)
     }
     context.startActivity(Intent.createChooser(intent, context.getString(R.string.status_layout_share)))
+}
+
+private fun computeHiddenWidgetDropTarget(
+    metrics: DashboardGridMetrics,
+    item: com.abk.kernel.dashboard.DashboardLayoutItem,
+    pointerX: Float,
+    pointerY: Float
+): Pair<Int, Int> {
+    val targetX = ((pointerX - metrics.originX) / (metrics.cellWidthPx + metrics.gapPx))
+        .roundToInt()
+        .coerceIn(0, (metrics.columns - item.w).coerceAtLeast(0))
+    val targetY = ((pointerY - metrics.originY) / (metrics.rowHeightPx + metrics.gapPx))
+        .roundToInt()
+        .coerceAtLeast(0)
+    return targetX to targetY
 }
