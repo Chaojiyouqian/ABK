@@ -121,4 +121,39 @@ class DashboardLayoutCodecTest {
             restored.layout.items.first { it.widgetId == StatusDashboardWidgets.BUILD_ACTIVITY }.spanMode
         )
     }
+
+    @Test
+    fun importSupportsLegacyMinifiedPayloadWithoutPageId() {
+        val result = DashboardLayoutCodec.importStatusLayout(
+            json = """
+                {
+                  "a": 1,
+                  "b": "grid",
+                  "c": "standard",
+                  "d": [
+                    {
+                      "a": "${StatusDashboardWidgets.HERO}",
+                      "b": 0,
+                      "c": 0,
+                      "d": 16,
+                      "e": 3,
+                      "f": true,
+                      "g": "custom"
+                    }
+                  ]
+                }
+            """.trimIndent(),
+            definitions = StatusDashboardWidgets.definitions,
+            defaultLayoutForDensity = StatusDashboardWidgets::defaultLayout,
+            hideMissingWidgets = false
+        )
+
+        assertEquals(null, result.error)
+        assertEquals(DashboardPageId.STATUS, result.layout.pageId)
+        assertEquals(DashboardDensityPreset.STANDARD, result.layout.densityPreset)
+        assertEquals(
+            DashboardItemSpanMode.CUSTOM,
+            result.layout.items.first { it.widgetId == StatusDashboardWidgets.HERO }.spanMode
+        )
+    }
 }

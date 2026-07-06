@@ -1,6 +1,10 @@
 package com.abk.kernel.dashboard
 
 import com.google.gson.Gson
+import com.google.gson.JsonArray
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 
 enum class DashboardLayoutImportError {
     INVALID_JSON,
@@ -21,25 +25,28 @@ data class DashboardLayoutImportResult(
 object DashboardLayoutCodec {
     private val gson = Gson()
 
-    fun export(layout: DashboardLayout): String = gson.toJson(
-        DashboardLayoutDto(
-            version = layout.version,
-            pageId = layout.pageId.rawValue,
-            layoutMode = layout.layoutMode.rawValue,
-            densityPreset = layout.densityPreset.rawValue,
-            items = layout.items.map { item ->
-                DashboardLayoutItemDto(
-                    widgetId = item.widgetId,
-                    x = item.x,
-                    y = item.y,
-                    w = item.w,
-                    h = item.h,
-                    visible = item.visible,
-                    spanMode = item.spanMode.rawValue
-                )
-            }
-        )
-    )
+    fun export(layout: DashboardLayout): String {
+        val root = JsonObject().apply {
+            addProperty("version", layout.version)
+            addProperty("pageId", layout.pageId.rawValue)
+            addProperty("layoutMode", layout.layoutMode.rawValue)
+            addProperty("densityPreset", layout.densityPreset.rawValue)
+            add("items", JsonArray().apply {
+                layout.items.forEach { item ->
+                    add(JsonObject().apply {
+                        addProperty("widgetId", item.widgetId)
+                        addProperty("x", item.x)
+                        addProperty("y", item.y)
+                        addProperty("w", item.w)
+                        addProperty("h", item.h)
+                        addProperty("visible", item.visible)
+                        addProperty("spanMode", item.spanMode.rawValue)
+                    })
+                }
+            })
+        }
+        return gson.toJson(root)
+    }
 
     fun importStatusLayout(
         json: String,
@@ -47,16 +54,22 @@ object DashboardLayoutCodec {
         defaultLayoutForDensity: (DashboardDensityPreset) -> DashboardLayout,
         hideMissingWidgets: Boolean = true
     ): DashboardLayoutImportResult {
-        val dto = runCatching {
-            gson.fromJson(json, DashboardLayoutDto::class.java)
+        val root = runCatching {
+            JsonParser.parseString(json).asJsonObject
         }.getOrNull() ?: return failure(
             error = DashboardLayoutImportError.INVALID_JSON,
             fallbackLayout = defaultLayoutForDensity(DashboardDensityPreset.STANDARD)
         )
 
-        val densityPreset = DashboardDensityPreset.fromRawValue(dto.densityPreset)
+        val densityPreset = DashboardDensityPreset.fromRawValue(
+            root.readString("densityPreset", "c")
+        )
         val fallbackLayout = defaultLayoutForDensity(densityPreset)
-        val pageId = DashboardPageId.fromRawValue(dto.pageId)
+        val pageId = DashboardPageId.fromRawValue(
+            root.readString("pageId", null)
+                ?: root.readString("statusPageId", null)
+                ?: DashboardPageId.STATUS.rawValue
+        )
             ?: return failure(
                 error = DashboardLayoutImportError.UNSUPPORTED_PAGE,
                 fallbackLayout = fallbackLayout
@@ -67,13 +80,15 @@ object DashboardLayoutCodec {
                 fallbackLayout = fallbackLayout
             )
         }
-        if (dto.version != DASHBOARD_LAYOUT_VERSION) {
+        if (root.readInt("version", "a") != DASHBOARD_LAYOUT_VERSION) {
             return failure(
                 error = DashboardLayoutImportError.UNSUPPORTED_VERSION,
                 fallbackLayout = fallbackLayout
             )
         }
-        val layoutMode = DashboardLayoutMode.fromRawValue(dto.layoutMode)
+        val layoutMode = DashboardLayoutMode.fromRawValue(
+            root.readString("layoutMode", "b")
+        )
             ?: return failure(
                 error = DashboardLayoutImportError.UNSUPPORTED_LAYOUT_MODE,
                 fallbackLayout = fallbackLayout
@@ -86,20 +101,22 @@ object DashboardLayoutCodec {
         }
 
         val knownWidgetIds = definitions.map { it.widgetId }.toSet()
-        val rawItems = dto.items.orEmpty()
-        val importedItems = rawItems.mapNotNull { itemDto ->
-            val widgetId = itemDto.widgetId?.trim().orEmpty()
+        val rawItems = root.readArray("items", "d")
+        val importedItems = rawItems.mapNotNull { itemObject ->
+            val widgetId = itemObject.readString("widgetId", "a")?.trim().orEmpty()
             if (widgetId.isBlank() || widgetId !in knownWidgetIds) {
                 null
             } else {
                 DashboardLayoutItem(
                     widgetId = widgetId,
-                    x = itemDto.x ?: 0,
-                    y = itemDto.y ?: 0,
-                    w = itemDto.w ?: 1,
-                    h = itemDto.h ?: 1,
-                    visible = itemDto.visible ?: true,
-                    spanMode = DashboardItemSpanMode.fromRawValue(itemDto.spanMode)
+                    x = itemObject.readInt("x", "b") ?: 0,
+                    y = itemObject.readInt("y", "c") ?: 0,
+                    w = itemObject.readInt("w", "d") ?: 1,
+                    h = itemObject.readInt("h", "e") ?: 1,
+                    visible = itemObject.readBoolean("visible", "f") ?: true,
+                    spanMode = DashboardItemSpanMode.fromRawValue(
+                        itemObject.readString("spanMode", "g")
+                    )
                 )
             }
         }
@@ -149,22 +166,28 @@ object DashboardLayoutCodec {
         error = error,
         appliedDefaultFallback = true
     )
-
-    private data class DashboardLayoutDto(
-        val version: Int? = null,
-        val pageId: String? = null,
-        val layoutMode: String? = null,
-        val densityPreset: String? = null,
-        val items: List<DashboardLayoutItemDto>? = null
-    )
-
-    private data class DashboardLayoutItemDto(
-        val widgetId: String? = null,
-        val x: Int? = null,
-        val y: Int? = null,
-        val w: Int? = null,
-        val h: Int? = null,
-        val visible: Boolean? = null,
-        val spanMode: String? = null
-    )
 }
+
+private fun JsonObject.readString(primaryKey: String, legacyKey: String?): String? {
+    val value = get(primaryKey) ?: legacyKey?.let { get(it) } ?: return null
+    return value.takeIf { it.isJsonPrimitive }?.asString
+}
+
+private fun JsonObject.readInt(primaryKey: String, legacyKey: String?): Int? {
+    val value = get(primaryKey) ?: legacyKey?.let { get(it) } ?: return null
+    return value.takeIf { it.isJsonPrimitive }?.asInt
+}
+
+private fun JsonObject.readBoolean(primaryKey: String, legacyKey: String?): Boolean? {
+    val value = get(primaryKey) ?: legacyKey?.let { get(it) } ?: return null
+    return value.takeIf { it.isJsonPrimitive }?.asBoolean
+}
+
+private fun JsonObject.readArray(primaryKey: String, legacyKey: String?): List<JsonObject> {
+    val value = get(primaryKey) ?: legacyKey?.let { get(it) } ?: return emptyList()
+    if (!value.isJsonArray) return emptyList()
+    return value.asJsonArray.mapNotNull(JsonElement::asJsonObjectOrNull)
+}
+
+private fun JsonElement.asJsonObjectOrNull(): JsonObject? =
+    if (isJsonObject) asJsonObject else null
