@@ -144,4 +144,42 @@ class DashboardLayoutEngineTest {
             resized.items.first { it.widgetId == StatusDashboardWidgets.RECENT_RUNS }.spanMode
         )
     }
+
+    @Test
+    fun sanitizePreservesTightStackingUsingSpatialOrderInsteadOfOriginalListOrder() {
+        val layout = DashboardLayout(
+            densityPreset = DashboardDensityPreset.STANDARD,
+            items = listOf(
+                DashboardLayoutItem(
+                    widgetId = StatusDashboardWidgets.RECENT_RUNS,
+                    x = 0,
+                    y = 10,
+                    w = 16,
+                    h = 8,
+                    visible = true
+                ),
+                DashboardLayoutItem(
+                    widgetId = StatusDashboardWidgets.BUILD_ACTIVITY,
+                    x = 0,
+                    y = 0,
+                    w = 16,
+                    h = 10,
+                    visible = true
+                )
+            )
+        )
+
+        val sanitized = DashboardLayoutEngine.sanitize(
+            layout = layout,
+            definitions = StatusDashboardWidgets.definitions,
+            defaultLayout = StatusDashboardWidgets.defaultLayout(DashboardDensityPreset.STANDARD),
+            appendMissingDefinitions = false
+        )
+
+        val buildActivity = sanitized.items.first { it.widgetId == StatusDashboardWidgets.BUILD_ACTIVITY }
+        val recentRuns = sanitized.items.first { it.widgetId == StatusDashboardWidgets.RECENT_RUNS }
+        assertEquals(10, recentRuns.y)
+        assertEquals(buildActivity.bottom, recentRuns.y)
+        assertTrue(DashboardLayoutEngine.isLayoutLegal(sanitized, StatusDashboardWidgets.definitions))
+    }
 }

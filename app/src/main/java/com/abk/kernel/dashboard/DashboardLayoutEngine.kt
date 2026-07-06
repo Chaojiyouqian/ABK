@@ -13,9 +13,15 @@ object DashboardLayoutEngine {
         val definitionMap = definitions.associateBy { it.widgetId }
         val defaultItemsById = defaultLayout.items.associateBy { it.widgetId }
         val inputItemsById = layout.items.associateBy { it.widgetId }
+        val orderedInputItems = layout.items.sortedWith(
+            compareBy<DashboardLayoutItem> { !it.visible }
+                .thenBy { it.y }
+                .thenBy { it.x }
+                .thenBy { it.widgetId }
+        )
         val orderedWidgetIds = buildList {
             val seen = linkedSetOf<String>()
-            layout.items.forEach { item ->
+            orderedInputItems.forEach { item ->
                 if (item.widgetId in definitionMap && seen.add(item.widgetId)) {
                     add(item.widgetId)
                 }
