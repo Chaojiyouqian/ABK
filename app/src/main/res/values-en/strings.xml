@@ -105,6 +105,26 @@
 
     <!-- Build -->
     <string name="build_title">Build Kernel</string>
+    <string name="build_open_simple_flow">Open guided build flow</string>
+    <string name="build_page_style_dialog_title">Choose your build page style</string>
+    <string name="build_page_style_dialog_desc">Pick how you want to enter the build flow. You can change this later in Settings.</string>
+    <string name="build_page_style_dialog_classic_desc">Classic: keeps the standalone Build tab for the current all-in-one page.</string>
+    <string name="build_page_style_dialog_simple_desc">Simple: removes the Build tab and uses the home-page “+” button to open a segmented guide.</string>
+    <string name="build_guided_title">Guided build flow</string>
+    <string name="build_guided_close">Close guided build flow</string>
+    <string name="build_guided_progress">Step %1$d / %2$d</string>
+    <string name="build_guided_previous">Previous</string>
+    <string name="build_guided_next">Next</string>
+    <string name="build_guided_step_overview">Overview</string>
+    <string name="build_guided_step_kernel">Kernel version</string>
+    <string name="build_guided_step_ksu">KernelSU</string>
+    <string name="build_guided_step_features">Features</string>
+    <string name="build_guided_step_finish">Finish</string>
+    <string name="build_guided_step_overview_desc">Confirm the build target, current plan, and any running jobs first.</string>
+    <string name="build_guided_step_kernel_desc">Choose Android, kernel sublevel, and patch level for the device and KMI.</string>
+    <string name="build_guided_step_ksu_desc">Pick the KernelSU variant, branch, and any custom ref.</string>
+    <string name="build_guided_step_features_desc">Configure virtualization, ZRAM, KPM, custom modules, and other feature toggles.</string>
+    <string name="build_guided_step_finish_desc">Fill in version, build time, and advanced options, then submit the build.</string>
     <string name="build_login_required_title">Sign in to GitHub before building</string>
     <string name="build_login_required_desc">ABK no longer forces GitHub sign-in at startup. Enter OOBE here when you are ready to build.</string>
     <string name="build_fork_required_title">Fork setup is still required</string>
@@ -589,6 +609,12 @@
     <string name="settings_title">Settings</string>
     <string name="settings_account">Account</string>
     <string name="settings_build">Build</string>
+    <string name="settings_build_page_style">Build page style</string>
+    <string name="settings_build_page_style_desc">Choose between the dedicated build tab and a home-page “+” button that opens a guided build flow.</string>
+    <string name="settings_build_page_style_classic">Classic</string>
+    <string name="settings_build_page_style_simple">Simple</string>
+    <string name="settings_build_page_style_classic_desc">Keeps the standalone Build tab and the current full build page.</string>
+    <string name="settings_build_page_style_simple_desc">Removes the Build tab and opens a segmented guided flow from the home-page “+” button.</string>
     <string name="settings_notification">Notifications</string>
     <string name="settings_about">About</string>
     <string name="settings_extensions_title">Extensions</string>

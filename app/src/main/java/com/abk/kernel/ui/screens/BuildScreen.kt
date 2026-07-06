@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.animateContentSize
@@ -105,8 +106,10 @@ private const val CATALOG_MODULE_REMOVE_DELAY_MS = 260L
 fun BuildScreen(
     vm: MainViewModel,
     outerPadding: PaddingValues = PaddingValues(0.dp),
+    guidedMode: Boolean = false,
     onPlanPageVisibleChange: (Boolean) -> Unit = {},
-    onNavigateToStatus: () -> Unit = {}
+    onNavigateToStatus: () -> Unit = {},
+    onDismissGuidedMode: (() -> Unit)? = null
 ) {
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
@@ -177,6 +180,11 @@ fun BuildScreen(
     val customModuleGroups = remember(config.customExternalModules, catalogModuleByUrl) {
         groupBuildCustomExternalModules(config.customExternalModules, catalogModuleByUrl)
     }
+    val guideSteps = remember(isOnePlusBuild) {
+        buildGuideSteps(isOnePlusBuild)
+    }
+    var guidedStepIndex by rememberSaveable(guidedMode, isOnePlusBuild) { mutableStateOf(0) }
+    val activeGuideStep = guideSteps.getOrElse(guidedStepIndex.coerceIn(0, guideSteps.lastIndex)) { guideSteps.first() }
     val childPageVisible = showPlanLibraryPage || showBuildQueuePage
     val childPageTransition = rememberChildPageOverlayTransition(
         visible = childPageVisible,
@@ -227,6 +235,16 @@ fun BuildScreen(
 
     DisposableEffect(Unit) {
         onDispose { onPlanPageVisibleChange(false) }
+    }
+
+    LaunchedEffect(guideSteps) {
+        guidedStepIndex = guidedStepIndex.coerceIn(0, guideSteps.lastIndex)
+    }
+
+    if (guidedMode && !childPageVisible) {
+        BackHandler {
+            onDismissGuidedMode?.invoke() ?: onNavigateToStatus()
+        }
     }
 
     fun clearModuleSetEditor() {
@@ -870,7 +888,16 @@ fun BuildScreen(
             topBar = {
                 ExpressiveTopBar(
                     title = stringResource(R.string.build_title),
-                    scrollBehavior = scrollBehavior
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = if (guidedMode) {
+                        {
+                            IconButton(onClick = { onDismissGuidedMode?.invoke() ?: onNavigateToStatus() }) {
+                                Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.build_guided_close))
+                            }
+                        }
+                    } else {
+                        null
+                    }
                 )
             }
         ) { padding ->
@@ -949,8 +976,17 @@ fun BuildScreen(
             containerColor = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
             topBar = {
                 ExpressiveTopBar(
-                    title = stringResource(R.string.build_title),
-                    scrollBehavior = scrollBehavior
+                    title = if (guidedMode) stringResource(R.string.build_guided_title) else stringResource(R.string.build_title),
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = if (guidedMode) {
+                        {
+                            IconButton(onClick = { onDismissGuidedMode?.invoke() ?: onNavigateToStatus() }) {
+                                Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.build_guided_close))
+                            }
+                        }
+                    } else {
+                        null
+                    }
                 )
             }
         ) { padding ->
@@ -963,116 +999,127 @@ fun BuildScreen(
                     .padding(horizontal = AbkScreenHorizontalPadding),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-            BuildPlanHero(
-                config,
-                recommended,
-                state.buildStatus
-            )
-
-            BuildPlanToolsCard(
-                plansCount = state.buildPlans.size,
-                pendingQueueCount = pendingQueueCount,
-                activeQueueCount = activeQueueCount,
-                expanded = planToolsExpanded,
-                currentSummary = buildPlanSummary(config),
-                onExpandedChange = { planToolsExpanded = it },
-                onSave = {
-                    savePlanName = suggestedPlanName
-                    showSavePlanDialog = true
-                },
-                onLibrary = ::openPlanLibraryPage,
-                onQueue = ::openBuildQueuePage,
-                onShare = {
-                    sharePlanTarget = BuildPlan(name = suggestedPlanName, config = config)
-                },
-                onImport = {
-                    importPlanCode = ""
-                    importPlanPreview = null
-                    importPlanError = null
-                    showImportPlanDialog = true
-                }
-            )
-
-            BuildTargetSelector(
-                selected = config.buildTarget,
-                onSelect = { target ->
-                    val next = if (target == BUILD_TARGET_ONEPLUS) {
-                        config.copy(
-                            buildTarget = BUILD_TARGET_ONEPLUS,
-                            androidVersion = "android14",
-                            kernelVersion = "6.1",
-                            kernelsuVariant = KSU_VARIANT_SUKISU,
-                            cancelSusfs = true,
-                            useKpm = false,
-                            useBbg = true,
-                            onePlusCpu = "sm8650",
-                            onePlusDeviceManifest = "oneplus_12_b",
-                            onePlusUseLz4kd = false,
-                            onePlusUseBbr = false,
-                            onePlusUseProxyOptimization = true,
-                            onePlusUseUnicodeBypass = false
-                        )
-                    } else {
-                        config.copy(
-                            buildTarget = BUILD_TARGET_GKI,
-                            kernelsuVariant = KSU_VARIANT_RESUKISU
-                        )
-                    }
-                    vm.updateBuildConfig(KernelSupport.normalize(next))
-                }
-            )
-
-            AnimatedVisibility(
-                visible = state.buildStatus != BuildStatus.IDLE,
-                enter = fadeIn() + slideInVertically { -it / 3 } + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                val kernelActiveRuns = remember(state.activeBuildRuns) {
-                    state.activeBuildRuns.filter { it.isKernelBuild() }
-                }
-                val managerActiveRuns = remember(state.activeBuildRuns) {
-                    state.activeBuildRuns.filter { it.isManagerBuild() }
-                }
-                val kernelRunningChips = remember(kernelActiveRuns, state.buildQueue) {
-                    buildRunChipsForStatus(kernelActiveRuns, state.buildQueue, running = true)
-                }
-                val kernelQueuedChips = remember(kernelActiveRuns, state.buildQueue) {
-                    buildRunChipsForStatus(kernelActiveRuns, state.buildQueue, running = false)
-                }
-                val managerRunningChips = remember(managerActiveRuns, state.buildQueue) {
-                    buildRunChipsForStatus(managerActiveRuns, state.buildQueue, running = true)
-                }
-                val managerQueuedChips = remember(managerActiveRuns, state.buildQueue) {
-                    buildRunChipsForStatus(managerActiveRuns, state.buildQueue, running = false)
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    BuildKindProgressBlock(
-                        title = stringResource(R.string.status_build),
-                        status = state.kernelBuildStatus,
-                        progress = state.kernelBuildProgress,
-                        currentRun = state.kernelCurrentRun,
-                        activeRunCount = state.kernelActiveBuildRuns.size,
-                        cancellingRunIds = state.cancellingWorkflowRunIds,
-                        runningChips = kernelRunningChips,
-                        queuedChips = kernelQueuedChips,
-                        onCancel = vm::cancelWorkflowRun,
+                if (guidedMode) {
+                    BuildGuideHeader(
+                        steps = guideSteps,
+                        activeStep = activeGuideStep,
+                        activeIndex = guidedStepIndex
                     )
-                    if (state.managerBuildStatus != BuildStatus.IDLE || state.managerCurrentRun != null) {
-                        BuildKindProgressBlock(
-                            title = stringResource(R.string.status_manager_build),
-                            status = state.managerBuildStatus,
-                            progress = state.managerBuildProgress,
-                            currentRun = state.managerCurrentRun,
-                            activeRunCount = state.managerActiveBuildRuns.size,
-                            cancellingRunIds = state.cancellingWorkflowRunIds,
-                            runningChips = managerRunningChips,
-                            queuedChips = managerQueuedChips,
-                            onCancel = vm::cancelWorkflowRun,
-                        )
+                }
+
+                if (!guidedMode || activeGuideStep == BuildGuideStep.Overview) {
+                    BuildPlanHero(
+                        config,
+                        recommended,
+                        state.buildStatus
+                    )
+
+                    BuildPlanToolsCard(
+                        plansCount = state.buildPlans.size,
+                        pendingQueueCount = pendingQueueCount,
+                        activeQueueCount = activeQueueCount,
+                        expanded = planToolsExpanded,
+                        currentSummary = buildPlanSummary(config),
+                        onExpandedChange = { planToolsExpanded = it },
+                        onSave = {
+                            savePlanName = suggestedPlanName
+                            showSavePlanDialog = true
+                        },
+                        onLibrary = ::openPlanLibraryPage,
+                        onQueue = ::openBuildQueuePage,
+                        onShare = {
+                            sharePlanTarget = BuildPlan(name = suggestedPlanName, config = config)
+                        },
+                        onImport = {
+                            importPlanCode = ""
+                            importPlanPreview = null
+                            importPlanError = null
+                            showImportPlanDialog = true
+                        }
+                    )
+
+                    BuildTargetSelector(
+                        selected = config.buildTarget,
+                        onSelect = { target ->
+                            val next = if (target == BUILD_TARGET_ONEPLUS) {
+                                config.copy(
+                                    buildTarget = BUILD_TARGET_ONEPLUS,
+                                    androidVersion = "android14",
+                                    kernelVersion = "6.1",
+                                    kernelsuVariant = KSU_VARIANT_SUKISU,
+                                    cancelSusfs = true,
+                                    useKpm = false,
+                                    useBbg = true,
+                                    onePlusCpu = "sm8650",
+                                    onePlusDeviceManifest = "oneplus_12_b",
+                                    onePlusUseLz4kd = false,
+                                    onePlusUseBbr = false,
+                                    onePlusUseProxyOptimization = true,
+                                    onePlusUseUnicodeBypass = false
+                                )
+                            } else {
+                                config.copy(
+                                    buildTarget = BUILD_TARGET_GKI,
+                                    kernelsuVariant = KSU_VARIANT_RESUKISU
+                                )
+                            }
+                            vm.updateBuildConfig(KernelSupport.normalize(next))
+                        }
+                    )
+
+                    AnimatedVisibility(
+                        visible = state.buildStatus != BuildStatus.IDLE,
+                        enter = fadeIn() + slideInVertically { -it / 3 } + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        val kernelActiveRuns = remember(state.activeBuildRuns) {
+                            state.activeBuildRuns.filter { it.isKernelBuild() }
+                        }
+                        val managerActiveRuns = remember(state.activeBuildRuns) {
+                            state.activeBuildRuns.filter { it.isManagerBuild() }
+                        }
+                        val kernelRunningChips = remember(kernelActiveRuns, state.buildQueue) {
+                            buildRunChipsForStatus(kernelActiveRuns, state.buildQueue, running = true)
+                        }
+                        val kernelQueuedChips = remember(kernelActiveRuns, state.buildQueue) {
+                            buildRunChipsForStatus(kernelActiveRuns, state.buildQueue, running = false)
+                        }
+                        val managerRunningChips = remember(managerActiveRuns, state.buildQueue) {
+                            buildRunChipsForStatus(managerActiveRuns, state.buildQueue, running = true)
+                        }
+                        val managerQueuedChips = remember(managerActiveRuns, state.buildQueue) {
+                            buildRunChipsForStatus(managerActiveRuns, state.buildQueue, running = false)
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            BuildKindProgressBlock(
+                                title = stringResource(R.string.status_build),
+                                status = state.kernelBuildStatus,
+                                progress = state.kernelBuildProgress,
+                                currentRun = state.kernelCurrentRun,
+                                activeRunCount = state.kernelActiveBuildRuns.size,
+                                cancellingRunIds = state.cancellingWorkflowRunIds,
+                                runningChips = kernelRunningChips,
+                                queuedChips = kernelQueuedChips,
+                                onCancel = vm::cancelWorkflowRun,
+                            )
+                            if (state.managerBuildStatus != BuildStatus.IDLE || state.managerCurrentRun != null) {
+                                BuildKindProgressBlock(
+                                    title = stringResource(R.string.status_manager_build),
+                                    status = state.managerBuildStatus,
+                                    progress = state.managerBuildProgress,
+                                    currentRun = state.managerCurrentRun,
+                                    activeRunCount = state.managerActiveBuildRuns.size,
+                                    cancellingRunIds = state.cancellingWorkflowRunIds,
+                                    runningChips = managerRunningChips,
+                                    queuedChips = managerQueuedChips,
+                                    onCancel = vm::cancelWorkflowRun,
+                                )
+                            }
+                        }
                     }
                 }
-            }
 
+            if (!guidedMode || activeGuideStep == BuildGuideStep.Kernel) {
             SectionCard(section = BuildSection.KernelVersion) {
                 if (isOnePlusBuild) {
                     DropdownField(
@@ -1190,7 +1237,9 @@ fun BuildScreen(
                     }
                 }
             }
+            }
 
+            if (!guidedMode || activeGuideStep == BuildGuideStep.KernelSu) {
             SectionCard(section = BuildSection.KernelSu) {
                 val noRootScheme = config.kernelsuVariant == KSU_VARIANT_NONE
                 DropdownField(
@@ -1247,7 +1296,9 @@ fun BuildScreen(
                     )
                 }
             }
+            }
 
+            if (!guidedMode || activeGuideStep == BuildGuideStep.Features) {
             SectionCard(section = BuildSection.Features) {
                 val noRootScheme = config.kernelsuVariant == KSU_VARIANT_NONE
                 val kpmSupported = KernelSupport.isKpmSupported(
@@ -1588,7 +1639,9 @@ fun BuildScreen(
                     }
                 }
             }
+            }
 
+            if (!guidedMode || activeGuideStep == BuildGuideStep.Finish) {
             SectionCard(section = BuildSection.OptionalConfig) {
                 OutlinedTextField(
                     value = config.version,
@@ -1609,22 +1662,60 @@ fun BuildScreen(
                 ConfigPreviewText(buildTimePreview)
             }
             }
+            }
+
+            if (guidedMode) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            guidedStepIndex = (guidedStepIndex - 1).coerceAtLeast(0)
+                        },
+                        enabled = guidedStepIndex > 0,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(stringResource(R.string.build_guided_previous))
+                    }
+                    Button(
+                        onClick = {
+                            if (guidedStepIndex < guideSteps.lastIndex) {
+                                guidedStepIndex += 1
+                            } else {
+                                showConfirmDialog = true
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            if (guidedStepIndex < guideSteps.lastIndex) {
+                                stringResource(R.string.build_guided_next)
+                            } else {
+                                stringResource(R.string.build_submit)
+                            }
+                        )
+                    }
+                }
+            }
 
             // Submit button
-            Button(
-                onClick = { showConfirmDialog = true },
-                enabled = true,
-                modifier = Modifier.fillMaxWidth().height(52.dp)
-            ) {
-                Icon(Icons.Default.RocketLaunch, null)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    if (activeBuild || activeQueueCount > 0 || state.buildQueueProcessing) {
-                        stringResource(R.string.build_add_queue)
-                    } else {
-                        stringResource(R.string.build_submit)
-                    }
-                )
+            if (!guidedMode) {
+                Button(
+                    onClick = { showConfirmDialog = true },
+                    enabled = true,
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                ) {
+                    Icon(Icons.Default.RocketLaunch, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (activeBuild || activeQueueCount > 0 || state.buildQueueProcessing) {
+                            stringResource(R.string.build_add_queue)
+                        } else {
+                            stringResource(R.string.build_submit)
+                        }
+                    )
+                }
             }
 
             Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
@@ -3017,6 +3108,104 @@ private enum class BuildSection {
     KpmOptions,
     CustomModules,
     OptionalConfig
+}
+
+private enum class BuildGuideStep {
+    Overview,
+    Kernel,
+    KernelSu,
+    Features,
+    Finish
+}
+
+private fun buildGuideSteps(isOnePlusBuild: Boolean): List<BuildGuideStep> =
+    if (isOnePlusBuild) {
+        listOf(
+            BuildGuideStep.Overview,
+            BuildGuideStep.Kernel,
+            BuildGuideStep.KernelSu,
+            BuildGuideStep.Features,
+            BuildGuideStep.Finish
+        )
+    } else {
+        listOf(
+            BuildGuideStep.Overview,
+            BuildGuideStep.Kernel,
+            BuildGuideStep.KernelSu,
+            BuildGuideStep.Features,
+            BuildGuideStep.Finish
+        )
+    }
+
+@Composable
+private fun BuildGuideStep.title(): String = when (this) {
+    BuildGuideStep.Overview -> stringResource(R.string.build_guided_step_overview)
+    BuildGuideStep.Kernel -> stringResource(R.string.build_guided_step_kernel)
+    BuildGuideStep.KernelSu -> stringResource(R.string.build_guided_step_ksu)
+    BuildGuideStep.Features -> stringResource(R.string.build_guided_step_features)
+    BuildGuideStep.Finish -> stringResource(R.string.build_guided_step_finish)
+}
+
+@Composable
+private fun BuildGuideStep.description(): String = when (this) {
+    BuildGuideStep.Overview -> stringResource(R.string.build_guided_step_overview_desc)
+    BuildGuideStep.Kernel -> stringResource(R.string.build_guided_step_kernel_desc)
+    BuildGuideStep.KernelSu -> stringResource(R.string.build_guided_step_ksu_desc)
+    BuildGuideStep.Features -> stringResource(R.string.build_guided_step_features_desc)
+    BuildGuideStep.Finish -> stringResource(R.string.build_guided_step_finish_desc)
+}
+
+@Composable
+private fun BuildGuideHeader(
+    steps: List<BuildGuideStep>,
+    activeStep: BuildGuideStep,
+    activeIndex: Int
+) {
+    ExpressiveHeroCard(
+        title = activeStep.title(),
+        subtitle = activeStep.description(),
+        icon = Icons.Default.AutoAwesome,
+        badge = {
+            ExpressiveStatusChip(
+                label = stringResource(R.string.build_guided_progress, activeIndex + 1, steps.size),
+                icon = Icons.Default.Timeline,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            steps.forEachIndexed { index, step ->
+                AssistChip(
+                    onClick = {},
+                    enabled = false,
+                    label = {
+                        Text(
+                            text = "${index + 1}. ${step.title()}",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = if (step == activeStep) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHigh
+                        },
+                        labelColor = if (step == activeStep) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                )
+            }
+        }
+    }
 }
 
 @Composable

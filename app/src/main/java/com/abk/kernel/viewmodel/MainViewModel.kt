@@ -190,6 +190,7 @@ data class MainUiState(
     val appUpdateError: String? = null,
     val appUpdatePendingInstallPath: String? = null,
     val predictiveBackEnabled: Boolean = true,
+    val buildPageStyle: String? = null,
     val runtimeNavigationEnabled: Boolean = false,
     val webViewDebugEnabled: Boolean = false,
     val managerAccessState: ManagerAccessState = ManagerAccessState.UNKNOWN,
@@ -585,6 +586,11 @@ class MainViewModel @JvmOverloads constructor(
         viewModelScope.launch {
             prefs.predictiveBackEnabled.collect { enabled ->
                 _uiState.update { it.copy(predictiveBackEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            prefs.buildPageStyle.collect { style ->
+                _uiState.update { it.copy(buildPageStyle = style) }
             }
         }
         viewModelScope.launch {
@@ -3873,6 +3879,10 @@ class MainViewModel @JvmOverloads constructor(
 
     fun importBuildPlanToCurrentConfig(preview: BuildPlanImportPreview) {
         updateBuildConfig(preview.plan.config)
+    }
+
+    fun setBuildPageStyle(style: String?) = viewModelScope.launch {
+        prefs.setBuildPageStyle(style)
     }
 
     fun addBuildModuleRepository(url: String) {

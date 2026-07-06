@@ -105,6 +105,26 @@
 
     <!-- Build -->
     <string name="build_title">构建内核</string>
+    <string name="build_open_simple_flow">打开分段构建向导</string>
+    <string name="build_page_style_dialog_title">选择构建页风格</string>
+    <string name="build_page_style_dialog_desc">首次进入后请选择你想使用的构建方式，之后可以随时在设置里切换。</string>
+    <string name="build_page_style_dialog_classic_desc">经典：保留独立构建 Tab，适合直接整页配置所有选项。</string>
+    <string name="build_page_style_dialog_simple_desc">简单：移除构建 Tab，在主页右下角通过“+”打开分段引导配置页。</string>
+    <string name="build_guided_title">分段构建向导</string>
+    <string name="build_guided_close">关闭构建向导</string>
+    <string name="build_guided_progress">第 %1$d / %2$d 步</string>
+    <string name="build_guided_previous">上一步</string>
+    <string name="build_guided_next">下一步</string>
+    <string name="build_guided_step_overview">概览</string>
+    <string name="build_guided_step_kernel">内核版本</string>
+    <string name="build_guided_step_ksu">KernelSU</string>
+    <string name="build_guided_step_features">功能开关</string>
+    <string name="build_guided_step_finish">完成提交</string>
+    <string name="build_guided_step_overview_desc">先确认构建目标、当前方案和正在运行的任务。</string>
+    <string name="build_guided_step_kernel_desc">按设备和 KMI 选择 Android、内核子版本与补丁级别。</string>
+    <string name="build_guided_step_ksu_desc">选择 KernelSU 变体、分支以及自定义引用。</string>
+    <string name="build_guided_step_features_desc">配置虚拟化、ZRAM、KPM、自定义模块和其他功能开关。</string>
+    <string name="build_guided_step_finish_desc">补充版本、时间与高级选项，确认后提交构建。</string>
     <string name="build_login_required_title">登录 GitHub 后才能构建</string>
     <string name="build_login_required_desc">ABK 现在不会在启动时强制登录。需要构建内核时，再进入 OOBE 完成 GitHub 授权即可。</string>
     <string name="build_fork_required_title">还需要完成 fork 配置</string>
@@ -589,6 +609,12 @@
     <string name="settings_title">设置</string>
     <string name="settings_account">账户</string>
     <string name="settings_build">构建</string>
+    <string name="settings_build_page_style">构建页风格</string>
+    <string name="settings_build_page_style_desc">选择保留独立构建页，或改用主页右下角按钮进入分段引导式构建。</string>
+    <string name="settings_build_page_style_classic">经典</string>
+    <string name="settings_build_page_style_simple">简单</string>
+    <string name="settings_build_page_style_classic_desc">保留单独的构建 Tab，沿用当前完整构建页。</string>
+    <string name="settings_build_page_style_simple_desc">从 Tab 移除构建页，在主页右下角通过“+”进入分段引导配置。</string>
     <string name="settings_notification">通知</string>
     <string name="settings_about">关于</string>
     <string name="settings_extensions_title">扩展</string>
