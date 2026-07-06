@@ -134,7 +134,7 @@ object DashboardLayoutCodec {
             layout = DashboardLayout(
                 version = DASHBOARD_LAYOUT_VERSION,
                 pageId = DashboardPageId.STATUS,
-                layoutMode = DashboardLayoutMode.GRID,
+                layoutMode = layoutMode,
                 densityPreset = densityPreset,
                 items = importedItems
             ),
