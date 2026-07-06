@@ -91,7 +91,7 @@ fun DashboardGrid(
             )
     }
     val rowHeight = layout.densityPreset.rowHeightDp.dp
-    val gridGap = 8.dp
+    val gridGap = 4.dp
     val contentRows = max(
         1,
         visibleItems.maxOfOrNull { it.bottom } ?: 0
@@ -257,7 +257,7 @@ private fun DashboardGridItem(
                 .fillMaxSize()
                 .clip(MaterialTheme.shapes.extraLarge)
                 .border(
-                    width = if (editable) 1.5.dp else 0.dp,
+                    width = if (editable) 1.dp else 0.dp,
                     color = outlineColor,
                     shape = MaterialTheme.shapes.extraLarge
                 ),
@@ -269,10 +269,10 @@ private fun DashboardGridItem(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(
-                        start = if (editable) 8.dp else 0.dp,
-                        top = if (editable) 36.dp else 0.dp,
-                        end = if (editable) 8.dp else 0.dp,
-                        bottom = if (editable) 8.dp else 0.dp
+                        start = if (editable) 6.dp else 0.dp,
+                        top = if (editable) 34.dp else 0.dp,
+                        end = if (editable) 6.dp else 0.dp,
+                        bottom = if (editable) 6.dp else 0.dp
                     )
             ) {
                 content()
@@ -345,7 +345,7 @@ private fun DashboardGridItem(
                 enabled = false,
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(8.dp),
+                    .padding(6.dp),
                 label = {
                     Text(
                         text = title,
@@ -370,7 +370,7 @@ private fun DashboardGridItem(
             Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(6.dp)
+                    .padding(4.dp)
                     .wrapContentWidth(),
                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -422,8 +422,8 @@ private fun DashboardGridItem(
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(6.dp)
-                        .size(36.dp)
+                        .padding(4.dp)
+                        .size(32.dp)
                         .clip(MaterialTheme.shapes.medium)
                         .background(uiSurfaceColor(MaterialTheme.colorScheme.surface))
                         .pointerInput(item.widgetId, item.w, item.h) {

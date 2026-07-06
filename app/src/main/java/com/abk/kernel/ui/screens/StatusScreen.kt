@@ -113,6 +113,16 @@ fun StatusScreen(
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
         label = "status-layout-fab-rotation"
     )
+    val trayWidgetIds = remember(dashboardLayout.items, hiddenWidgetDrag) {
+        buildList {
+            val hiddenIds = dashboardLayout.items.filter { !it.visible }.map { it.widgetId }
+            addAll(hiddenIds)
+            val draggingWidgetId = hiddenWidgetDrag?.widgetId
+            if (draggingWidgetId != null && draggingWidgetId !in this) {
+                add(draggingWidgetId)
+            }
+        }
+    }
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -302,7 +312,7 @@ fun StatusScreen(
             if (state.statusDashboardEditMode) {
                 StatusEditorWidgetsTray(
                     visible = widgetsTrayExpanded,
-                    hiddenItems = dashboardLayout.items.filter { !it.visible }.map { it.widgetId },
+                    hiddenItems = trayWidgetIds,
                     widgetLabels = widgetLabels,
                     dashboardLayout = dashboardLayout,
                     state = state,
@@ -482,7 +492,7 @@ private fun StatusEditorWidgetsTray(
                 },
             shape = dockShape,
             color = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
-            border = BorderStroke(2.dp, Color(0xFFF6B94C)),
+            border = BorderStroke(1.5.dp, Color(0xFFF6B94C)),
             tonalElevation = 0.dp,
             shadowElevation = 0.dp
         ) {
@@ -539,10 +549,21 @@ private fun StatusEditorBottomDock(
             },
         shape = dockShape,
         color = Color.Transparent,
-        border = BorderStroke(2.dp, Color(0xFFF6B94C)),
+        border = BorderStroke(1.5.dp, Color(0xFFF6B94C)),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
-    ) {}
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "（${stringResource(R.string.status_layout_bottom_dock)}）",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color(0xFF3C2A00)
+            )
+        }
+    }
 }
 
 @Composable
