@@ -54,6 +54,8 @@ import com.abk.kernel.data.model.BUILD_TARGET_ONEPLUS
 import com.abk.kernel.data.model.CustomExternalModule
 import com.abk.kernel.data.model.CustomExternalModuleEntryKind
 import com.abk.kernel.data.model.CustomExternalModuleStage
+import com.abk.kernel.data.model.CustomKernelConfigEntry
+import com.abk.kernel.data.model.CustomKernelConfigState
 import com.abk.kernel.data.model.ExternalModuleMetadata
 import com.abk.kernel.data.model.KernelSupport
 import com.abk.kernel.data.model.KernelBuildConfig
@@ -66,9 +68,15 @@ import com.abk.kernel.data.model.ModuleCatalogItem
 import com.abk.kernel.data.model.ModuleCatalogItemKind
 import com.abk.kernel.data.model.ModuleCatalogRepository
 import com.abk.kernel.data.model.WorkflowRun
+import com.abk.kernel.data.model.enabledCustomKernelConfigEntryCount
 import com.abk.kernel.data.model.isKernelBuild
 import com.abk.kernel.data.model.isManagerBuild
 import com.abk.kernel.data.model.isManagerDevBuild
+import com.abk.kernel.data.model.isSupportedCustomKernelConfigKey
+import com.abk.kernel.data.model.normalizeCustomKernelConfigKey
+import com.abk.kernel.data.model.parseCustomKernelConfigEntry
+import com.abk.kernel.data.model.parseCustomKernelConfigEntries
+import com.abk.kernel.data.model.serializeCustomKernelConfigEntries
 import com.abk.kernel.ui.components.AbkScreenHorizontalPadding
 import com.abk.kernel.ui.components.AbkSegmentedButtonOption
 import com.abk.kernel.ui.components.AbkSingleChoiceSegmentedButtonRow
@@ -144,8 +152,11 @@ fun BuildScreen(
     val buildTimePreview = remember(context, config.buildTime) {
         buildTimePreview(context, config.buildTime)
     }
+    val customKernelConfigEntries = remember(config.customKernelConfig) {
+        parseCustomKernelConfigEntries(config.customKernelConfig)
+    }
     val customKernelConfigEntryCount = remember(config.customKernelConfig) {
-        countCustomKernelConfigEntries(config.customKernelConfig)
+        enabledCustomKernelConfigEntryCount(config.customKernelConfig)
     }
     var showConfirmDialog by remember { mutableStateOf(false) }
     var showBuildSubmittedDialog by rememberSaveable { mutableStateOf(false) }
@@ -165,6 +176,11 @@ fun BuildScreen(
     var customModuleUrl by remember { mutableStateOf("") }
     var pendingCustomModuleUrl by remember { mutableStateOf("") }
     var pendingCustomModuleMetadata by remember { mutableStateOf<ExternalModuleMetadata?>(null) }
+    var customKernelConfigDraft by rememberSaveable { mutableStateOf("") }
+    var customKernelConfigInlineError by rememberSaveable { mutableStateOf<String?>(null) }
+    var showCustomKernelConfigImportDialog by rememberSaveable { mutableStateOf(false) }
+    var customKernelConfigImportText by rememberSaveable { mutableStateOf("") }
+    var customKernelConfigImportError by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedCustomModuleStages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var editingCustomModuleGroup by remember { mutableStateOf<BuildCustomModuleGroup?>(null) }
     var editingCustomModuleStages by rememberSaveable { mutableStateOf(emptyList<String>()) }
@@ -255,6 +271,73 @@ fun BuildScreen(
         editingModuleSetMetadata = null
         editingModuleSetChildIds = emptyList()
         editingModuleSetStageSelections = emptyMap()
+    }
+
+    fun updateCustomKernelConfigEntries(entries: List<CustomKernelConfigEntry>) {
+        vm.updateBuildConfig(config.copy(customKernelConfig = serializeCustomKernelConfigEntries(entries)))
+    }
+
+    fun mergeCustomKernelConfigKeys(
+        existing: List<CustomKernelConfigEntry>,
+        imports: List<CustomKernelConfigEntry>
+    ): List<CustomKernelConfigEntry> {
+        val updated = existing.toMutableList()
+        imports.forEach { imported ->
+            val index = updated.indexOfFirst { it.key == imported.key }
+            if (index >= 0) {
+                updated[index] = imported
+            } else {
+                updated += imported
+            }
+        }
+        return updated
+    }
+
+    fun addCustomKernelConfigEntry() {
+        val normalizedKey = normalizeCustomKernelConfigKey(customKernelConfigDraft)
+        if (normalizedKey.isBlank()) return
+        if (!isSupportedCustomKernelConfigKey(normalizedKey)) {
+            customKernelConfigInlineError = context.getString(
+                R.string.build_custom_kernel_config_invalid_key,
+                customKernelConfigDraft.trim()
+            )
+            return
+        }
+        updateCustomKernelConfigEntries(
+            mergeCustomKernelConfigKeys(
+                customKernelConfigEntries,
+                listOf(CustomKernelConfigEntry(normalizedKey, CustomKernelConfigState.BUILT_IN))
+            )
+        )
+        customKernelConfigDraft = ""
+        customKernelConfigInlineError = null
+    }
+
+    fun importCustomKernelConfigEntries() {
+        customKernelConfigImportError = null
+        val imports = mutableListOf<CustomKernelConfigEntry>()
+        customKernelConfigImportText
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .forEach { line ->
+                val entry = parseCustomKernelConfigEntry(line)
+                if (entry == null) {
+                    customKernelConfigImportError = context.getString(
+                        R.string.build_custom_kernel_config_invalid_line,
+                        line
+                    )
+                    return
+                }
+                imports += entry
+            }
+        if (customKernelConfigImportError != null) return
+        updateCustomKernelConfigEntries(mergeCustomKernelConfigKeys(customKernelConfigEntries, imports))
+        customKernelConfigImportText = ""
+        customKernelConfigImportError = null
+        showCustomKernelConfigImportDialog = false
     }
 
     fun openModuleSetEditor(group: BuildCustomModuleGroup) {
@@ -424,6 +507,22 @@ fun BuildScreen(
             dismissButton = {
                 TextButton(onClick = { showConfirmDialog = false }) { Text(stringResource(R.string.cancel)) }
             }
+        )
+    }
+
+    if (showCustomKernelConfigImportDialog) {
+        CustomKernelConfigImportDialog(
+            text = customKernelConfigImportText,
+            error = customKernelConfigImportError,
+            onTextChange = {
+                customKernelConfigImportText = it
+                customKernelConfigImportError = null
+            },
+            onDismiss = {
+                showCustomKernelConfigImportDialog = false
+                customKernelConfigImportError = null
+            },
+            onImport = ::importCustomKernelConfigEntries
         )
     }
 
@@ -1732,17 +1831,60 @@ fun BuildScreen(
                     singleLine = true
                 )
                 ConfigPreviewText(buildTimePreview)
-                OutlinedTextField(
-                    value = config.customKernelConfig,
-                    onValueChange = { vm.updateBuildConfig(config.copy(customKernelConfig = it)) },
-                    label = { Text(stringResource(R.string.build_custom_kernel_config)) },
-                    placeholder = { Text(stringResource(R.string.build_custom_kernel_config_placeholder)) },
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    minLines = 4,
-                    maxLines = 8
-                )
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = customKernelConfigDraft,
+                        onValueChange = {
+                            customKernelConfigDraft = it
+                            customKernelConfigInlineError = null
+                        },
+                        label = { Text(stringResource(R.string.build_custom_kernel_config)) },
+                        placeholder = { Text(stringResource(R.string.build_custom_kernel_config_single_placeholder)) },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    Button(
+                        onClick = ::addCustomKernelConfigEntry,
+                        enabled = customKernelConfigDraft.trim().isNotBlank()
+                    ) {
+                        Icon(Icons.Default.Add, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.add))
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = {
+                        showCustomKernelConfigImportDialog = true
+                        customKernelConfigImportError = null
+                    }) {
+                        Icon(Icons.Default.UploadFile, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.build_import))
+                    }
+                    if (customKernelConfigEntries.isNotEmpty()) {
+                        TextButton(onClick = {
+                            updateCustomKernelConfigEntries(emptyList())
+                            customKernelConfigInlineError = null
+                        }) {
+                            Icon(Icons.Default.Clear, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.clear))
+                        }
+                    }
+                }
+                customKernelConfigInlineError?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
                 Text(
-                    text = if (customKernelConfigEntryCount > 0) {
+                    text = if (customKernelConfigEntries.isNotEmpty()) {
                         stringResource(R.string.build_custom_kernel_config_count, customKernelConfigEntryCount)
                     } else {
                         stringResource(R.string.build_custom_kernel_config_hint)
@@ -1750,6 +1892,25 @@ fun BuildScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                customKernelConfigEntries.forEach { entry ->
+                    key(entry.key) {
+                        CustomKernelConfigEntryCard(
+                            entry = entry,
+                            onStateChange = { state ->
+                                updateCustomKernelConfigEntries(
+                                    customKernelConfigEntries.map { current ->
+                                        if (current.key == entry.key) current.copy(state = state) else current
+                                    }
+                                )
+                            },
+                            onRemove = {
+                                updateCustomKernelConfigEntries(
+                                    customKernelConfigEntries.filterNot { it.key == entry.key }
+                                )
+                            }
+                        )
+                    }
+                }
             }
             }
             }
@@ -2507,6 +2668,112 @@ private fun DeleteBuildPlanDialog(
 }
 
 @Composable
+private fun CustomKernelConfigImportDialog(
+    text: String,
+    error: String?,
+    onTextChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onImport: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.UploadFile, null) },
+        title = { Text(stringResource(R.string.build_custom_kernel_config_import_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = stringResource(R.string.build_custom_kernel_config_import_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = onTextChange,
+                    label = { Text(stringResource(R.string.build_custom_kernel_config_import_label)) },
+                    placeholder = { Text(stringResource(R.string.build_custom_kernel_config_import_placeholder)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 5,
+                    maxLines = 8
+                )
+                error?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onImport,
+                enabled = text.isNotBlank()
+            ) {
+                Text(stringResource(R.string.build_import))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+@Composable
+private fun CustomKernelConfigEntryCard(
+    entry: CustomKernelConfigEntry,
+    onStateChange: (CustomKernelConfigState) -> Unit,
+    onRemove: () -> Unit
+) {
+    val options = listOf(
+        AbkSegmentedButtonOption(
+            value = CustomKernelConfigState.BUILT_IN.name,
+            label = stringResource(R.string.build_custom_kernel_config_state_builtin)
+        ),
+        AbkSegmentedButtonOption(
+            value = CustomKernelConfigState.MODULE.name,
+            label = stringResource(R.string.build_custom_kernel_config_state_module)
+        ),
+        AbkSegmentedButtonOption(
+            value = CustomKernelConfigState.DISABLED.name,
+            label = stringResource(R.string.build_custom_kernel_config_state_disabled)
+        ),
+        AbkSegmentedButtonOption(
+            value = CustomKernelConfigState.IGNORE.name,
+            label = stringResource(R.string.build_custom_kernel_config_state_ignore)
+        )
+    )
+    val subtitle = when (entry.state) {
+        CustomKernelConfigState.BUILT_IN -> stringResource(R.string.build_custom_kernel_config_state_builtin_desc)
+        CustomKernelConfigState.MODULE -> stringResource(R.string.build_custom_kernel_config_state_module_desc)
+        CustomKernelConfigState.DISABLED -> stringResource(R.string.build_custom_kernel_config_state_disabled_desc)
+        CustomKernelConfigState.IGNORE -> stringResource(R.string.build_custom_kernel_config_state_ignore_desc)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ExpressiveListItem(
+            title = entry.key,
+            subtitle = subtitle,
+            leadingIcon = if (entry.state == CustomKernelConfigState.IGNORE) Icons.Default.VisibilityOff else Icons.Default.Tune,
+            selected = entry.state != CustomKernelConfigState.IGNORE,
+            trailingContent = {
+                IconButton(onClick = onRemove) {
+                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete))
+                }
+            }
+        )
+        AbkSingleChoiceSegmentedButtonRow(
+            options = options,
+            selectedValue = entry.state.name,
+            onSelect = { selected ->
+                onStateChange(CustomKernelConfigState.valueOf(selected))
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
 private fun ConfigPreviewText(preview: String) {
     ExpressiveListItem(
         title = stringResource(R.string.build_config_preview),
@@ -2584,7 +2851,7 @@ private fun buildPlanSummary(config: KernelBuildConfig): String {
     if (config.virtualizationSupport != "off") {
         enabled += stringResource(R.string.build_feature_virtualization, virtualizationSupportLabel(config.virtualizationSupport))
     }
-    val customKernelConfigEntryCount = countCustomKernelConfigEntries(config.customKernelConfig)
+    val customKernelConfigEntryCount = enabledCustomKernelConfigEntryCount(config.customKernelConfig)
     if (customKernelConfigEntryCount > 0) {
         enabled += stringResource(R.string.build_feature_custom_kernel_config, customKernelConfigEntryCount)
     }
@@ -2713,15 +2980,6 @@ private fun virtualizationSupportLabel(value: String): String = when (value) {
     "345" -> stringResource(R.string.build_virtualization_slot_345)
     else -> value
 }
-
-private fun countCustomKernelConfigEntries(value: String): Int =
-    value
-        .replace("\r\n", "\n")
-        .replace('\r', '\n')
-        .replace('|', '\n')
-        .lineSequence()
-        .map { it.trim() }
-        .count { it.isNotEmpty() }
 
 private fun buildVersionPreview(context: Context, config: KernelBuildConfig): String {
     val compact = config.version.filterNot { it.isWhitespace() }

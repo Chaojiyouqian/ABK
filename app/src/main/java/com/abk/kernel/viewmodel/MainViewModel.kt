@@ -5351,7 +5351,7 @@ internal fun KernelBuildConfig.toInputMap(): Map<String, String> {
         "zram_extra_algos" to config.zramExtraAlgos,
         "kpm_password" to config.kpmPassword,
         "virtualization_support" to config.virtualizationSupport,
-        "custom_kernel_config" to config.customKernelConfig,
+        "custom_kernel_config" to exportWorkflowCustomKernelConfig(config.customKernelConfig),
         "use_custom_external_modules" to config.useCustomExternalModules.toString(),
         "custom_ref" to if (config.kernelsuBranch == KSU_BRANCH_CUSTOM) {
             config.customRef.trim()

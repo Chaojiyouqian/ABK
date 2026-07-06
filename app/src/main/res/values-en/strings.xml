@@ -278,8 +278,25 @@
     <string name="build_time_placeholder">Empty/N = current UTC time</string>
     <string name="build_custom_kernel_config">Custom kernel options</string>
     <string name="build_custom_kernel_config_placeholder">One entry per line, for example CONFIG_USER_NS=y or # CONFIG_IPV6 is not set</string>
-    <string name="build_custom_kernel_config_hint">Only CONFIG_FOO=... and # CONFIG_BAR is not set are supported. These lines override the final defconfig right before compilation.</string>
+    <string name="build_custom_kernel_config_single_placeholder">Enter USER_NS or CONFIG_USER_NS</string>
+    <string name="build_custom_kernel_config_hint">After adding an entry you can switch it between built-in, module, disabled, and ignore. Bulk import accepts one item per line using CONFIG_FOO=y/m/n or # CONFIG_BAR is not set.</string>
     <string name="build_custom_kernel_config_count">%1$d custom kernel options configured</string>
+    <string name="build_custom_kernel_config_invalid_key">Invalid kernel option: %1$s</string>
+    <string name="build_custom_kernel_config_invalid_line">Cannot import this entry: %1$s</string>
+    <string name="build_custom_kernel_config_import_title">Bulk import kernel options</string>
+    <string name="build_custom_kernel_config_import_hint">One entry per line. Supported forms: CONFIG_FOO=y, CONFIG_FOO=m, CONFIG_FOO=n, and # CONFIG_FOO is not set.</string>
+    <string name="build_custom_kernel_config_import_label">Import content</string>
+    <string name="build_custom_kernel_config_import_placeholder">CONFIG_USER_NS=y
+CONFIG_IPV6=n
+# CONFIG_WERROR is not set</string>
+    <string name="build_custom_kernel_config_state_builtin">Built-in</string>
+    <string name="build_custom_kernel_config_state_module">Module</string>
+    <string name="build_custom_kernel_config_state_disabled">Disabled</string>
+    <string name="build_custom_kernel_config_state_ignore">Ignore</string>
+    <string name="build_custom_kernel_config_state_builtin_desc">Sent to the workflow as =y</string>
+    <string name="build_custom_kernel_config_state_module_desc">Sent to the workflow as =m</string>
+    <string name="build_custom_kernel_config_state_disabled_desc">Sent to the workflow as =n</string>
+    <string name="build_custom_kernel_config_state_ignore_desc">Not sent to the workflow; leaves this option unchanged</string>
     <string name="build_add_queue">Add to queue</string>
     <string name="build_queue_title">Build queue</string>
     <string name="build_plan_library">Plan library</string>

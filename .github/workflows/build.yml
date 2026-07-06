@@ -5201,11 +5201,16 @@ jobs:
                   continue
               if re.fullmatch(r"# CONFIG_[A-Za-z0-9_]+ is not set", line):
                   key = line[len("# "):].split(" ", 1)[0]
+                  normalized_line = line
+              elif re.fullmatch(r"CONFIG_[A-Za-z0-9_]+=(y|m|n)", line, re.IGNORECASE):
+                  key, state = line.split("=", 1)
+                  normalized_line = f"# {key} is not set" if state.lower() == "n" else f"{key}={state.lower()}"
               elif re.fullmatch(r"CONFIG_[A-Za-z0-9_]+=.+", line):
                   key = line.split("=", 1)[0]
+                  normalized_line = line
               else:
-                  raise SystemExit(f"::error::非法自定义内核选项: {line}（仅支持 CONFIG_FOO=... 或 # CONFIG_BAR is not set）")
-              entries.append((key, line))
+                  raise SystemExit(f"::error::非法自定义内核选项: {line}（仅支持 CONFIG_FOO=y/m/n 或 # CONFIG_BAR is not set）")
+              entries.append((key, normalized_line))
 
           if not entries:
               print("未解析到有效的自定义内核选项，跳过。")
