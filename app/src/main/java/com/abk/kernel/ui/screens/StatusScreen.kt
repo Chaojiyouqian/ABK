@@ -6,8 +6,15 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
@@ -19,7 +26,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -29,13 +39,11 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.abk.kernel.BuildConfig
 import com.abk.kernel.R
-import com.abk.kernel.dashboard.DashboardLayout
 import com.abk.kernel.dashboard.StatusDashboardWidgets
 import com.abk.kernel.data.model.BuildStatus
 import com.abk.kernel.data.model.WorkflowRun
 import com.abk.kernel.ui.components.AbkScreenHorizontalPadding
 import com.abk.kernel.ui.components.ExpressiveHeroCard
-import com.abk.kernel.ui.components.ExpressiveListItem
 import com.abk.kernel.ui.components.ExpressiveSectionCard
 import com.abk.kernel.ui.components.ExpressiveStatusChip
 import com.abk.kernel.ui.components.ExpressiveTopBar
@@ -74,27 +82,13 @@ fun StatusScreen(
     } else {
         state.statusDashboardLayout
     }
-    val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            runCatching {
-                val payload = vm.exportStatusDashboardLayoutJson()
-                writeTextToUri(context, uri, payload)
-            }.onSuccess {
-                vm.showSnackbar(context.getString(R.string.status_layout_export_success))
-            }.onFailure { error ->
-                vm.showSnackbar(
-                    context.getString(
-                        R.string.status_layout_export_failed,
-                        error.message ?: error::class.java.simpleName
-                    ),
-                    longDuration = true
-                )
-            }
-        }
-    }
+    var actionMenuExpanded by remember { mutableStateOf(false) }
+    var widgetsTrayExpanded by remember { mutableStateOf(false) }
+    val actionMenuRotation by animateFloatAsState(
+        targetValue = if (actionMenuExpanded) 45f else 0f,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "status-layout-fab-rotation"
+    )
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -133,6 +127,12 @@ fun StatusScreen(
             }
         }
     }
+    LaunchedEffect(state.statusDashboardEditMode) {
+        if (!state.statusDashboardEditMode) {
+            actionMenuExpanded = false
+            widgetsTrayExpanded = false
+        }
+    }
 
     LaunchedEffect(Unit) { vm.loadRecentRuns() }
 
@@ -148,14 +148,7 @@ fun StatusScreen(
                 compactTitle = true,
                 scrollBehavior = scrollBehavior,
                 actions = {
-                    if (state.statusDashboardEditMode) {
-                        IconButton(onClick = vm::discardStatusDashboardLayoutDraft) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = stringResource(R.string.status_layout_exit)
-                            )
-                        }
-                    } else {
+                    if (!state.statusDashboardEditMode) {
                         IconButton(onClick = onToggleRuntimeNavigation) {
                             Icon(
                                 imageVector = if (runtimeNavigationEnabled) Icons.Default.SwapHoriz else Icons.Default.Home,
@@ -171,14 +164,13 @@ fun StatusScreen(
             )
         }
     ) { padding ->
-        Column(
+        val editorDockHeight = 92.dp
+        val widgetsTrayHeight = if (state.statusDashboardEditMode && widgetsTrayExpanded) 132.dp else 0.dp
+        Box(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = AbkScreenHorizontalPadding),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             val ksuVersion = remember(state.rootGranted) {
                 if (state.rootGranted) RootUtils.getKsuVersion() else "N/A"
@@ -186,204 +178,333 @@ fun StatusScreen(
             val kernelVersion = remember(state.rootGranted) {
                 RootUtils.getKernelVersion()
             }
-            if (state.statusDashboardEditMode) {
-                StatusLayoutEditorCard(
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = AbkScreenHorizontalPadding)
+                    .padding(
+                        bottom = if (state.statusDashboardEditMode) {
+                            editorDockHeight + widgetsTrayHeight + 32.dp
+                        } else {
+                            80.dp + outerPadding.calculateBottomPadding()
+                        }
+                    ),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                DashboardGrid(
                     layout = dashboardLayout,
-                    onExit = vm::discardStatusDashboardLayoutDraft,
-                    onSave = {
-                        vm.saveStatusDashboardLayoutDraft()
-                        vm.showSnackbar(context.getString(R.string.status_layout_saved))
+                    widgetLabels = widgetLabels,
+                    editable = state.statusDashboardEditMode,
+                    canMoveItem = { widgetId, targetX, targetY ->
+                        com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                            layout = dashboardLayout,
+                            widgetId = widgetId,
+                            targetX = targetX,
+                            targetY = targetY,
+                            definitions = StatusDashboardWidgets.definitions
+                        )
                     },
-                    onRestoreDefault = vm::resetStatusDashboardLayoutDraftToDefault,
-                    onImport = { importLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
-                    onExport = {
-                        exportLauncher.launch("abk-status-layout-${dashboardLayout.densityPreset.rawValue}.json")
+                    canResizeItem = { widgetId, targetW, targetH ->
+                        com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                            layout = dashboardLayout,
+                            widgetId = widgetId,
+                            targetW = targetW,
+                            targetH = targetH,
+                            definitions = StatusDashboardWidgets.definitions
+                        )
+                    },
+                    canHideWidget = { widgetId ->
+                        StatusDashboardWidgets.definitionMap[widgetId]?.canHide == true
+                    },
+                    canMinimizeWidget = { widgetId ->
+                        StatusDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                    },
+                    canMaximizeWidget = { widgetId ->
+                        StatusDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                    },
+                    canResizeWidget = { widgetId ->
+                        StatusDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                    },
+                    onMoveItem = vm::moveStatusDashboardWidget,
+                    onResizeItem = vm::resizeStatusDashboardWidget,
+                    onSetItemSpanMode = vm::setStatusDashboardWidgetSpanMode,
+                    onHideItem = { widgetId -> vm.setStatusDashboardWidgetVisible(widgetId, false) }
+                ) { widgetId, interactionsEnabled ->
+                    when (widgetId) {
+                        StatusDashboardWidgets.HERO -> StatusHeroWidget(
+                            state = state,
+                            vm = vm,
+                            actionsEnabled = interactionsEnabled
+                        )
+                        StatusDashboardWidgets.METRICS -> StatusMetricsWidget(
+                            state = state,
+                            ksuVersion = ksuVersion
+                        )
+                        StatusDashboardWidgets.BUILD_ACTIVITY -> StatusBuildActivityWidget(
+                            state = state,
+                            vm = vm,
+                            actionsEnabled = interactionsEnabled,
+                            showManagerPlaceholder = state.statusDashboardEditMode
+                        )
+                        StatusDashboardWidgets.DEVICE_REPOSITORY -> StatusDeviceRepositoryWidget(
+                            state = state,
+                            kernelVersion = kernelVersion,
+                            ksuVersion = ksuVersion
+                        )
+                        StatusDashboardWidgets.RECENT_RUNS -> StatusRecentRunsWidget(
+                            state = state,
+                            actionsEnabled = interactionsEnabled,
+                            onCancel = vm::cancelWorkflowRun
+                        )
                     }
-                )
-            }
-
-            DashboardGrid(
-                layout = dashboardLayout,
-                widgetLabels = widgetLabels,
-                editable = state.statusDashboardEditMode,
-                canMoveItem = { widgetId, targetX, targetY ->
-                    com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
-                        layout = dashboardLayout,
-                        widgetId = widgetId,
-                        targetX = targetX,
-                        targetY = targetY,
-                        definitions = StatusDashboardWidgets.definitions
-                    )
-                },
-                canResizeItem = { widgetId, targetW, targetH ->
-                    com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
-                        layout = dashboardLayout,
-                        widgetId = widgetId,
-                        targetW = targetW,
-                        targetH = targetH,
-                        definitions = StatusDashboardWidgets.definitions
-                    )
-                },
-                canHideWidget = { widgetId ->
-                    StatusDashboardWidgets.definitionMap[widgetId]?.canHide == true
-                },
-                canResizeWidget = { widgetId ->
-                    StatusDashboardWidgets.definitionMap[widgetId]?.canResize == true
-                },
-                onMoveItem = vm::moveStatusDashboardWidget,
-                onResizeItem = vm::resizeStatusDashboardWidget,
-                onHideItem = { widgetId -> vm.setStatusDashboardWidgetVisible(widgetId, false) }
-            ) { widgetId, interactionsEnabled ->
-                when (widgetId) {
-                    StatusDashboardWidgets.HERO -> StatusHeroWidget(
-                        state = state,
-                        vm = vm,
-                        actionsEnabled = interactionsEnabled
-                    )
-                    StatusDashboardWidgets.METRICS -> StatusMetricsWidget(
-                        state = state,
-                        ksuVersion = ksuVersion
-                    )
-                    StatusDashboardWidgets.BUILD_ACTIVITY -> StatusBuildActivityWidget(
-                        state = state,
-                        vm = vm,
-                        actionsEnabled = interactionsEnabled,
-                        showManagerPlaceholder = state.statusDashboardEditMode
-                    )
-                    StatusDashboardWidgets.DEVICE_REPOSITORY -> StatusDeviceRepositoryWidget(
-                        state = state,
-                        kernelVersion = kernelVersion,
-                        ksuVersion = ksuVersion
-                    )
-                    StatusDashboardWidgets.RECENT_RUNS -> StatusRecentRunsWidget(
-                        state = state,
-                        actionsEnabled = interactionsEnabled,
-                        onCancel = vm::cancelWorkflowRun
-                    )
                 }
             }
 
             if (state.statusDashboardEditMode) {
-                HiddenWidgetsSection(
+                StatusEditorWidgetsTray(
+                    visible = widgetsTrayExpanded,
                     hiddenItems = dashboardLayout.items.filter { !it.visible }.map { it.widgetId },
                     widgetLabels = widgetLabels,
-                    onShowWidget = { widgetId -> vm.setStatusDashboardWidgetVisible(widgetId, true) }
+                    onShowWidget = { widgetId -> vm.setStatusDashboardWidgetVisible(widgetId, true) },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 16.dp, vertical = editorDockHeight)
+                )
+                StatusEditorBottomDock(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                )
+                StatusEditorFabMenu(
+                    expanded = actionMenuExpanded,
+                    rotation = actionMenuRotation,
+                    onToggle = { actionMenuExpanded = !actionMenuExpanded },
+                    onImport = {
+                        actionMenuExpanded = false
+                        importLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                    },
+                    onShare = {
+                        actionMenuExpanded = false
+                        shareStatusLayout(context, vm.exportStatusDashboardLayoutJson())
+                    },
+                    onSaveAndExit = {
+                        actionMenuExpanded = false
+                        vm.saveStatusDashboardLayoutDraft()
+                    },
+                    onToggleWidgets = {
+                        widgetsTrayExpanded = !widgetsTrayExpanded
+                        actionMenuExpanded = false
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 24.dp, bottom = 28.dp)
                 )
             }
-            Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
         }
     }
 }
 
 @Composable
-private fun StatusLayoutEditorCard(
-    layout: DashboardLayout,
-    onExit: () -> Unit,
-    onSave: () -> Unit,
-    onRestoreDefault: () -> Unit,
-    onImport: () -> Unit,
-    onExport: () -> Unit
-) {
-    ExpressiveSectionCard(
-        title = stringResource(R.string.status_layout_editor_title),
-        subtitle = stringResource(
-            R.string.status_layout_editor_hint,
-            layout.densityPreset.columns
-        ),
-        icon = Icons.Default.Tune,
-        containerColor = MaterialTheme.colorScheme.surfaceVariant
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusLayoutActionRow(
-                primaryLabel = stringResource(R.string.status_layout_save),
-                primaryIcon = Icons.Default.Save,
-                primaryAction = onSave,
-                secondaryLabel = stringResource(R.string.status_layout_exit),
-                secondaryIcon = Icons.Default.Close,
-                secondaryAction = onExit
-            )
-            StatusLayoutActionRow(
-                primaryLabel = stringResource(R.string.status_layout_import),
-                primaryIcon = Icons.Default.UploadFile,
-                primaryAction = onImport,
-                secondaryLabel = stringResource(R.string.status_layout_export),
-                secondaryIcon = Icons.Default.Download,
-                secondaryAction = onExport
-            )
-            OutlinedButton(
-                onClick = onRestoreDefault,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Default.Restore, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.status_layout_restore_default))
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatusLayoutActionRow(
-    primaryLabel: String,
-    primaryIcon: ImageVector,
-    primaryAction: () -> Unit,
-    secondaryLabel: String,
-    secondaryIcon: ImageVector,
-    secondaryAction: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        FilledTonalButton(
-            onClick = primaryAction,
-            modifier = Modifier.weight(1f)
-        ) {
-            Icon(primaryIcon, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(primaryLabel)
-        }
-        OutlinedButton(
-            onClick = secondaryAction,
-            modifier = Modifier.weight(1f)
-        ) {
-            Icon(secondaryIcon, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(secondaryLabel)
-        }
-    }
-}
-
-@Composable
-private fun HiddenWidgetsSection(
+private fun StatusEditorWidgetsTray(
+    visible: Boolean,
     hiddenItems: List<String>,
     widgetLabels: Map<String, String>,
-    onShowWidget: (String) -> Unit
+    onShowWidget: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    ExpressiveSectionCard(
-        title = stringResource(R.string.status_layout_hidden_widgets),
-        subtitle = stringResource(R.string.status_layout_hidden_widgets_desc),
-        icon = Icons.Default.Visibility
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()) +
+            slideInVertically(animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec()) { it / 3 },
+        exit = fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) +
+            slideOutVertically(animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()) { it / 3 },
+        modifier = modifier
     ) {
-        if (hiddenItems.isEmpty()) {
-            Text(
-                text = stringResource(R.string.status_layout_hidden_widgets_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            hiddenItems.forEach { widgetId ->
-                ExpressiveListItem(
-                    title = widgetLabels[widgetId] ?: widgetId,
-                    subtitle = widgetId,
-                    leadingIcon = Icons.Default.Widgets,
-                    trailingContent = {
-                        TextButton(onClick = { onShowWidget(widgetId) }) {
-                            Text(stringResource(R.string.status_layout_show_widget))
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = uiSurfaceColor(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)),
+            tonalElevation = 0.dp,
+            shadowElevation = 10.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.status_layout_hidden_widgets),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (hiddenItems.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.status_layout_hidden_widgets_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        hiddenItems.forEach { widgetId ->
+                            Surface(
+                                modifier = Modifier.widthIn(min = 160.dp),
+                                shape = MaterialTheme.shapes.large,
+                                color = uiSurfaceColor(MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = widgetLabels[widgetId] ?: widgetId,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.status_layout_hidden_widgets_drag_hint),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    TextButton(
+                                        onClick = { onShowWidget(widgetId) },
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) {
+                                        Text(stringResource(R.string.status_layout_show_widget))
+                                    }
+                                }
+                            }
                         }
                     }
-                )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun StatusEditorBottomDock(
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(80.dp)
+            .drawBehind {
+                val accent = Color(0xFFF6B94C)
+                val stripeWidth = size.width / 18f
+                val stripeHeight = size.height / 2f
+                var x = -size.height
+                while (x < size.width + size.height) {
+                    drawLine(
+                        color = accent.copy(alpha = 0.22f),
+                        start = androidx.compose.ui.geometry.Offset(x, size.height),
+                        end = androidx.compose.ui.geometry.Offset(x + stripeHeight, 0f),
+                        strokeWidth = stripeWidth / 2f
+                    )
+                    x += stripeWidth * 1.8f
+                }
+            },
+        shape = MaterialTheme.shapes.extraLarge,
+        color = Color(0xFF666A73).copy(alpha = 0.88f),
+        border = BorderStroke(2.dp, Color(0xFFF6B94C)),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = stringResource(R.string.status_layout_bottom_dock),
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusEditorFabMenu(
+    expanded: Boolean,
+    rotation: Float,
+    onToggle: () -> Unit,
+    onImport: () -> Unit,
+    onShare: () -> Unit,
+    onSaveAndExit: () -> Unit,
+    onToggleWidgets: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier = modifier.size(220.dp), contentAlignment = Alignment.BottomEnd) {
+        StatusEditorMiniFab(
+            visible = expanded,
+            icon = Icons.Default.UploadFile,
+            contentDescription = stringResource(R.string.status_layout_import),
+            offsetX = (-10).dp,
+            offsetY = (-156).dp,
+            onClick = onImport
+        )
+        StatusEditorMiniFab(
+            visible = expanded,
+            icon = Icons.Default.Share,
+            contentDescription = stringResource(R.string.status_layout_share),
+            offsetX = (-74).dp,
+            offsetY = (-128).dp,
+            onClick = onShare
+        )
+        StatusEditorMiniFab(
+            visible = expanded,
+            icon = Icons.Default.Save,
+            contentDescription = stringResource(R.string.status_layout_save_exit),
+            offsetX = (-126).dp,
+            offsetY = (-74).dp,
+            onClick = onSaveAndExit
+        )
+        StatusEditorMiniFab(
+            visible = expanded,
+            icon = Icons.Default.Widgets,
+            contentDescription = stringResource(R.string.status_layout_widgets),
+            offsetX = (-154).dp,
+            offsetY = (-10).dp,
+            onClick = onToggleWidgets
+        )
+        FloatingActionButton(
+            onClick = onToggle,
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = stringResource(R.string.status_layout_actions),
+                modifier = Modifier.graphicsLayer { rotationZ = rotation }
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusEditorMiniFab(
+    visible: Boolean,
+    icon: ImageVector,
+    contentDescription: String,
+    offsetX: androidx.compose.ui.unit.Dp,
+    offsetY: androidx.compose.ui.unit.Dp,
+    onClick: () -> Unit
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
+        exit = fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
+        modifier = Modifier.offset(x = offsetX, y = offsetY)
+    ) {
+        SmallFloatingActionButton(
+            onClick = onClick,
+            containerColor = uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainerHigh),
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ) {
+            Icon(icon, contentDescription = contentDescription)
         }
     }
 }
@@ -936,12 +1057,14 @@ private suspend fun readTextFromUri(
     } ?: error("Unable to open imported layout")
 }
 
-private suspend fun writeTextToUri(
+private fun shareStatusLayout(
     context: android.content.Context,
-    uri: Uri,
-    value: String
-) = withContext(Dispatchers.IO) {
-    context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use { writer ->
-        writer.write(value)
-    } ?: error("Unable to open export destination")
+    payload: String
+) {
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.status_layout_editor_title))
+        putExtra(Intent.EXTRA_TEXT, payload)
+    }
+    context.startActivity(Intent.createChooser(intent, context.getString(R.string.status_layout_share)))
 }

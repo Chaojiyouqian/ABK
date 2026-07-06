@@ -643,15 +643,22 @@ CONFIG_IPV6=n
     <string name="status_layout_import">导入布局</string>
     <string name="status_layout_export">导出布局</string>
     <string name="status_layout_saved">状态页布局已保存</string>
+    <string name="status_layout_save_failed">状态页布局保存失败：%1$s</string>
     <string name="status_layout_export_success">布局已导出</string>
     <string name="status_layout_export_failed">导出布局失败：%1$s</string>
     <string name="status_layout_import_success">布局已导入：%1$d 个控件，忽略 %2$d 个</string>
     <string name="status_layout_import_failed">导入布局失败：%1$s</string>
     <string name="status_layout_import_failed_reset">导入失败，已回退到默认布局草稿</string>
+    <string name="status_layout_share">分享布局</string>
+    <string name="status_layout_save_exit">保存并退出</string>
+    <string name="status_layout_widgets">控件</string>
+    <string name="status_layout_actions">编辑动作</string>
     <string name="status_layout_hidden_widgets">已隐藏控件</string>
     <string name="status_layout_hidden_widgets_desc">隐藏的控件不会被删除，可以随时重新启用。</string>
     <string name="status_layout_hidden_widgets_empty">当前没有隐藏控件。</string>
+    <string name="status_layout_hidden_widgets_drag_hint">点击放回画布后可继续拖拽调整。</string>
     <string name="status_layout_show_widget">显示</string>
+    <string name="status_layout_bottom_dock">底部栏</string>
 
     <!-- Settings -->
     <string name="settings_title">设置</string>

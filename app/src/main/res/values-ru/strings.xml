@@ -643,15 +643,22 @@ CONFIG_IPV6=n
     <string name="status_layout_import">Импортировать макет</string>
     <string name="status_layout_export">Экспортировать макет</string>
     <string name="status_layout_saved">Макет страницы статуса сохранён</string>
+    <string name="status_layout_save_failed">Не удалось сохранить макет страницы статуса: %1$s</string>
     <string name="status_layout_export_success">Макет экспортирован</string>
     <string name="status_layout_export_failed">Не удалось экспортировать макет: %1$s</string>
     <string name="status_layout_import_success">Макет импортирован: %1$d виджет(ов), %2$d проигнорировано</string>
     <string name="status_layout_import_failed">Не удалось импортировать макет: %1$s</string>
     <string name="status_layout_import_failed_reset">Импорт не удался. Черновик редактора сброшен к макету по умолчанию.</string>
+    <string name="status_layout_share">Поделиться макетом</string>
+    <string name="status_layout_save_exit">Сохранить и выйти</string>
+    <string name="status_layout_widgets">Виджеты</string>
+    <string name="status_layout_actions">Действия редактора</string>
     <string name="status_layout_hidden_widgets">Скрытые виджеты</string>
     <string name="status_layout_hidden_widgets_desc">Скрытые виджеты не удаляются из макета и могут быть включены снова в любой момент.</string>
     <string name="status_layout_hidden_widgets_empty">Сейчас скрытых виджетов нет.</string>
+    <string name="status_layout_hidden_widgets_drag_hint">Верните виджет на холст, затем продолжайте перетаскивать его в нужное место.</string>
     <string name="status_layout_show_widget">Показать</string>
+    <string name="status_layout_bottom_dock">Нижняя панель</string>
 
     <!-- Settings -->
     <string name="settings_title">Настройки</string>

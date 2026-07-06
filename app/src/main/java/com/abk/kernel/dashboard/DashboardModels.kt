@@ -36,6 +36,18 @@ enum class DashboardDensityPreset(
     }
 }
 
+enum class DashboardItemSpanMode(val rawValue: String) {
+    MINIMUM("minimum"),
+    DEFAULT("default"),
+    MAXIMUM("maximum"),
+    CUSTOM("custom");
+
+    companion object {
+        fun fromRawValue(rawValue: String?): DashboardItemSpanMode =
+            entries.firstOrNull { it.rawValue == rawValue } ?: DEFAULT
+    }
+}
+
 data class DashboardLayout(
     val version: Int = DASHBOARD_LAYOUT_VERSION,
     val pageId: DashboardPageId = DashboardPageId.STATUS,
@@ -50,7 +62,8 @@ data class DashboardLayoutItem(
     val y: Int,
     val w: Int,
     val h: Int,
-    val visible: Boolean = true
+    val visible: Boolean = true,
+    val spanMode: DashboardItemSpanMode = DashboardItemSpanMode.DEFAULT
 ) {
     val right: Int
         get() = x + w
@@ -67,6 +80,10 @@ data class BuiltinWidgetDefinition(
     val minH: Int,
     val maxW: Int? = null,
     val maxH: Int? = null,
+    val collapsedW: Int? = null,
+    val collapsedH: Int? = null,
+    val expandedW: Int? = null,
+    val expandedH: Int? = null,
     val defaultVisible: Boolean = true,
     val canHide: Boolean = true,
     val canResize: Boolean = true

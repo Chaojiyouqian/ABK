@@ -212,11 +212,39 @@ object DashboardLayoutEngine {
             widgetId = widgetId,
             newItem = normalizeItem(
                 item = requireNotNull(layout.items.firstOrNull { it.widgetId == widgetId })
-                    .copy(w = targetW, h = targetH),
+                    .copy(
+                        w = targetW,
+                        h = targetH,
+                        spanMode = DashboardItemSpanMode.CUSTOM
+                    ),
                 definition = definition,
                 columns = layout.densityPreset.columns
             )
         )
+    }
+
+    fun setItemSpanMode(
+        layout: DashboardLayout,
+        widgetId: String,
+        spanMode: DashboardItemSpanMode,
+        definitions: Collection<BuiltinWidgetDefinition>
+    ): DashboardLayout {
+        val definitionMap = definitions.associateBy { it.widgetId }
+        val item = layout.items.firstOrNull { it.widgetId == widgetId } ?: return layout
+        val definition = definitionMap[widgetId] ?: return layout
+        if (!item.visible) return layout
+        val sizedItem = normalizeItem(
+            item = item.copy(spanMode = spanMode),
+            definition = definition,
+            columns = layout.densityPreset.columns
+        )
+        val placedItem = placeVisibleItemNear(
+            item = sizedItem,
+            definition = definition,
+            columns = layout.densityPreset.columns,
+            occupiedItems = layout.items.filter { it.visible && it.widgetId != widgetId }
+        )
+        return replaceItem(layout, widgetId, placedItem)
     }
 
     fun setItemVisibility(
@@ -264,13 +292,38 @@ object DashboardLayoutEngine {
         definition: BuiltinWidgetDefinition,
         columns: Int
     ): DashboardLayoutItem {
+        val sizedItem = resolveSizedItem(
+            item = item,
+            definition = definition,
+            columns = columns
+        )
         val maxWidth = (definition.maxW ?: columns).coerceAtMost(columns).coerceAtLeast(definition.minW)
-        val width = item.w.coerceIn(definition.minW, maxWidth)
+        val width = sizedItem.w.coerceIn(definition.minW, maxWidth)
         val maxHeight = (definition.maxH ?: Int.MAX_VALUE).coerceAtLeast(definition.minH)
-        val height = item.h.coerceIn(definition.minH, maxHeight)
+        val height = sizedItem.h.coerceIn(definition.minH, maxHeight)
         val x = item.x.coerceIn(0, (columns - width).coerceAtLeast(0))
         val y = item.y.coerceAtLeast(0)
-        return item.copy(x = x, y = y, w = width, h = height)
+        return sizedItem.copy(x = x, y = y, w = width, h = height)
+    }
+
+    private fun resolveSizedItem(
+        item: DashboardLayoutItem,
+        definition: BuiltinWidgetDefinition,
+        columns: Int
+    ): DashboardLayoutItem {
+        val targetWidth = when (item.spanMode) {
+            DashboardItemSpanMode.MINIMUM -> definition.collapsedW ?: definition.minW
+            DashboardItemSpanMode.DEFAULT -> definition.defaultW
+            DashboardItemSpanMode.MAXIMUM -> definition.expandedW ?: (definition.maxW ?: columns)
+            DashboardItemSpanMode.CUSTOM -> item.w
+        }
+        val targetHeight = when (item.spanMode) {
+            DashboardItemSpanMode.MINIMUM -> definition.collapsedH ?: definition.minH
+            DashboardItemSpanMode.DEFAULT -> definition.defaultH
+            DashboardItemSpanMode.MAXIMUM -> definition.expandedH ?: (definition.maxH ?: definition.defaultH)
+            DashboardItemSpanMode.CUSTOM -> item.h
+        }
+        return item.copy(w = targetWidth, h = targetHeight)
     }
 
     private fun placeVisibleItemNear(

@@ -449,8 +449,9 @@ private fun AbkMainScaffold(
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
     val isTabletLayout = configuration.smallestScreenWidthDp >= 600
+    val statusDashboardEditing = activeTab == AbkTab.Status && state.statusDashboardEditMode
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
-    val contentStartPadding = if (isTabletLayout) {
+    val contentStartPadding = if (isTabletLayout && !statusDashboardEditing) {
         AbkTabletRailWidth
     } else {
         0.dp
@@ -599,14 +600,15 @@ private fun AbkMainScaffold(
         !childPageVisible &&
         !showSimpleBuildFlow &&
         !state.showOobe &&
-        activeTab in setOf(AbkTab.Status, AbkTab.RuntimeHome)
+        !state.statusDashboardEditMode &&
+        activeTab == AbkTab.Status
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)))
     ) {
-        if (isTabletLayout) {
+        if (isTabletLayout && !statusDashboardEditing) {
             val railHideDistancePx = with(density) { AbkTabletRailWidth.toPx() }
             Box(
                 modifier = Modifier
@@ -658,7 +660,7 @@ private fun AbkMainScaffold(
                     }
                 }
             }
-        } else {
+        } else if (!statusDashboardEditing) {
             NavigationBar(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)

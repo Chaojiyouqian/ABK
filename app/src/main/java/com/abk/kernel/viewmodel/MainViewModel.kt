@@ -24,6 +24,7 @@ import com.abk.kernel.data.repository.GitHubRepository
 import com.abk.kernel.data.repository.PreferencesRepository
 import com.abk.kernel.data.repository.Result
 import com.abk.kernel.dashboard.DashboardDensityPreset
+import com.abk.kernel.dashboard.DashboardItemSpanMode
 import com.abk.kernel.dashboard.DashboardLayout
 import com.abk.kernel.dashboard.DashboardLayoutCodec
 import com.abk.kernel.dashboard.DashboardLayoutEngine
@@ -610,30 +611,34 @@ class MainViewModel @JvmOverloads constructor(
                 json to densityPreset
             }.collect { (json, densityPreset) ->
                 val defaultLayout = StatusDashboardWidgets.defaultLayout(densityPreset)
-                val restoredLayout = json
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let {
-                        DashboardLayoutCodec.importStatusLayout(
-                            json = it,
+                val normalizedLayout = runCatching {
+                    val restoredLayout = json
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let {
+                            DashboardLayoutCodec.importStatusLayout(
+                                json = it,
+                                definitions = StatusDashboardWidgets.definitions,
+                                defaultLayoutForDensity = StatusDashboardWidgets::defaultLayout,
+                                hideMissingWidgets = false
+                            ).layout
+                        }
+                        ?: defaultLayout
+                    if (restoredLayout.densityPreset == densityPreset) {
+                        DashboardLayoutEngine.sanitize(
+                            layout = restoredLayout,
                             definitions = StatusDashboardWidgets.definitions,
-                            defaultLayoutForDensity = StatusDashboardWidgets::defaultLayout,
-                            hideMissingWidgets = false
-                        ).layout
+                            defaultLayout = defaultLayout
+                        )
+                    } else {
+                        DashboardLayoutEngine.remapDensity(
+                            layout = restoredLayout,
+                            targetDensityPreset = densityPreset,
+                            definitions = StatusDashboardWidgets.definitions,
+                            defaultLayout = defaultLayout
+                        )
                     }
-                    ?: defaultLayout
-                val normalizedLayout = if (restoredLayout.densityPreset == densityPreset) {
-                    DashboardLayoutEngine.sanitize(
-                        layout = restoredLayout,
-                        definitions = StatusDashboardWidgets.definitions,
-                        defaultLayout = defaultLayout
-                    )
-                } else {
-                    DashboardLayoutEngine.remapDensity(
-                        layout = restoredLayout,
-                        targetDensityPreset = densityPreset,
-                        definitions = StatusDashboardWidgets.definitions,
-                        defaultLayout = defaultLayout
-                    )
+                }.getOrElse {
+                    defaultLayout
                 }
                 _uiState.update { state ->
                     state.copy(
@@ -3986,6 +3991,19 @@ class MainViewModel @JvmOverloads constructor(
         }
     }
 
+    fun setStatusDashboardWidgetSpanMode(widgetId: String, spanMode: DashboardItemSpanMode) {
+        val draft = _uiState.value.statusDashboardDraftLayout ?: return
+        val updated = DashboardLayoutEngine.setItemSpanMode(
+            layout = draft,
+            widgetId = widgetId,
+            spanMode = spanMode,
+            definitions = StatusDashboardWidgets.definitions
+        )
+        if (updated != draft) {
+            _uiState.update { it.copy(statusDashboardDraftLayout = updated) }
+        }
+    }
+
     fun setStatusDashboardWidgetVisible(widgetId: String, visible: Boolean) {
         val targetLayout = _uiState.value.statusDashboardDraftLayout ?: _uiState.value.statusDashboardLayout
         val updated = DashboardLayoutEngine.setItemVisibility(
@@ -4003,7 +4021,7 @@ class MainViewModel @JvmOverloads constructor(
         }
         if (!_uiState.value.statusDashboardEditMode) {
             viewModelScope.launch {
-                persistStatusDashboardLayout(updated)
+                persistStatusDashboardLayoutSafely(updated)
             }
         }
     }
@@ -4027,7 +4045,7 @@ class MainViewModel @JvmOverloads constructor(
         }
         if (!currentState.statusDashboardEditMode) {
             viewModelScope.launch {
-                persistStatusDashboardLayout(remappedLayout)
+                persistStatusDashboardLayoutSafely(remappedLayout)
             }
         }
     }
@@ -4050,22 +4068,25 @@ class MainViewModel @JvmOverloads constructor(
             )
         }
         viewModelScope.launch {
-            persistStatusDashboardLayout(defaultLayout)
+            persistStatusDashboardLayoutSafely(defaultLayout)
         }
     }
 
     fun saveStatusDashboardLayoutDraft() {
         val draft = _uiState.value.statusDashboardDraftLayout ?: return
         val normalized = normalizeStatusDashboardLayout(draft)
-        _uiState.update {
-            it.copy(
-                statusDashboardLayout = normalized,
-                statusDashboardDraftLayout = null,
-                statusDashboardEditMode = false
-            )
-        }
         viewModelScope.launch {
-            persistStatusDashboardLayout(normalized)
+            val persisted = persistStatusDashboardLayoutSafely(normalized)
+            if (persisted) {
+                _uiState.update {
+                    it.copy(
+                        statusDashboardLayout = normalized,
+                        statusDashboardDraftLayout = null,
+                        statusDashboardEditMode = false
+                    )
+                }
+                showSnackbar(text(R.string.status_layout_saved))
+            }
         }
     }
 
@@ -4173,6 +4194,19 @@ class MainViewModel @JvmOverloads constructor(
         prefs.saveStatusPageLayoutJson(DashboardLayoutCodec.export(normalized))
         prefs.setStatusPageGridDensityPreset(normalized.densityPreset)
     }
+
+    private suspend fun persistStatusDashboardLayoutSafely(layout: DashboardLayout): Boolean =
+        runCatching {
+            persistStatusDashboardLayout(layout)
+        }.onFailure { error ->
+            showSnackbar(
+                text(
+                    R.string.status_layout_save_failed,
+                    error.message ?: error::class.java.simpleName
+                ),
+                longDuration = true
+            )
+        }.isSuccess
 
     fun refreshAllBuildModuleRepositories() {
         _uiState.value.buildModuleRepositories.forEach { repository ->

@@ -103,4 +103,45 @@ class DashboardLayoutEngineTest {
         assertEquals(DashboardDensityPreset.RELAXED, remapped.densityPreset)
         assertTrue(DashboardLayoutEngine.isLayoutLegal(remapped, StatusDashboardWidgets.definitions))
     }
+
+    @Test
+    fun maximizingWidgetCanUseFullAvailableWidth() {
+        val layout = StatusDashboardWidgets.defaultLayout(DashboardDensityPreset.COMPACT)
+
+        val maximized = DashboardLayoutEngine.setItemSpanMode(
+            layout = layout,
+            widgetId = StatusDashboardWidgets.DEVICE_REPOSITORY,
+            spanMode = DashboardItemSpanMode.MAXIMUM,
+            definitions = StatusDashboardWidgets.definitions
+        )
+
+        val widget = maximized.items.first { it.widgetId == StatusDashboardWidgets.DEVICE_REPOSITORY }
+        assertEquals(DashboardDensityPreset.COMPACT.columns, widget.w)
+        assertEquals(DashboardItemSpanMode.MAXIMUM, widget.spanMode)
+    }
+
+    @Test
+    fun resizingMarksWidgetAsCustom() {
+        val layout = StatusDashboardWidgets.defaultLayout(DashboardDensityPreset.STANDARD)
+        val moved = DashboardLayoutEngine.moveItemExact(
+            layout = layout,
+            widgetId = StatusDashboardWidgets.RECENT_RUNS,
+            targetX = 0,
+            targetY = 28,
+            definitions = StatusDashboardWidgets.definitions
+        )
+
+        val resized = DashboardLayoutEngine.resizeItemExact(
+            layout = moved,
+            widgetId = StatusDashboardWidgets.RECENT_RUNS,
+            targetW = 10,
+            targetH = 7,
+            definitions = StatusDashboardWidgets.definitions
+        )
+
+        assertEquals(
+            DashboardItemSpanMode.CUSTOM,
+            resized.items.first { it.widgetId == StatusDashboardWidgets.RECENT_RUNS }.spanMode
+        )
+    }
 }

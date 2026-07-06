@@ -92,4 +92,33 @@ class DashboardLayoutCodecTest {
                 .all { !it.visible }
         )
     }
+
+    @Test
+    fun importAndExportPreserveSpanMode() {
+        val layout = DashboardLayout(
+            densityPreset = DashboardDensityPreset.STANDARD,
+            items = listOf(
+                DashboardLayoutItem(
+                    widgetId = StatusDashboardWidgets.BUILD_ACTIVITY,
+                    x = 0,
+                    y = 0,
+                    w = 16,
+                    h = 12,
+                    visible = true,
+                    spanMode = DashboardItemSpanMode.MAXIMUM
+                )
+            )
+        )
+
+        val restored = DashboardLayoutCodec.importStatusLayout(
+            json = DashboardLayoutCodec.export(layout),
+            definitions = StatusDashboardWidgets.definitions,
+            defaultLayoutForDensity = StatusDashboardWidgets::defaultLayout
+        )
+
+        assertEquals(
+            DashboardItemSpanMode.MAXIMUM,
+            restored.layout.items.first { it.widgetId == StatusDashboardWidgets.BUILD_ACTIVITY }.spanMode
+        )
+    }
 }

@@ -14,6 +14,9 @@ object StatusDashboardWidgets {
             defaultH = 4,
             minW = 8,
             minH = 3,
+            collapsedW = 8,
+            collapsedH = 3,
+            expandedH = 5,
             maxH = 5,
             canHide = false
         ),
@@ -23,7 +26,9 @@ object StatusDashboardWidgets {
             defaultH = 4,
             minW = 4,
             minH = 3,
-            maxW = 12,
+            collapsedW = 4,
+            collapsedH = 3,
+            expandedH = 5,
             maxH = 5
         ),
         BuiltinWidgetDefinition(
@@ -32,6 +37,9 @@ object StatusDashboardWidgets {
             defaultH = 9,
             minW = 8,
             minH = 6,
+            collapsedW = 8,
+            collapsedH = 6,
+            expandedH = 12,
             maxH = 12
         ),
         BuiltinWidgetDefinition(
@@ -40,7 +48,9 @@ object StatusDashboardWidgets {
             defaultH = 6,
             minW = 5,
             minH = 4,
-            maxW = 12,
+            collapsedW = 5,
+            collapsedH = 4,
+            expandedH = 8,
             maxH = 8
         ),
         BuiltinWidgetDefinition(
@@ -49,6 +59,9 @@ object StatusDashboardWidgets {
             defaultH = 8,
             minW = 6,
             minH = 5,
+            collapsedW = 6,
+            collapsedH = 5,
+            expandedH = 12,
             maxH = 12
         )
     )

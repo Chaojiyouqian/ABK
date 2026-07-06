@@ -643,15 +643,22 @@ CONFIG_IPV6=n
     <string name="status_layout_import">Import layout</string>
     <string name="status_layout_export">Export layout</string>
     <string name="status_layout_saved">Status layout saved</string>
+    <string name="status_layout_save_failed">Failed to save the status layout: %1$s</string>
     <string name="status_layout_export_success">Layout exported</string>
     <string name="status_layout_export_failed">Failed to export layout: %1$s</string>
     <string name="status_layout_import_success">Layout imported: %1$d widgets, %2$d ignored</string>
     <string name="status_layout_import_failed">Failed to import layout: %1$s</string>
     <string name="status_layout_import_failed_reset">Import failed. The editor draft was reset to the default layout.</string>
+    <string name="status_layout_share">Share layout</string>
+    <string name="status_layout_save_exit">Save and exit</string>
+    <string name="status_layout_widgets">Widgets</string>
+    <string name="status_layout_actions">Editor actions</string>
     <string name="status_layout_hidden_widgets">Hidden widgets</string>
     <string name="status_layout_hidden_widgets_desc">Hidden widgets stay in the layout model and can be re-enabled at any time.</string>
     <string name="status_layout_hidden_widgets_empty">No widgets are hidden right now.</string>
+    <string name="status_layout_hidden_widgets_drag_hint">Restore it to the canvas, then keep dragging to refine its position.</string>
     <string name="status_layout_show_widget">Show</string>
+    <string name="status_layout_bottom_dock">Bottom dock</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>

@@ -34,7 +34,8 @@ object DashboardLayoutCodec {
                     y = item.y,
                     w = item.w,
                     h = item.h,
-                    visible = item.visible
+                    visible = item.visible,
+                    spanMode = item.spanMode.rawValue
                 )
             }
         )
@@ -97,7 +98,8 @@ object DashboardLayoutCodec {
                     y = itemDto.y ?: 0,
                     w = itemDto.w ?: 1,
                     h = itemDto.h ?: 1,
-                    visible = itemDto.visible ?: true
+                    visible = itemDto.visible ?: true,
+                    spanMode = DashboardItemSpanMode.fromRawValue(itemDto.spanMode)
                 )
             }
         }
@@ -162,6 +164,7 @@ object DashboardLayoutCodec {
         val y: Int? = null,
         val w: Int? = null,
         val h: Int? = null,
-        val visible: Boolean? = null
+        val visible: Boolean? = null,
+        val spanMode: String? = null
     )
 }

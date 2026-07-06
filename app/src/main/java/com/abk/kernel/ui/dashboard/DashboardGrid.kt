@@ -2,6 +2,7 @@ package com.abk.kernel.ui.dashboard
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Box
@@ -11,7 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.OpenInFull
@@ -38,6 +41,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.abk.kernel.dashboard.DashboardItemSpanMode
 import com.abk.kernel.dashboard.DashboardLayout
 import com.abk.kernel.dashboard.DashboardLayoutItem
 import com.abk.kernel.ui.theme.uiSurfaceColor
@@ -52,9 +56,12 @@ fun DashboardGrid(
     canMoveItem: (String, Int, Int) -> Boolean,
     canResizeItem: (String, Int, Int) -> Boolean,
     canHideWidget: (String) -> Boolean,
+    canMinimizeWidget: (String) -> Boolean,
+    canMaximizeWidget: (String) -> Boolean,
     canResizeWidget: (String) -> Boolean,
     onMoveItem: (String, Int, Int) -> Unit,
     onResizeItem: (String, Int, Int) -> Unit,
+    onSetItemSpanMode: (String, DashboardItemSpanMode) -> Unit,
     onHideItem: (String) -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable (widgetId: String, interactionsEnabled: Boolean) -> Unit
@@ -120,7 +127,10 @@ fun DashboardGrid(
                     editable = editable,
                     title = widgetLabels[item.widgetId] ?: item.widgetId,
                     canHide = canHideWidget(item.widgetId),
+                    canMinimize = canMinimizeWidget(item.widgetId),
+                    canMaximize = canMaximizeWidget(item.widgetId),
                     canResize = canResizeWidget(item.widgetId),
+                    spanMode = item.spanMode,
                     cellWidth = cellWidth,
                     rowHeight = rowHeight,
                     gridGap = gridGap,
@@ -129,6 +139,7 @@ fun DashboardGrid(
                     isResizeValid = { w, h -> canResizeItem(item.widgetId, w, h) },
                     onMoveItem = { x, y -> onMoveItem(item.widgetId, x, y) },
                     onResizeItem = { w, h -> onResizeItem(item.widgetId, w, h) },
+                    onSetSpanMode = { spanMode -> onSetItemSpanMode(item.widgetId, spanMode) },
                     onHideItem = { onHideItem(item.widgetId) }
                 ) {
                     content(item.widgetId, !editable)
@@ -158,7 +169,10 @@ private fun DashboardGridItem(
     editable: Boolean,
     title: String,
     canHide: Boolean,
+    canMinimize: Boolean,
+    canMaximize: Boolean,
     canResize: Boolean,
+    spanMode: DashboardItemSpanMode,
     cellWidth: androidx.compose.ui.unit.Dp,
     rowHeight: androidx.compose.ui.unit.Dp,
     gridGap: androidx.compose.ui.unit.Dp,
@@ -167,6 +181,7 @@ private fun DashboardGridItem(
     isResizeValid: (Int, Int) -> Boolean,
     onMoveItem: (Int, Int) -> Unit,
     onResizeItem: (Int, Int) -> Unit,
+    onSetSpanMode: (DashboardItemSpanMode) -> Unit,
     onHideItem: () -> Unit,
     content: @Composable () -> Unit
 ) {
@@ -313,17 +328,54 @@ private fun DashboardGridItem(
                 )
             )
 
-            if (canHide) {
-                IconButton(
-                    onClick = onHideItem,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.VisibilityOff,
-                        contentDescription = null
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .wrapContentWidth(),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (canMinimize) {
+                    DashboardModeToken(
+                        label = "MIN",
+                        selected = spanMode == DashboardItemSpanMode.MINIMUM,
+                        onClick = {
+                            onSetSpanMode(
+                                if (spanMode == DashboardItemSpanMode.MINIMUM) {
+                                    DashboardItemSpanMode.DEFAULT
+                                } else {
+                                    DashboardItemSpanMode.MINIMUM
+                                }
+                            )
+                        }
                     )
+                }
+                if (canMaximize) {
+                    DashboardModeToken(
+                        label = "MAX",
+                        selected = spanMode == DashboardItemSpanMode.MAXIMUM,
+                        onClick = {
+                            onSetSpanMode(
+                                if (spanMode == DashboardItemSpanMode.MAXIMUM) {
+                                    DashboardItemSpanMode.DEFAULT
+                                } else {
+                                    DashboardItemSpanMode.MAXIMUM
+                                }
+                            )
+                        }
+                    )
+                }
+                if (canHide) {
+                    IconButton(
+                        onClick = onHideItem,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VisibilityOff,
+                            contentDescription = null
+                        )
+                    }
                 }
             }
 
@@ -394,5 +446,36 @@ private fun DashboardGridItem(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DashboardModeToken(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(MaterialTheme.shapes.small)
+            .background(
+                if (selected) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    uiSurfaceColor(MaterialTheme.colorScheme.surface)
+                }
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (selected) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        )
     }
 }
