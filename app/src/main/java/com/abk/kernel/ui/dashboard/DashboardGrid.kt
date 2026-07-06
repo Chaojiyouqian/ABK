@@ -16,11 +16,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +36,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.style.TextOverflow
@@ -77,6 +75,8 @@ fun DashboardGrid(
     onResizeItem: (String, Int, Int) -> Unit,
     onSetItemSpanMode: (String, DashboardItemSpanMode) -> Unit,
     onHideItem: (String) -> Unit,
+    selectedWidgetId: String? = null,
+    onSelectWidget: (String) -> Unit = {},
     onGridMetricsChanged: (DashboardGridMetrics) -> Unit = {},
     onDragPointerYChanged: (Float?) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -167,6 +167,7 @@ fun DashboardGrid(
                     canMaximize = canMaximizeWidget(item.widgetId),
                     canResize = canResizeWidget(item.widgetId),
                     spanMode = item.spanMode,
+                    selected = selectedWidgetId == item.widgetId,
                     cellWidth = cellWidth,
                     rowHeight = rowHeight,
                     gridGap = gridGap,
@@ -178,6 +179,7 @@ fun DashboardGrid(
                     onResizeItem = { w, h -> onResizeItem(item.widgetId, w, h) },
                     onSetSpanMode = { spanMode -> onSetItemSpanMode(item.widgetId, spanMode) },
                     onHideItem = { onHideItem(item.widgetId) },
+                    onSelect = { onSelectWidget(item.widgetId) },
                     onDragPointerYChanged = onDragPointerYChanged,
                     onPreviewBottomRowChanged = { nextBottom ->
                         previewBottomRow = nextBottom ?: 0
@@ -214,6 +216,7 @@ private fun DashboardGridItem(
     canMaximize: Boolean,
     canResize: Boolean,
     spanMode: DashboardItemSpanMode,
+    selected: Boolean,
     cellWidth: androidx.compose.ui.unit.Dp,
     rowHeight: androidx.compose.ui.unit.Dp,
     gridGap: androidx.compose.ui.unit.Dp,
@@ -225,6 +228,7 @@ private fun DashboardGridItem(
     onResizeItem: (Int, Int) -> Unit,
     onSetSpanMode: (DashboardItemSpanMode) -> Unit,
     onHideItem: () -> Unit,
+    onSelect: () -> Unit,
     onDragPointerYChanged: (Float?) -> Unit,
     onPreviewBottomRowChanged: (Int?) -> Unit,
     content: @Composable () -> Unit
@@ -252,7 +256,8 @@ private fun DashboardGridItem(
         previewState?.valid == false -> MaterialTheme.colorScheme.error
         previewState?.mode == GridInteractionMode.RESIZE -> MaterialTheme.colorScheme.secondary
         previewState?.mode == GridInteractionMode.MOVE -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.outlineVariant
+        selected -> MaterialTheme.colorScheme.primary
+        else -> Color.Transparent
     }
 
     Box(
@@ -291,6 +296,9 @@ private fun DashboardGridItem(
                     .onGloballyPositioned { coordinates ->
                         overlayOriginY = coordinates.positionInRoot().y
                     }
+                    .pointerInput(item.widgetId, layoutRevision, selected) {
+                        detectTapGestures(onTap = { onSelect() })
+                    }
                     .pointerInput(item.widgetId, item.x, item.y, item.w, item.h, layoutRevision) {
                         var accumulatedDx = 0f
                         var accumulatedDy = 0f
@@ -298,6 +306,7 @@ private fun DashboardGridItem(
                             onDragStart = {
                                 accumulatedDx = 0f
                                 accumulatedDy = 0f
+                                onSelect()
                                 previewState = GridPreviewState(
                                     x = item.x,
                                     y = item.y,
@@ -348,85 +357,79 @@ private fun DashboardGridItem(
                     }
             )
 
-            AssistChip(
-                onClick = {},
-                enabled = false,
+            Surface(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(6.dp),
-                label = {
-                    Text(
-                        text = title,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.DragIndicator,
-                        contentDescription = null
-                    )
-                },
-                colors = AssistChipDefaults.assistChipColors(
-                    containerColor = uiSurfaceColor(MaterialTheme.colorScheme.surface),
-                    disabledContainerColor = uiSurfaceColor(MaterialTheme.colorScheme.surface),
-                    disabledLabelColor = MaterialTheme.colorScheme.onSurface,
-                    disabledLeadingIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            )
-
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(4.dp)
-                    .wrapContentWidth(),
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
+                shape = MaterialTheme.shapes.small,
+                color = uiSurfaceColor(MaterialTheme.colorScheme.surface),
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
             ) {
-                if (canMinimize) {
-                    DashboardModeToken(
-                        label = "MIN",
-                        selected = spanMode == DashboardItemSpanMode.MINIMUM,
-                        onClick = {
-                            onSetSpanMode(
-                                if (spanMode == DashboardItemSpanMode.MINIMUM) {
-                                    DashboardItemSpanMode.DEFAULT
-                                } else {
-                                    DashboardItemSpanMode.MINIMUM
-                                }
-                            )
-                        }
-                    )
-                }
-                if (canMaximize) {
-                    DashboardModeToken(
-                        label = "MAX",
-                        selected = spanMode == DashboardItemSpanMode.MAXIMUM,
-                        onClick = {
-                            onSetSpanMode(
-                                if (spanMode == DashboardItemSpanMode.MAXIMUM) {
-                                    DashboardItemSpanMode.DEFAULT
-                                } else {
-                                    DashboardItemSpanMode.MAXIMUM
-                                }
-                            )
-                        }
-                    )
-                }
-                if (canHide) {
-                    IconButton(
-                        onClick = onHideItem,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.VisibilityOff,
-                            contentDescription = null
+                Text(
+                    text = title,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            if (selected) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .wrapContentWidth(),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (canMinimize) {
+                        DashboardModeToken(
+                            label = "MIN",
+                            selected = spanMode == DashboardItemSpanMode.MINIMUM,
+                            onClick = {
+                                onSetSpanMode(
+                                    if (spanMode == DashboardItemSpanMode.MINIMUM) {
+                                        DashboardItemSpanMode.DEFAULT
+                                    } else {
+                                        DashboardItemSpanMode.MINIMUM
+                                    }
+                                )
+                            }
                         )
+                    }
+                    if (canMaximize) {
+                        DashboardModeToken(
+                            label = "MAX",
+                            selected = spanMode == DashboardItemSpanMode.MAXIMUM,
+                            onClick = {
+                                onSetSpanMode(
+                                    if (spanMode == DashboardItemSpanMode.MAXIMUM) {
+                                        DashboardItemSpanMode.DEFAULT
+                                    } else {
+                                        DashboardItemSpanMode.MAXIMUM
+                                    }
+                                )
+                            }
+                        )
+                    }
+                    if (canHide) {
+                        IconButton(
+                            onClick = onHideItem,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.VisibilityOff,
+                                contentDescription = null
+                            )
+                        }
                     }
                 }
             }
 
-            if (canResize) {
+            if (selected && canResize) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -441,9 +444,10 @@ private fun DashboardGridItem(
                                 onDragStart = {
                                     accumulatedDx = 0f
                                     accumulatedDy = 0f
-                                previewState = GridPreviewState(
-                                    x = item.x,
-                                    y = item.y,
+                                    onSelect()
+                                    previewState = GridPreviewState(
+                                        x = item.x,
+                                        y = item.y,
                                         w = item.w,
                                         h = item.h,
                                         valid = true,

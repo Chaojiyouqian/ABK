@@ -18,7 +18,7 @@ object StatusDashboardWidgets {
             collapsedH = 3,
             expandedH = 5,
             maxH = 5,
-            canHide = false
+            canHide = true
         ),
         BuiltinWidgetDefinition(
             widgetId = METRICS,

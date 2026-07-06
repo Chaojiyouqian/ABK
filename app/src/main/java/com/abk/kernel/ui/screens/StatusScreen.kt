@@ -14,8 +14,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -103,6 +103,7 @@ fun StatusScreen(
     }
     var actionMenuExpanded by remember { mutableStateOf(false) }
     var widgetsTrayExpanded by remember { mutableStateOf(false) }
+    var selectedWidgetId by remember { mutableStateOf<String?>(null) }
     var viewportHeightPx by remember { mutableStateOf(0f) }
     var activeDragPointerY by remember { mutableStateOf<Float?>(null) }
     var gridMetrics by remember { mutableStateOf<DashboardGridMetrics?>(null) }
@@ -165,6 +166,7 @@ fun StatusScreen(
         if (!state.statusDashboardEditMode) {
             actionMenuExpanded = false
             widgetsTrayExpanded = false
+            selectedWidgetId = null
             hiddenWidgetDrag = null
             activeDragPointerY = null
         }
@@ -294,6 +296,8 @@ fun StatusScreen(
                     onResizeItem = vm::resizeStatusDashboardWidget,
                     onSetItemSpanMode = vm::setStatusDashboardWidgetSpanMode,
                     onHideItem = { widgetId -> vm.setStatusDashboardWidgetVisible(widgetId, false) },
+                    selectedWidgetId = selectedWidgetId,
+                    onSelectWidget = { selectedWidgetId = it },
                     onGridMetricsChanged = { metrics -> gridMetrics = metrics },
                     onDragPointerYChanged = { activeDragPointerY = it }
                 ) { widgetId, interactionsEnabled ->
@@ -335,6 +339,7 @@ fun StatusScreen(
                             targetX = target.first,
                             targetY = target.second
                         )
+                        selectedWidgetId = dragState.widgetId
                     },
                     activeDragWidgetId = hiddenWidgetDrag?.widgetId,
                     modifier = Modifier
@@ -654,7 +659,7 @@ private fun HiddenWidgetThumbnail(
             .pointerInput(widgetId, item.w, item.h) {
                 var dragX = 0f
                 var dragY = 0f
-                detectDragGestures(
+                detectDragGesturesAfterLongPress(
                     onDragStart = { offset ->
                         dragX = originX + offset.x
                         dragY = originY + offset.y

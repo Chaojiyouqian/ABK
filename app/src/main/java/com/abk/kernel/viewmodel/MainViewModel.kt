@@ -4032,8 +4032,14 @@ class MainViewModel @JvmOverloads constructor(
             visible = true,
             definitions = StatusDashboardWidgets.definitions
         )
+        val defaultSizedLayout = DashboardLayoutEngine.setItemSpanMode(
+            layout = visibleLayout,
+            widgetId = widgetId,
+            spanMode = DashboardItemSpanMode.DEFAULT,
+            definitions = StatusDashboardWidgets.definitions
+        )
         val placedLayout = if (DashboardLayoutEngine.canMoveItem(
-                layout = visibleLayout,
+                layout = defaultSizedLayout,
                 widgetId = widgetId,
                 targetX = targetX,
                 targetY = targetY,
@@ -4041,14 +4047,14 @@ class MainViewModel @JvmOverloads constructor(
             )
         ) {
             DashboardLayoutEngine.moveItemExact(
-                layout = visibleLayout,
+                layout = defaultSizedLayout,
                 widgetId = widgetId,
                 targetX = targetX,
                 targetY = targetY,
                 definitions = StatusDashboardWidgets.definitions
             )
         } else {
-            visibleLayout
+            defaultSizedLayout
         }
         _uiState.update { it.copy(statusDashboardDraftLayout = placedLayout) }
     }

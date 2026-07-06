@@ -303,10 +303,20 @@ object DashboardLayoutEngine {
             definition = definition,
             columns = columns
         )
-        val maxWidth = (definition.maxW ?: columns).coerceAtMost(columns).coerceAtLeast(definition.minW)
-        val width = sizedItem.w.coerceIn(definition.minW, maxWidth)
-        val maxHeight = (definition.maxH ?: Int.MAX_VALUE).coerceAtLeast(definition.minH)
-        val height = sizedItem.h.coerceIn(definition.minH, maxHeight)
+        val width = when (sizedItem.spanMode) {
+            DashboardItemSpanMode.CUSTOM -> sizedItem.w.coerceIn(1, columns.coerceAtLeast(1))
+            else -> {
+                val maxWidth = (definition.maxW ?: columns).coerceAtMost(columns).coerceAtLeast(1)
+                sizedItem.w.coerceIn(1, maxWidth)
+            }
+        }
+        val height = when (sizedItem.spanMode) {
+            DashboardItemSpanMode.CUSTOM -> sizedItem.h.coerceAtLeast(1)
+            else -> {
+                val maxHeight = (definition.maxH ?: Int.MAX_VALUE).coerceAtLeast(1)
+                sizedItem.h.coerceIn(1, maxHeight)
+            }
+        }
         val x = item.x.coerceIn(0, (columns - width).coerceAtLeast(0))
         val y = item.y.coerceAtLeast(0)
         return sizedItem.copy(x = x, y = y, w = width, h = height)
