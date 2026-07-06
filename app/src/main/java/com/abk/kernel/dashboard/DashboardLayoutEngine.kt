@@ -457,7 +457,12 @@ object DashboardLayoutEngine {
         columns: Int,
         occupiedItems: List<DashboardLayoutItem>
     ): DashboardLayoutItem {
-        val normalized = normalizeItem(item, definition, columns)
+        val normalized = normalizeItem(
+            item = item,
+            definition = definition,
+            columns = columns,
+            layoutMode = DashboardLayoutMode.GRID
+        )
         if (isAreaFree(normalized, occupiedItems, columns)) {
             return normalized
         }
