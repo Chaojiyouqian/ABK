@@ -14,7 +14,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -659,43 +659,48 @@ private fun HiddenWidgetThumbnail(
             .pointerInput(widgetId, item.w, item.h) {
                 var dragX = 0f
                 var dragY = 0f
-                detectDragGesturesAfterLongPress(
+                var active = false
+                detectVerticalDragGestures(
                     onDragStart = { offset ->
                         dragX = originX + offset.x
                         dragY = originY + offset.y
+                        active = false
+                    },
+                    onDragCancel = {
+                        active = false
+                        onDragChanged(null)
+                    },
+                    onDragEnd = {
+                        if (active) {
+                            onDragReleased(
+                                HiddenWidgetDragState(
+                                    widgetId = widgetId,
+                                    pointerX = dragX,
+                                    pointerY = dragY,
+                                    leftTray = dragY < originY
+                                )
+                            )
+                        }
+                        active = false
+                    }
+                ) { change, dragAmount ->
+                    dragX = originX + change.position.x
+                    dragY += dragAmount
+                    val hasLeftTray = dragY < originY
+                    if (hasLeftTray) {
+                        active = true
+                    }
+                    if (active) {
+                        change.consume()
                         onDragChanged(
                             HiddenWidgetDragState(
                                 widgetId = widgetId,
                                 pointerX = dragX,
                                 pointerY = dragY,
-                                leftTray = false
+                                leftTray = true
                             )
                         )
-                    },
-                    onDragCancel = {
-                        onDragChanged(null)
-                    },
-                    onDragEnd = {
-                        val finalState = HiddenWidgetDragState(
-                            widgetId = widgetId,
-                            pointerX = dragX,
-                            pointerY = dragY,
-                            leftTray = dragY < originY
-                        )
-                        onDragReleased(finalState)
                     }
-                ) { change, dragAmount ->
-                    change.consume()
-                    dragX += dragAmount.x
-                    dragY += dragAmount.y
-                    onDragChanged(
-                        HiddenWidgetDragState(
-                            widgetId = widgetId,
-                            pointerX = dragX,
-                            pointerY = dragY,
-                            leftTray = dragY < originY
-                        )
-                    )
                 }
             },
         horizontalAlignment = Alignment.CenterHorizontally,

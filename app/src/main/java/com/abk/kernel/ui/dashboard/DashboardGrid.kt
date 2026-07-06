@@ -76,7 +76,7 @@ fun DashboardGrid(
     onSetItemSpanMode: (String, DashboardItemSpanMode) -> Unit,
     onHideItem: (String) -> Unit,
     selectedWidgetId: String? = null,
-    onSelectWidget: (String) -> Unit = {},
+    onSelectWidget: (String?) -> Unit = {},
     onGridMetricsChanged: (DashboardGridMetrics) -> Unit = {},
     onDragPointerYChanged: (Float?) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -117,6 +117,10 @@ fun DashboardGrid(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(gridHeight)
+                .pointerInput(editable, selectedWidgetId) {
+                    if (!editable) return@pointerInput
+                    detectTapGestures(onTap = { onSelectWidget(null) })
+                }
                 .onGloballyPositioned { coordinates ->
                     val position = coordinates.positionInRoot()
                     onGridMetricsChanged(
