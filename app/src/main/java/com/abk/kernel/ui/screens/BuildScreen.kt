@@ -988,20 +988,60 @@ fun BuildScreen(
                         null
                     }
                 )
+            },
+            bottomBar = if (guidedMode) {
+                {
+                    Surface(
+                        color = uiSurfaceColor(MaterialTheme.colorScheme.surface),
+                        tonalElevation = 2.dp
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = AbkScreenHorizontalPadding, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    guidedStepIndex = (guidedStepIndex - 1).coerceAtLeast(0)
+                                },
+                                enabled = guidedStepIndex > 0,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(stringResource(R.string.build_guided_previous))
+                            }
+                            Button(
+                                onClick = {
+                                    if (guidedStepIndex < guideSteps.lastIndex) {
+                                        guidedStepIndex += 1
+                                    } else {
+                                        showConfirmDialog = true
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    if (guidedStepIndex < guideSteps.lastIndex) {
+                                        stringResource(R.string.build_guided_next)
+                                    } else {
+                                        stringResource(R.string.build_submit)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                {}
             }
         ) { padding ->
-            Box(
+            Column(
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize()
-            ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = AbkScreenHorizontalPadding)
-                    .padding(bottom = if (guidedMode) 108.dp else 0.dp),
+                    .padding(horizontal = AbkScreenHorizontalPadding),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 if (guidedMode) {
@@ -1705,51 +1745,6 @@ fun BuildScreen(
             }
 
             Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
-            }
-            if (guidedMode) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth(),
-                    color = uiSurfaceColor(MaterialTheme.colorScheme.surface),
-                    tonalElevation = 2.dp
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = AbkScreenHorizontalPadding, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                guidedStepIndex = (guidedStepIndex - 1).coerceAtLeast(0)
-                            },
-                            enabled = guidedStepIndex > 0,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(stringResource(R.string.build_guided_previous))
-                        }
-                        Button(
-                            onClick = {
-                                if (guidedStepIndex < guideSteps.lastIndex) {
-                                    guidedStepIndex += 1
-                                } else {
-                                    showConfirmDialog = true
-                                }
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                if (guidedStepIndex < guideSteps.lastIndex) {
-                                    stringResource(R.string.build_guided_next)
-                                } else {
-                                    stringResource(R.string.build_submit)
-                                }
-                            )
-                        }
-                    }
-                }
-            }
             }
         }
 
