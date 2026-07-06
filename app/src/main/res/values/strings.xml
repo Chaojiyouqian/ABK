@@ -255,8 +255,25 @@
     <string name="build_time_placeholder">留空/N=当前 UTC 时间</string>
     <string name="build_custom_kernel_config">自定义内核选项</string>
     <string name="build_custom_kernel_config_placeholder">每行一项，例如 CONFIG_USER_NS=y 或 # CONFIG_IPV6 is not set</string>
-    <string name="build_custom_kernel_config_hint">仅支持 CONFIG_FOO=... 与 # CONFIG_BAR is not set；可直接覆盖最终编译前的 defconfig。</string>
+    <string name="build_custom_kernel_config_single_placeholder">输入 USER_NS 或 CONFIG_USER_NS</string>
+    <string name="build_custom_kernel_config_hint">添加条目后可切换为内建、模块、关闭或忽略；批量导入时每行一个，支持 CONFIG_FOO=y/m/n 或 # CONFIG_BAR is not set。</string>
     <string name="build_custom_kernel_config_count">已配置 %1$d 项自定义内核选项</string>
+    <string name="build_custom_kernel_config_invalid_key">内核选项格式不正确：%1$s</string>
+    <string name="build_custom_kernel_config_invalid_line">无法导入该条目：%1$s</string>
+    <string name="build_custom_kernel_config_import_title">批量导入内核选项</string>
+    <string name="build_custom_kernel_config_import_hint">每行一个条目。支持 CONFIG_FOO=y、CONFIG_FOO=m、CONFIG_FOO=n 和 # CONFIG_FOO is not set。</string>
+    <string name="build_custom_kernel_config_import_label">导入内容</string>
+    <string name="build_custom_kernel_config_import_placeholder">CONFIG_USER_NS=y
+CONFIG_IPV6=n
+# CONFIG_WERROR is not set</string>
+    <string name="build_custom_kernel_config_state_builtin">内建</string>
+    <string name="build_custom_kernel_config_state_module">模块</string>
+    <string name="build_custom_kernel_config_state_disabled">关闭</string>
+    <string name="build_custom_kernel_config_state_ignore">忽略</string>
+    <string name="build_custom_kernel_config_state_builtin_desc">传递给工作流为 =y</string>
+    <string name="build_custom_kernel_config_state_module_desc">传递给工作流为 =m</string>
+    <string name="build_custom_kernel_config_state_disabled_desc">传递给工作流为 =n</string>
+    <string name="build_custom_kernel_config_state_ignore_desc">不传递给工作流，不修改该选项</string>
     <string name="build_add_queue">加入队列</string>
     <string name="build_queue_title">构建队列</string>
     <string name="build_plan_library">方案库</string>

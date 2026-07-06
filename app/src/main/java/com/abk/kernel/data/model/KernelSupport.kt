@@ -427,7 +427,7 @@ object KernelSupport {
     }
 
     private fun normalizeCustomKernelConfig(value: String): String =
-        value.replace("\r\n", "\n").replace('\r', '\n').trim()
+        serializeCustomKernelConfigEntries(parseCustomKernelConfigEntries(value))
 
     fun subLevelOptions(androidVersion: String, kernelVersion: String): List<String> =
         subLevels(lineFor(androidVersion, kernelVersion)) + "X"

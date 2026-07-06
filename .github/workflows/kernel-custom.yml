@@ -96,7 +96,7 @@ on:
           - "345"
         default: "off"
       custom_kernel_config:
-        description: "自定义内核选项（支持多行或 | 分隔，仅支持 CONFIG_FOO=... 与 # CONFIG_BAR is not set）"
+        description: "自定义内核选项（支持多行或 | 分隔；推荐 CONFIG_FOO=y/m/n，也支持 # CONFIG_BAR is not set）"
         required: false
         type: string
         default: ""

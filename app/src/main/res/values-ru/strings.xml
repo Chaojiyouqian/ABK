@@ -255,8 +255,25 @@
     <string name="build_time_placeholder">Пусто/N = текущее UTC</string>
     <string name="build_custom_kernel_config">Пользовательские параметры ядра</string>
     <string name="build_custom_kernel_config_placeholder">По одному на строку, например CONFIG_USER_NS=y или # CONFIG_IPV6 is not set</string>
-    <string name="build_custom_kernel_config_hint">Поддерживаются только CONFIG_FOO=... и # CONFIG_BAR is not set. Эти строки переопределяют итоговый defconfig прямо перед компиляцией.</string>
+    <string name="build_custom_kernel_config_single_placeholder">Введите USER_NS или CONFIG_USER_NS</string>
+    <string name="build_custom_kernel_config_hint">После добавления запись можно переключать между built-in, module, disabled и ignore. При массовом импорте используйте по одной записи на строку: CONFIG_FOO=y/m/n или # CONFIG_BAR is not set.</string>
     <string name="build_custom_kernel_config_count">Настроено %1$d пользовательских параметров ядра</string>
+    <string name="build_custom_kernel_config_invalid_key">Некорректный параметр ядра: %1$s</string>
+    <string name="build_custom_kernel_config_invalid_line">Не удалось импортировать запись: %1$s</string>
+    <string name="build_custom_kernel_config_import_title">Массовый импорт параметров ядра</string>
+    <string name="build_custom_kernel_config_import_hint">По одной записи на строку. Поддерживаются CONFIG_FOO=y, CONFIG_FOO=m, CONFIG_FOO=n и # CONFIG_FOO is not set.</string>
+    <string name="build_custom_kernel_config_import_label">Содержимое импорта</string>
+    <string name="build_custom_kernel_config_import_placeholder">CONFIG_USER_NS=y
+CONFIG_IPV6=n
+# CONFIG_WERROR is not set</string>
+    <string name="build_custom_kernel_config_state_builtin">Built-in</string>
+    <string name="build_custom_kernel_config_state_module">Module</string>
+    <string name="build_custom_kernel_config_state_disabled">Disabled</string>
+    <string name="build_custom_kernel_config_state_ignore">Ignore</string>
+    <string name="build_custom_kernel_config_state_builtin_desc">Передаётся в workflow как =y</string>
+    <string name="build_custom_kernel_config_state_module_desc">Передаётся в workflow как =m</string>
+    <string name="build_custom_kernel_config_state_disabled_desc">Передаётся в workflow как =n</string>
+    <string name="build_custom_kernel_config_state_ignore_desc">Не передаётся в workflow и не меняет этот параметр</string>
     <string name="build_add_queue">Добавить в очередь</string>
     <string name="build_queue_title">Очередь сборок</string>
     <string name="build_plan_library">Библиотека пресетов</string>
