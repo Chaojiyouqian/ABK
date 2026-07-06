@@ -92,6 +92,7 @@ fun DashboardGrid(
     }
     val rowHeight = layout.densityPreset.rowHeightDp.dp
     val gridGap = 4.dp
+    val layoutRevision = remember(layout.items) { layout.items.hashCode() }
     val contentRows = max(
         1,
         visibleItems.maxOfOrNull { it.bottom } ?: 0
@@ -164,6 +165,7 @@ fun DashboardGrid(
                     cellWidth = cellWidth,
                     rowHeight = rowHeight,
                     gridGap = gridGap,
+                    layoutRevision = layoutRevision,
                     columns = layout.densityPreset.columns,
                     isMoveValid = { x, y -> canMoveItem(item.widgetId, x, y) },
                     isResizeValid = { w, h -> canResizeItem(item.widgetId, w, h) },
@@ -207,6 +209,7 @@ private fun DashboardGridItem(
     cellWidth: androidx.compose.ui.unit.Dp,
     rowHeight: androidx.compose.ui.unit.Dp,
     gridGap: androidx.compose.ui.unit.Dp,
+    layoutRevision: Int,
     columns: Int,
     isMoveValid: (Int, Int) -> Boolean,
     isResizeValid: (Int, Int) -> Boolean,
@@ -286,7 +289,7 @@ private fun DashboardGridItem(
                     .onGloballyPositioned { coordinates ->
                         overlayOriginY = coordinates.positionInRoot().y
                     }
-                    .pointerInput(item.widgetId, item.x, item.y, item.w, item.h) {
+                    .pointerInput(item.widgetId, item.x, item.y, item.w, item.h, layoutRevision) {
                         var accumulatedDx = 0f
                         var accumulatedDy = 0f
                         detectDragGesturesAfterLongPress(
@@ -426,7 +429,7 @@ private fun DashboardGridItem(
                         .size(32.dp)
                         .clip(MaterialTheme.shapes.medium)
                         .background(uiSurfaceColor(MaterialTheme.colorScheme.surface))
-                        .pointerInput(item.widgetId, item.w, item.h) {
+                        .pointerInput(item.widgetId, item.w, item.h, layoutRevision) {
                             var accumulatedDx = 0f
                             var accumulatedDy = 0f
                             detectDragGestures(
