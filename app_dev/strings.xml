@@ -125,6 +125,9 @@
     <string name="build_guided_step_ksu_desc">选择 KernelSU 变体、分支以及自定义引用。</string>
     <string name="build_guided_step_features_desc">配置虚拟化、ZRAM、KPM、自定义模块和其他功能开关。</string>
     <string name="build_guided_step_finish_desc">补充版本、时间与高级选项，确认后提交构建。</string>
+    <string name="build_guided_overview_title">当前构建摘要</string>
+    <string name="build_guided_overview_desc">先确认当前方案方向，再开始逐步填写详细配置。</string>
+    <string name="build_guided_overview_hint">下面会按步骤继续细化版本、KernelSU 和功能开关。</string>
     <string name="build_login_required_title">登录 GitHub 后才能构建</string>
     <string name="build_login_required_desc">ABK 现在不会在启动时强制登录。需要构建内核时，再进入 OOBE 完成 GitHub 授权即可。</string>
     <string name="build_fork_required_title">还需要完成 fork 配置</string>

@@ -1092,13 +1092,18 @@ fun BuildScreen(
                 )
             }
         ) { padding ->
-            Column(
+            Box(
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize()
+            ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = AbkScreenHorizontalPadding),
+                    .padding(horizontal = AbkScreenHorizontalPadding)
+                    .padding(bottom = if (guidedMode) 108.dp else 0.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 if (guidedMode) {
@@ -1110,11 +1115,25 @@ fun BuildScreen(
                 }
 
                 if (!guidedMode || activeGuideStep == BuildGuideStep.Overview) {
-                    BuildPlanHero(
-                        config,
-                        recommended,
-                        state.buildStatus
-                    )
+                    if (guidedMode) {
+                        ExpressiveSectionCard(
+                            title = stringResource(R.string.build_guided_overview_title),
+                            subtitle = stringResource(R.string.build_guided_overview_desc),
+                            icon = Icons.Default.RocketLaunch
+                        ) {
+                            ExpressiveListItem(
+                                title = buildPlanSummary(config),
+                                subtitle = stringResource(R.string.build_guided_overview_hint),
+                                leadingIcon = Icons.Default.Tune
+                            )
+                        }
+                    } else {
+                        BuildPlanHero(
+                            config,
+                            recommended,
+                            state.buildStatus
+                        )
+                    }
 
                     BuildPlanToolsCard(
                         plansCount = state.buildPlans.size,
@@ -1169,53 +1188,55 @@ fun BuildScreen(
                         }
                     )
 
-                    AnimatedVisibility(
-                        visible = state.buildStatus != BuildStatus.IDLE,
-                        enter = fadeIn() + slideInVertically { -it / 3 } + expandVertically(),
-                        exit = fadeOut() + shrinkVertically()
-                    ) {
-                        val kernelActiveRuns = remember(state.activeBuildRuns) {
-                            state.activeBuildRuns.filter { it.isKernelBuild() }
-                        }
-                        val managerActiveRuns = remember(state.activeBuildRuns) {
-                            state.activeBuildRuns.filter { it.isManagerBuild() }
-                        }
-                        val kernelRunningChips = remember(kernelActiveRuns, state.buildQueue) {
-                            buildRunChipsForStatus(kernelActiveRuns, state.buildQueue, running = true)
-                        }
-                        val kernelQueuedChips = remember(kernelActiveRuns, state.buildQueue) {
-                            buildRunChipsForStatus(kernelActiveRuns, state.buildQueue, running = false)
-                        }
-                        val managerRunningChips = remember(managerActiveRuns, state.buildQueue) {
-                            buildRunChipsForStatus(managerActiveRuns, state.buildQueue, running = true)
-                        }
-                        val managerQueuedChips = remember(managerActiveRuns, state.buildQueue) {
-                            buildRunChipsForStatus(managerActiveRuns, state.buildQueue, running = false)
-                        }
-                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            BuildKindProgressBlock(
-                                title = stringResource(R.string.status_build),
-                                status = state.kernelBuildStatus,
-                                progress = state.kernelBuildProgress,
-                                currentRun = state.kernelCurrentRun,
-                                activeRunCount = state.kernelActiveBuildRuns.size,
-                                cancellingRunIds = state.cancellingWorkflowRunIds,
-                                runningChips = kernelRunningChips,
-                                queuedChips = kernelQueuedChips,
-                                onCancel = vm::cancelWorkflowRun,
-                            )
-                            if (state.managerBuildStatus != BuildStatus.IDLE || state.managerCurrentRun != null) {
+                    if (!guidedMode) {
+                        AnimatedVisibility(
+                            visible = state.buildStatus != BuildStatus.IDLE,
+                            enter = fadeIn() + slideInVertically { -it / 3 } + expandVertically(),
+                            exit = fadeOut() + shrinkVertically()
+                        ) {
+                            val kernelActiveRuns = remember(state.activeBuildRuns) {
+                                state.activeBuildRuns.filter { it.isKernelBuild() }
+                            }
+                            val managerActiveRuns = remember(state.activeBuildRuns) {
+                                state.activeBuildRuns.filter { it.isManagerBuild() }
+                            }
+                            val kernelRunningChips = remember(kernelActiveRuns, state.buildQueue) {
+                                buildRunChipsForStatus(kernelActiveRuns, state.buildQueue, running = true)
+                            }
+                            val kernelQueuedChips = remember(kernelActiveRuns, state.buildQueue) {
+                                buildRunChipsForStatus(kernelActiveRuns, state.buildQueue, running = false)
+                            }
+                            val managerRunningChips = remember(managerActiveRuns, state.buildQueue) {
+                                buildRunChipsForStatus(managerActiveRuns, state.buildQueue, running = true)
+                            }
+                            val managerQueuedChips = remember(managerActiveRuns, state.buildQueue) {
+                                buildRunChipsForStatus(managerActiveRuns, state.buildQueue, running = false)
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                 BuildKindProgressBlock(
-                                    title = stringResource(R.string.status_manager_build),
-                                    status = state.managerBuildStatus,
-                                    progress = state.managerBuildProgress,
-                                    currentRun = state.managerCurrentRun,
-                                    activeRunCount = state.managerActiveBuildRuns.size,
+                                    title = stringResource(R.string.status_build),
+                                    status = state.kernelBuildStatus,
+                                    progress = state.kernelBuildProgress,
+                                    currentRun = state.kernelCurrentRun,
+                                    activeRunCount = state.kernelActiveBuildRuns.size,
                                     cancellingRunIds = state.cancellingWorkflowRunIds,
-                                    runningChips = managerRunningChips,
-                                    queuedChips = managerQueuedChips,
+                                    runningChips = kernelRunningChips,
+                                    queuedChips = kernelQueuedChips,
                                     onCancel = vm::cancelWorkflowRun,
                                 )
+                                if (state.managerBuildStatus != BuildStatus.IDLE || state.managerCurrentRun != null) {
+                                    BuildKindProgressBlock(
+                                        title = stringResource(R.string.status_manager_build),
+                                        status = state.managerBuildStatus,
+                                        progress = state.managerBuildProgress,
+                                        currentRun = state.managerCurrentRun,
+                                        activeRunCount = state.managerActiveBuildRuns.size,
+                                        cancellingRunIds = state.cancellingWorkflowRunIds,
+                                        runningChips = managerRunningChips,
+                                        queuedChips = managerQueuedChips,
+                                        onCancel = vm::cancelWorkflowRun,
+                                    )
+                                }
                             }
                         }
                     }
@@ -1851,41 +1872,6 @@ fun BuildScreen(
             }
             }
 
-            if (guidedMode) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = {
-                            guidedStepIndex = (guidedStepIndex - 1).coerceAtLeast(0)
-                        },
-                        enabled = guidedStepIndex > 0,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(stringResource(R.string.build_guided_previous))
-                    }
-                    Button(
-                        onClick = {
-                            if (guidedStepIndex < guideSteps.lastIndex) {
-                                guidedStepIndex += 1
-                            } else {
-                                showConfirmDialog = true
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            if (guidedStepIndex < guideSteps.lastIndex) {
-                                stringResource(R.string.build_guided_next)
-                            } else {
-                                stringResource(R.string.build_submit)
-                            }
-                        )
-                    }
-                }
-            }
-
             // Submit button
             if (!guidedMode) {
                 Button(
@@ -1906,6 +1892,51 @@ fun BuildScreen(
             }
 
             Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
+            }
+            if (guidedMode) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth(),
+                    color = uiSurfaceColor(MaterialTheme.colorScheme.surface),
+                    tonalElevation = 2.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = AbkScreenHorizontalPadding, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                guidedStepIndex = (guidedStepIndex - 1).coerceAtLeast(0)
+                            },
+                            enabled = guidedStepIndex > 0,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(stringResource(R.string.build_guided_previous))
+                        }
+                        Button(
+                            onClick = {
+                                if (guidedStepIndex < guideSteps.lastIndex) {
+                                    guidedStepIndex += 1
+                                } else {
+                                    showConfirmDialog = true
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                if (guidedStepIndex < guideSteps.lastIndex) {
+                                    stringResource(R.string.build_guided_next)
+                                } else {
+                                    stringResource(R.string.build_submit)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
             }
         }
 
@@ -3458,18 +3489,20 @@ private fun BuildGuideHeader(
     activeStep: BuildGuideStep,
     activeIndex: Int
 ) {
-    ExpressiveHeroCard(
+    ExpressiveSectionCard(
         title = activeStep.title(),
         subtitle = activeStep.description(),
-        icon = Icons.Default.AutoAwesome,
-        badge = {
-            ExpressiveStatusChip(
-                label = stringResource(R.string.build_guided_progress, activeIndex + 1, steps.size),
-                icon = Icons.Default.Timeline,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
+        icon = Icons.Default.AutoAwesome
     ) {
+        Text(
+            text = stringResource(R.string.build_guided_progress, activeIndex + 1, steps.size),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+        LinearProgressIndicator(
+            progress = { ((activeIndex + 1).toFloat() / steps.size.toFloat()).coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth()
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -3482,7 +3515,7 @@ private fun BuildGuideHeader(
                     enabled = false,
                     label = {
                         Text(
-                            text = "${index + 1}. ${step.title()}",
+                            text = "${index + 1}",
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )

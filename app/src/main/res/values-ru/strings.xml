@@ -125,6 +125,9 @@
     <string name="build_guided_step_ksu_desc">Выберите вариант KernelSU, ветку и при необходимости свой ref.</string>
     <string name="build_guided_step_features_desc">Настройте виртуализацию, ZRAM, KPM, внешние модули и остальные переключатели.</string>
     <string name="build_guided_step_finish_desc">Заполните версию, время сборки и дополнительные опции, затем отправьте сборку.</string>
+    <string name="build_guided_overview_title">Сводка текущей сборки</string>
+    <string name="build_guided_overview_desc">Сначала подтвердите направление текущего пресета, затем переходите к детальной настройке по шагам.</string>
+    <string name="build_guided_overview_hint">Дальше шаги отдельно уточнят версию, KernelSU и функциональные переключатели.</string>
     <string name="build_login_required_title">Войдите в GitHub перед сборкой</string>
     <string name="build_login_required_desc">ABK больше не требует вход в GitHub при запуске. Откройте мастер настройки здесь, когда будете готовы собирать.</string>
     <string name="build_fork_required_title">Нужна настройка fork</string>
