@@ -977,7 +977,8 @@ fun BuildScreen(
             topBar = {
                 ExpressiveTopBar(
                     title = if (guidedMode) stringResource(R.string.build_guided_title) else stringResource(R.string.build_title),
-                    scrollBehavior = scrollBehavior,
+                    scrollBehavior = if (guidedMode) null else scrollBehavior,
+                    collapsing = !guidedMode,
                     navigationIcon = if (guidedMode) {
                         {
                             IconButton(onClick = { onDismissGuidedMode?.invoke() ?: onNavigateToStatus() }) {
@@ -1039,7 +1040,9 @@ fun BuildScreen(
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .then(
+                        if (guidedMode) Modifier else Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+                    )
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = AbkScreenHorizontalPadding),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
