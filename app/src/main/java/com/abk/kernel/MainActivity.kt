@@ -89,6 +89,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.abk.kernel.ui.components.AppBackgroundHost
+import com.abk.kernel.ui.components.AppPageBackground
 import com.abk.kernel.ui.components.AbkSnackbarHost
 import com.abk.kernel.ui.components.animateBottomNavForChildPage
 import com.abk.kernel.ui.components.childPageOverlayEnterTransition
@@ -843,24 +844,26 @@ private fun AbkMainScaffold(
             exit = childPageOverlayExitTransition(state.predictiveBackEnabled, motionScheme),
             modifier = Modifier.fillMaxSize().zIndex(6f)
         ) {
-            CompositionLocalProvider(LocalUiSurfaceAlpha provides 1f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .then(simpleBuildBack.backTransformModifier())
-                ) {
-                    BuildScreen(
-                        vm = vm,
-                        outerPadding = PaddingValues(0.dp),
-                        guidedMode = true,
-                        onPlanPageVisibleChange = {},
-                        onNavigateToStatus = {
-                            selectedTab = if (state.runtimeNavigationEnabled) AbkTab.RuntimeHome else AbkTab.Status
-                            showSimpleBuildFlow = false
-                        },
-                        onDismissGuidedMode = { simpleBuildBack.requestDismiss() }
-                    )
-                }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(simpleBuildBack.backTransformModifier())
+            ) {
+                AppPageBackground(
+                    backgroundUri = state.customBackgroundUri,
+                    backgroundImageEnabled = state.backgroundImageEnabled
+                )
+                BuildScreen(
+                    vm = vm,
+                    outerPadding = PaddingValues(0.dp),
+                    guidedMode = true,
+                    onPlanPageVisibleChange = {},
+                    onNavigateToStatus = {
+                        selectedTab = if (state.runtimeNavigationEnabled) AbkTab.RuntimeHome else AbkTab.Status
+                        showSimpleBuildFlow = false
+                    },
+                    onDismissGuidedMode = { simpleBuildBack.requestDismiss() }
+                )
             }
         }
         if (
