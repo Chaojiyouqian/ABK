@@ -4,6 +4,8 @@ package com.abk.kernel.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.*
@@ -27,18 +29,26 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.abk.kernel.BuildConfig
 import com.abk.kernel.R
+import com.abk.kernel.dashboard.DashboardLayout
+import com.abk.kernel.dashboard.StatusDashboardWidgets
 import com.abk.kernel.data.model.BuildStatus
 import com.abk.kernel.data.model.WorkflowRun
 import com.abk.kernel.ui.components.AbkScreenHorizontalPadding
 import com.abk.kernel.ui.components.ExpressiveHeroCard
+import com.abk.kernel.ui.components.ExpressiveListItem
 import com.abk.kernel.ui.components.ExpressiveSectionCard
 import com.abk.kernel.ui.components.ExpressiveStatusChip
 import com.abk.kernel.ui.components.ExpressiveTopBar
 import com.abk.kernel.ui.components.ShimmerLinearProgress
+import com.abk.kernel.ui.dashboard.DashboardGrid
 import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
 import com.abk.kernel.utils.RootUtils
+import com.abk.kernel.viewmodel.MainUiState
 import com.abk.kernel.viewmodel.MainViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -50,7 +60,79 @@ fun StatusScreen(
 ) {
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val widgetLabels = mapOf(
+        StatusDashboardWidgets.HERO to stringResource(R.string.status_widget_hero),
+        StatusDashboardWidgets.METRICS to stringResource(R.string.status_widget_metrics),
+        StatusDashboardWidgets.BUILD_ACTIVITY to stringResource(R.string.status_widget_build_activity),
+        StatusDashboardWidgets.DEVICE_REPOSITORY to stringResource(R.string.status_widget_device_repository),
+        StatusDashboardWidgets.RECENT_RUNS to stringResource(R.string.status_widget_recent_runs)
+    )
+    val dashboardLayout = if (state.statusDashboardEditMode) {
+        state.statusDashboardDraftLayout ?: state.statusDashboardLayout
+    } else {
+        state.statusDashboardLayout
+    }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                val payload = vm.exportStatusDashboardLayoutJson()
+                writeTextToUri(context, uri, payload)
+            }.onSuccess {
+                vm.showSnackbar(context.getString(R.string.status_layout_export_success))
+            }.onFailure { error ->
+                vm.showSnackbar(
+                    context.getString(
+                        R.string.status_layout_export_failed,
+                        error.message ?: error::class.java.simpleName
+                    ),
+                    longDuration = true
+                )
+            }
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                val payload = readTextFromUri(context, uri)
+                vm.importStatusDashboardLayoutJson(payload)
+            }.onSuccess { result ->
+                val messageRes = if (result.error == null) {
+                    R.string.status_layout_import_success
+                } else {
+                    R.string.status_layout_import_failed_reset
+                }
+                val message = if (result.error == null) {
+                    context.getString(
+                        messageRes,
+                        result.importedItemCount,
+                        result.ignoredItemCount
+                    )
+                } else {
+                    context.getString(messageRes)
+                }
+                vm.showSnackbar(
+                    message,
+                    longDuration = result.error != null
+                )
+            }.onFailure { error ->
+                vm.showSnackbar(
+                    context.getString(
+                        R.string.status_layout_import_failed,
+                        error.message ?: error::class.java.simpleName
+                    ),
+                    longDuration = true
+                )
+            }
+        }
+    }
 
     LaunchedEffect(Unit) { vm.loadRecentRuns() }
 
@@ -58,19 +140,32 @@ fun StatusScreen(
         containerColor = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
         topBar = {
             ExpressiveTopBar(
-                title = stringResource(R.string.app_name),
+                title = if (state.statusDashboardEditMode) {
+                    stringResource(R.string.status_layout_editor_title)
+                } else {
+                    stringResource(R.string.app_name)
+                },
                 compactTitle = true,
                 scrollBehavior = scrollBehavior,
                 actions = {
-                    IconButton(onClick = onToggleRuntimeNavigation) {
-                        Icon(
-                            imageVector = if (runtimeNavigationEnabled) Icons.Default.SwapHoriz else Icons.Default.Home,
-                            contentDescription = if (runtimeNavigationEnabled) {
-                                stringResource(R.string.nav_status)
-                            } else {
-                                stringResource(R.string.nav_home)
-                            }
-                        )
+                    if (state.statusDashboardEditMode) {
+                        IconButton(onClick = vm::discardStatusDashboardLayoutDraft) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = stringResource(R.string.status_layout_exit)
+                            )
+                        }
+                    } else {
+                        IconButton(onClick = onToggleRuntimeNavigation) {
+                            Icon(
+                                imageVector = if (runtimeNavigationEnabled) Icons.Default.SwapHoriz else Icons.Default.Home,
+                                contentDescription = if (runtimeNavigationEnabled) {
+                                    stringResource(R.string.nav_status)
+                                } else {
+                                    stringResource(R.string.nav_home)
+                                }
+                            )
+                        }
                     }
                 }
             )
@@ -91,321 +186,499 @@ fun StatusScreen(
             val kernelVersion = remember(state.rootGranted) {
                 RootUtils.getKernelVersion()
             }
-
-            ExpressiveHeroCard(
-                title = if (state.rootGranted) stringResource(R.string.status_working) else stringResource(R.string.status_partially_active),
-                subtitle = if (state.rootGranted) {
-                    when {
-                        state.activeBuildRuns.size > 1 -> stringResource(R.string.status_parallel_build_number, state.activeBuildRuns.size)
-                        state.currentRun != null -> state.currentRun?.let { stringResource(R.string.status_build_number, it.runNumber) }.orEmpty()
-                        else -> stringResource(R.string.status_version, BuildConfig.VERSION_NAME)
+            if (state.statusDashboardEditMode) {
+                StatusLayoutEditorCard(
+                    layout = dashboardLayout,
+                    onExit = vm::discardStatusDashboardLayoutDraft,
+                    onSave = {
+                        vm.saveStatusDashboardLayoutDraft()
+                        vm.showSnackbar(context.getString(R.string.status_layout_saved))
+                    },
+                    onRestoreDefault = vm::resetStatusDashboardLayoutDraftToDefault,
+                    onImport = { importLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
+                    onExport = {
+                        exportLauncher.launch("abk-status-layout-${dashboardLayout.densityPreset.rawValue}.json")
                     }
-                } else {
-                    stringResource(R.string.status_version_build_download, BuildConfig.VERSION_NAME)
+                )
+            }
+
+            DashboardGrid(
+                layout = dashboardLayout,
+                widgetLabels = widgetLabels,
+                editable = state.statusDashboardEditMode,
+                canMoveItem = { widgetId, targetX, targetY ->
+                    com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                        layout = dashboardLayout,
+                        widgetId = widgetId,
+                        targetX = targetX,
+                        targetY = targetY,
+                        definitions = StatusDashboardWidgets.definitions
+                    )
                 },
-                icon = if (state.rootGranted) Icons.Default.CheckCircleOutline else Icons.Default.Info,
-                containerColor = if (state.rootGranted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = if (state.rootGranted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                badge = {
-                    ExpressiveStatusChip(
-                        label = if (state.rootGranted) stringResource(R.string.status_root_authorized) else stringResource(R.string.status_root_unauthorized),
-                        icon = if (state.rootGranted) Icons.Default.Lock else Icons.Default.LockOpen,
-                        color = if (state.rootGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                canResizeItem = { widgetId, targetW, targetH ->
+                    com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                        layout = dashboardLayout,
+                        widgetId = widgetId,
+                        targetW = targetW,
+                        targetH = targetH,
+                        definitions = StatusDashboardWidgets.definitions
                     )
-                    ExpressiveStatusChip(
-                        label = state.forkRepo?.name ?: stringResource(R.string.status_no_fork_detected),
-                        icon = Icons.Default.ForkRight,
-                        color = if (state.forkRepo != null) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error
+                },
+                canHideWidget = { widgetId ->
+                    StatusDashboardWidgets.definitionMap[widgetId]?.canHide == true
+                },
+                canResizeWidget = { widgetId ->
+                    StatusDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                },
+                onMoveItem = vm::moveStatusDashboardWidget,
+                onResizeItem = vm::resizeStatusDashboardWidget,
+                onHideItem = { widgetId -> vm.setStatusDashboardWidgetVisible(widgetId, false) }
+            ) { widgetId, interactionsEnabled ->
+                when (widgetId) {
+                    StatusDashboardWidgets.HERO -> StatusHeroWidget(
+                        state = state,
+                        vm = vm,
+                        actionsEnabled = interactionsEnabled
                     )
-                }
-            ) {
-                if (!state.rootGranted) {
-                    OutlinedButton(
-                        onClick = { vm.requestRoot() },
-                        enabled = !state.isLoading,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (state.isLoading) {
-                            LoadingIndicator(Modifier.size(24.dp))
-                        } else {
-                            Icon(Icons.Default.Lock, null, modifier = Modifier.size(17.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.grant_root))
-                        }
-                    }
-                }
-            }
-
-            StatusMetricGrid(
-                rootGranted = state.rootGranted,
-                forkReady = state.forkRepo != null && state.behindBy <= 0,
-                ksuVersion = ksuVersion,
-                buildStatus = state.buildStatus
-            )
-
-            ExpressiveSectionCard(
-                title = stringResource(R.string.status_build),
-                subtitle = stringResource(R.string.status_progress_sync),
-                icon = Icons.Default.RunCircle,
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            ) {
-                when (state.kernelBuildStatus) {
-                    BuildStatus.IDLE -> StatusRow(Icons.Default.HourglassEmpty, stringResource(R.string.status_no_running_build), false)
-                    BuildStatus.QUEUED -> StatusRow(
-                        Icons.Default.Queue,
-                        if (state.kernelActiveBuildRuns.size > 1) {
-                            stringResource(R.string.status_parallel_build_waiting_runner, state.kernelActiveBuildRuns.size)
-                        } else {
-                            stringResource(R.string.status_build_waiting_runner)
-                        },
-                        false
+                    StatusDashboardWidgets.METRICS -> StatusMetricsWidget(
+                        state = state,
+                        ksuVersion = ksuVersion
                     )
-                    BuildStatus.IN_PROGRESS -> Row(verticalAlignment = Alignment.CenterVertically) {
-                        LoadingIndicator(Modifier.size(24.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("${state.kernelBuildProgress.percent}% · ${state.kernelBuildProgress.currentStep}")
-                    }
-                    BuildStatus.SUCCESS -> StatusRow(Icons.Default.CheckCircle, stringResource(R.string.status_recent_build_success), false)
-                    BuildStatus.FAILURE -> StatusRow(Icons.Default.Error, stringResource(R.string.status_recent_build_failed), true)
-                    BuildStatus.CANCELLED -> StatusRow(Icons.Default.Cancel, stringResource(R.string.status_build_cancelled), true)
-                }
-                val kernelRun = state.kernelCurrentRun
-                if (kernelRun != null && state.kernelBuildProgress.totalSteps > 0) {
-                    Spacer(Modifier.height(8.dp))
-                    val animatedProgress by animateFloatAsState(
-                        targetValue = (state.kernelBuildProgress.percent / 100f).coerceIn(0f, 1f),
-                        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-                        label = "status-progress"
+                    StatusDashboardWidgets.BUILD_ACTIVITY -> StatusBuildActivityWidget(
+                        state = state,
+                        vm = vm,
+                        actionsEnabled = interactionsEnabled,
+                        showManagerPlaceholder = state.statusDashboardEditMode
                     )
-                    ShimmerLinearProgress(
-                        progress = { animatedProgress },
-                        modifier = Modifier.fillMaxWidth(),
+                    StatusDashboardWidgets.DEVICE_REPOSITORY -> StatusDeviceRepositoryWidget(
+                        state = state,
+                        kernelVersion = kernelVersion,
+                        ksuVersion = ksuVersion
                     )
-                    Text(
-                        stringResource(
-                            R.string.status_steps_complete,
-                            state.kernelBuildProgress.completedSteps,
-                            state.kernelBuildProgress.totalSteps
-                        ),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                val showSingleRunAction = state.kernelActiveBuildRuns.size <= 1
-                state.kernelCurrentRun?.takeIf { showSingleRunAction }?.let { run ->
-                    Spacer(Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        TextButton(
-                            onClick = {
-                                runCatching {
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, Uri.parse(run.htmlUrl))
-                                    )
-                                }
-                            },
-                            contentPadding = PaddingValues(0.dp)
-                        ) {
-                            Icon(Icons.Default.OpenInBrowser, null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(stringResource(R.string.status_view_details, run.runNumber), style = MaterialTheme.typography.labelMedium)
-                        }
-                        if (run.isActiveStatusRun()) {
-                            TextButton(
-                                onClick = { vm.cancelWorkflowRun(run.id) },
-                                enabled = run.id !in state.cancellingWorkflowRunIds,
-                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                            ) {
-                                if (run.id in state.cancellingWorkflowRunIds) {
-                                    LoadingIndicator(Modifier.size(16.dp))
-                                } else {
-                                    Icon(Icons.Default.Cancel, null, modifier = Modifier.size(16.dp))
-                                }
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    if (run.id in state.cancellingWorkflowRunIds) {
-                                        stringResource(R.string.status_cancelling)
-                                    } else {
-                                        stringResource(R.string.status_cancel)
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-                if (state.kernelActiveBuildRuns.size > 1) {
-                    Text(
-                        stringResource(R.string.status_parallel_workflows_desc, state.kernelActiveBuildRuns.size),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    StatusDashboardWidgets.RECENT_RUNS -> StatusRecentRunsWidget(
+                        state = state,
+                        actionsEnabled = interactionsEnabled,
+                        onCancel = vm::cancelWorkflowRun
                     )
                 }
             }
 
-            // Manager-app build mirror. Rendered only when a manager build is
-            // actually happening / has happened — otherwise the screen would
-            // grow a permanent "No manager build" tile that's just noise.
-            if (state.managerBuildStatus != BuildStatus.IDLE || state.managerCurrentRun != null) {
-                ExpressiveSectionCard(
-                    title = stringResource(R.string.status_manager_build),
-                    subtitle = stringResource(R.string.status_manager_progress_sync),
-                    icon = Icons.Default.Shield,
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    val managerProgress = state.managerBuildProgress
-                    when (state.managerBuildStatus) {
-                        BuildStatus.IDLE -> StatusRow(Icons.Default.HourglassEmpty, stringResource(R.string.status_no_running_build), false)
-                        BuildStatus.QUEUED -> StatusRow(
-                            Icons.Default.Queue,
-                            if (state.managerActiveBuildRuns.size > 1) {
-                                stringResource(R.string.status_parallel_build_waiting_runner, state.managerActiveBuildRuns.size)
-                            } else {
-                                stringResource(R.string.status_build_waiting_runner)
-                            },
-                            false
-                        )
-                        BuildStatus.IN_PROGRESS -> Row(verticalAlignment = Alignment.CenterVertically) {
-                            LoadingIndicator(Modifier.size(24.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("${managerProgress.percent}% · ${managerProgress.currentStep}")
-                        }
-                        BuildStatus.SUCCESS -> StatusRow(Icons.Default.CheckCircle, stringResource(R.string.status_recent_build_success), false)
-                        BuildStatus.FAILURE -> StatusRow(Icons.Default.Error, stringResource(R.string.status_recent_build_failed), true)
-                        BuildStatus.CANCELLED -> StatusRow(Icons.Default.Cancel, stringResource(R.string.status_build_cancelled), true)
-                    }
-                    val managerRun = state.managerCurrentRun
-                    if (managerRun != null && managerProgress.totalSteps > 0) {
-                        Spacer(Modifier.height(8.dp))
-                        val animatedProgress by animateFloatAsState(
-                            targetValue = (managerProgress.percent / 100f).coerceIn(0f, 1f),
-                            animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-                            label = "status-manager-progress"
-                        )
-                        ShimmerLinearProgress(
-                            progress = { animatedProgress },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Text(
-                            stringResource(R.string.status_steps_complete, managerProgress.completedSteps, managerProgress.totalSteps),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    val showSingleManagerAction = state.managerActiveBuildRuns.size <= 1
-                    state.managerCurrentRun?.takeIf { showSingleManagerAction }?.let { run ->
-                        Spacer(Modifier.height(4.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            TextButton(
-                                onClick = {
-                                    runCatching {
-                                        context.startActivity(
-                                            Intent(Intent.ACTION_VIEW, Uri.parse(run.htmlUrl))
-                                        )
-                                    }
-                                },
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Icon(Icons.Default.OpenInBrowser, null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(stringResource(R.string.status_view_details, run.runNumber), style = MaterialTheme.typography.labelMedium)
-                            }
-                            if (run.isActiveStatusRun()) {
-                                TextButton(
-                                    onClick = { vm.cancelWorkflowRun(run.id) },
-                                    enabled = run.id !in state.cancellingWorkflowRunIds,
-                                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                                ) {
-                                    if (run.id in state.cancellingWorkflowRunIds) {
-                                        LoadingIndicator(
-                                            modifier = Modifier.size(16.dp),
-                                            color = MaterialTheme.colorScheme.error
-                                        )
-                                    } else {
-                                        Icon(Icons.Default.Cancel, null, modifier = Modifier.size(16.dp))
-                                    }
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(
-                                        if (run.id in state.cancellingWorkflowRunIds) {
-                                            stringResource(R.string.status_cancelling)
-                                        } else {
-                                            stringResource(R.string.status_cancel)
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    if (state.managerActiveBuildRuns.size > 1) {
-                        Text(
-                            stringResource(R.string.status_parallel_workflows_desc, state.managerActiveBuildRuns.size),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            ExpressiveSectionCard(
-                title = stringResource(R.string.status_device_repo_title),
-                subtitle = stringResource(R.string.status_device_repo_subtitle),
-                icon = Icons.Default.Memory
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DeviceInfoRow(
-                        icon = Icons.Default.Memory,
-                        label = stringResource(R.string.status_kernel),
-                        value = kernelVersion,
-                        isError = false
-                    )
-                    DeviceInfoRow(
-                        icon = Icons.Default.Shield,
-                        label = "KSU",
-                        value = ksuVersion,
-                        isError = ksuVersion == "N/A"
-                    )
-                }
-                state.user?.let { user ->
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 6.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
-                    )
-                    AccountRepositoryRow(
-                        avatarUrl = user.avatarUrl,
-                        login = user.login,
-                        repository = state.forkRepo?.fullName ?: stringResource(R.string.status_no_fork)
-                    )
-                }
-                if (state.behindBy > 0) {
-                    StatusRow(Icons.Default.Warning, stringResource(R.string.status_fork_behind, state.behindBy), true)
-                }
-            }
-
-            if (state.recentRuns.isNotEmpty()) {
-                ExpressiveSectionCard(
-                    title = stringResource(R.string.status_recent_runs_title),
-                    subtitle = stringResource(R.string.status_recent_runs_subtitle),
-                    icon = Icons.Default.History
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val visibleRuns = state.recentRuns.take(5)
-                        visibleRuns.forEach { run ->
-                            RunListItem(
-                                run = run,
-                                cancelling = run.id in state.cancellingWorkflowRunIds,
-                                onCancel = { vm.cancelWorkflowRun(run.id) }
-                            )
-                        }
-                    }
-                }
+            if (state.statusDashboardEditMode) {
+                HiddenWidgetsSection(
+                    hiddenItems = dashboardLayout.items.filter { !it.visible }.map { it.widgetId },
+                    widgetLabels = widgetLabels,
+                    onShowWidget = { widgetId -> vm.setStatusDashboardWidgetVisible(widgetId, true) }
+                )
             }
             Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
+        }
+    }
+}
+
+@Composable
+private fun StatusLayoutEditorCard(
+    layout: DashboardLayout,
+    onExit: () -> Unit,
+    onSave: () -> Unit,
+    onRestoreDefault: () -> Unit,
+    onImport: () -> Unit,
+    onExport: () -> Unit
+) {
+    ExpressiveSectionCard(
+        title = stringResource(R.string.status_layout_editor_title),
+        subtitle = stringResource(
+            R.string.status_layout_editor_hint,
+            layout.densityPreset.columns
+        ),
+        icon = Icons.Default.Tune,
+        containerColor = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatusLayoutActionRow(
+                primaryLabel = stringResource(R.string.status_layout_save),
+                primaryIcon = Icons.Default.Save,
+                primaryAction = onSave,
+                secondaryLabel = stringResource(R.string.status_layout_exit),
+                secondaryIcon = Icons.Default.Close,
+                secondaryAction = onExit
+            )
+            StatusLayoutActionRow(
+                primaryLabel = stringResource(R.string.status_layout_import),
+                primaryIcon = Icons.Default.UploadFile,
+                primaryAction = onImport,
+                secondaryLabel = stringResource(R.string.status_layout_export),
+                secondaryIcon = Icons.Default.Download,
+                secondaryAction = onExport
+            )
+            OutlinedButton(
+                onClick = onRestoreDefault,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Restore, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.status_layout_restore_default))
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusLayoutActionRow(
+    primaryLabel: String,
+    primaryIcon: ImageVector,
+    primaryAction: () -> Unit,
+    secondaryLabel: String,
+    secondaryIcon: ImageVector,
+    secondaryAction: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        FilledTonalButton(
+            onClick = primaryAction,
+            modifier = Modifier.weight(1f)
+        ) {
+            Icon(primaryIcon, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(primaryLabel)
+        }
+        OutlinedButton(
+            onClick = secondaryAction,
+            modifier = Modifier.weight(1f)
+        ) {
+            Icon(secondaryIcon, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(secondaryLabel)
+        }
+    }
+}
+
+@Composable
+private fun HiddenWidgetsSection(
+    hiddenItems: List<String>,
+    widgetLabels: Map<String, String>,
+    onShowWidget: (String) -> Unit
+) {
+    ExpressiveSectionCard(
+        title = stringResource(R.string.status_layout_hidden_widgets),
+        subtitle = stringResource(R.string.status_layout_hidden_widgets_desc),
+        icon = Icons.Default.Visibility
+    ) {
+        if (hiddenItems.isEmpty()) {
+            Text(
+                text = stringResource(R.string.status_layout_hidden_widgets_empty),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            hiddenItems.forEach { widgetId ->
+                ExpressiveListItem(
+                    title = widgetLabels[widgetId] ?: widgetId,
+                    subtitle = widgetId,
+                    leadingIcon = Icons.Default.Widgets,
+                    trailingContent = {
+                        TextButton(onClick = { onShowWidget(widgetId) }) {
+                            Text(stringResource(R.string.status_layout_show_widget))
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusHeroWidget(
+    state: MainUiState,
+    vm: MainViewModel,
+    actionsEnabled: Boolean
+) {
+    ExpressiveHeroCard(
+        title = if (state.rootGranted) stringResource(R.string.status_working) else stringResource(R.string.status_partially_active),
+        subtitle = if (state.rootGranted) {
+            when {
+                state.activeBuildRuns.size > 1 -> stringResource(R.string.status_parallel_build_number, state.activeBuildRuns.size)
+                state.currentRun != null -> state.currentRun?.let { stringResource(R.string.status_build_number, it.runNumber) }.orEmpty()
+                else -> stringResource(R.string.status_version, BuildConfig.VERSION_NAME)
+            }
+        } else {
+            stringResource(R.string.status_version_build_download, BuildConfig.VERSION_NAME)
+        },
+        icon = if (state.rootGranted) Icons.Default.CheckCircleOutline else Icons.Default.Info,
+        containerColor = if (state.rootGranted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = if (state.rootGranted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        badge = {
+            ExpressiveStatusChip(
+                label = if (state.rootGranted) stringResource(R.string.status_root_authorized) else stringResource(R.string.status_root_unauthorized),
+                icon = if (state.rootGranted) Icons.Default.Lock else Icons.Default.LockOpen,
+                color = if (state.rootGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+            )
+            ExpressiveStatusChip(
+                label = state.forkRepo?.name ?: stringResource(R.string.status_no_fork_detected),
+                icon = Icons.Default.ForkRight,
+                color = if (state.forkRepo != null) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error
+            )
+        }
+    ) {
+        if (!state.rootGranted) {
+            OutlinedButton(
+                onClick = { vm.requestRoot() },
+                enabled = actionsEnabled && !state.isLoading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (state.isLoading) {
+                    LoadingIndicator(Modifier.size(24.dp))
+                } else {
+                    Icon(Icons.Default.Lock, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.grant_root))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusMetricsWidget(
+    state: MainUiState,
+    ksuVersion: String
+) {
+    StatusMetricGrid(
+        rootGranted = state.rootGranted,
+        forkReady = state.forkRepo != null && state.behindBy <= 0,
+        ksuVersion = ksuVersion,
+        buildStatus = state.buildStatus
+    )
+}
+
+@Composable
+private fun StatusBuildActivityWidget(
+    state: MainUiState,
+    vm: MainViewModel,
+    actionsEnabled: Boolean,
+    showManagerPlaceholder: Boolean
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        StatusBuildSectionCard(
+            title = stringResource(R.string.status_build),
+            subtitle = stringResource(R.string.status_progress_sync),
+            icon = Icons.Default.RunCircle,
+            buildStatus = state.kernelBuildStatus,
+            currentRun = state.kernelCurrentRun,
+            activeRuns = state.kernelActiveBuildRuns,
+            progress = state.kernelBuildProgress,
+            cancellingWorkflowRunIds = state.cancellingWorkflowRunIds,
+            actionsEnabled = actionsEnabled,
+            onCancelRun = vm::cancelWorkflowRun
+        )
+        if (showManagerPlaceholder || state.managerBuildStatus != BuildStatus.IDLE || state.managerCurrentRun != null) {
+            StatusBuildSectionCard(
+                title = stringResource(R.string.status_manager_build),
+                subtitle = stringResource(R.string.status_manager_progress_sync),
+                icon = Icons.Default.Shield,
+                buildStatus = state.managerBuildStatus,
+                currentRun = state.managerCurrentRun,
+                activeRuns = state.managerActiveBuildRuns,
+                progress = state.managerBuildProgress,
+                cancellingWorkflowRunIds = state.cancellingWorkflowRunIds,
+                actionsEnabled = actionsEnabled,
+                onCancelRun = vm::cancelWorkflowRun
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusBuildSectionCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    buildStatus: BuildStatus,
+    currentRun: WorkflowRun?,
+    activeRuns: List<WorkflowRun>,
+    progress: com.abk.kernel.data.model.BuildProgress,
+    cancellingWorkflowRunIds: Set<Long>,
+    actionsEnabled: Boolean,
+    onCancelRun: (Long) -> Unit
+) {
+    val context = LocalContext.current
+    ExpressiveSectionCard(
+        title = title,
+        subtitle = subtitle,
+        icon = icon,
+        containerColor = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        when (buildStatus) {
+            BuildStatus.IDLE -> StatusRow(Icons.Default.HourglassEmpty, stringResource(R.string.status_no_running_build), false)
+            BuildStatus.QUEUED -> StatusRow(
+                Icons.Default.Queue,
+                if (activeRuns.size > 1) {
+                    stringResource(R.string.status_parallel_build_waiting_runner, activeRuns.size)
+                } else {
+                    stringResource(R.string.status_build_waiting_runner)
+                },
+                false
+            )
+            BuildStatus.IN_PROGRESS -> Row(verticalAlignment = Alignment.CenterVertically) {
+                LoadingIndicator(Modifier.size(24.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("${progress.percent}% · ${progress.currentStep}")
+            }
+            BuildStatus.SUCCESS -> StatusRow(Icons.Default.CheckCircle, stringResource(R.string.status_recent_build_success), false)
+            BuildStatus.FAILURE -> StatusRow(Icons.Default.Error, stringResource(R.string.status_recent_build_failed), true)
+            BuildStatus.CANCELLED -> StatusRow(Icons.Default.Cancel, stringResource(R.string.status_build_cancelled), true)
+        }
+        if (currentRun != null && progress.totalSteps > 0) {
+            Spacer(Modifier.height(8.dp))
+            val animatedProgress by animateFloatAsState(
+                targetValue = (progress.percent / 100f).coerceIn(0f, 1f),
+                animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                label = "status-widget-progress-$title"
+            )
+            ShimmerLinearProgress(
+                progress = { animatedProgress },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                stringResource(
+                    R.string.status_steps_complete,
+                    progress.completedSteps,
+                    progress.totalSteps
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        val showSingleRunAction = activeRuns.size <= 1
+        currentRun?.takeIf { showSingleRunAction }?.let { run ->
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TextButton(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(run.htmlUrl))
+                            )
+                        }
+                    },
+                    enabled = actionsEnabled,
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Icon(Icons.Default.OpenInBrowser, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(stringResource(R.string.status_view_details, run.runNumber), style = MaterialTheme.typography.labelMedium)
+                }
+                if (run.isActiveStatusRun()) {
+                    TextButton(
+                        onClick = { onCancelRun(run.id) },
+                        enabled = actionsEnabled && run.id !in cancellingWorkflowRunIds,
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        if (run.id in cancellingWorkflowRunIds) {
+                            LoadingIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        } else {
+                            Icon(Icons.Default.Cancel, null, modifier = Modifier.size(16.dp))
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            if (run.id in cancellingWorkflowRunIds) {
+                                stringResource(R.string.status_cancelling)
+                            } else {
+                                stringResource(R.string.status_cancel)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        if (activeRuns.size > 1) {
+            Text(
+                stringResource(R.string.status_parallel_workflows_desc, activeRuns.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusDeviceRepositoryWidget(
+    state: MainUiState,
+    kernelVersion: String,
+    ksuVersion: String
+) {
+    ExpressiveSectionCard(
+        title = stringResource(R.string.status_device_repo_title),
+        subtitle = stringResource(R.string.status_device_repo_subtitle),
+        icon = Icons.Default.Memory
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            DeviceInfoRow(
+                icon = Icons.Default.Memory,
+                label = stringResource(R.string.status_kernel),
+                value = kernelVersion,
+                isError = false
+            )
+            DeviceInfoRow(
+                icon = Icons.Default.Shield,
+                label = "KSU",
+                value = ksuVersion,
+                isError = ksuVersion == "N/A"
+            )
+        }
+        state.user?.let { user ->
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 6.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+            )
+            AccountRepositoryRow(
+                avatarUrl = user.avatarUrl,
+                login = user.login,
+                repository = state.forkRepo?.fullName ?: stringResource(R.string.status_no_fork)
+            )
+        }
+        if (state.behindBy > 0) {
+            StatusRow(Icons.Default.Warning, stringResource(R.string.status_fork_behind, state.behindBy), true)
+        }
+    }
+}
+
+@Composable
+private fun StatusRecentRunsWidget(
+    state: MainUiState,
+    actionsEnabled: Boolean,
+    onCancel: (Long) -> Unit
+) {
+    ExpressiveSectionCard(
+        title = stringResource(R.string.status_recent_runs_title),
+        subtitle = stringResource(R.string.status_recent_runs_subtitle),
+        icon = Icons.Default.History
+    ) {
+        if (state.recentRuns.isEmpty()) {
+            Text(
+                text = stringResource(R.string.status_no_build),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                state.recentRuns.take(5).forEach { run ->
+                    RunListItem(
+                        run = run,
+                        cancelling = run.id in state.cancellingWorkflowRunIds,
+                        actionsEnabled = actionsEnabled,
+                        onCancel = { onCancel(run.id) }
+                    )
+                }
+            }
         }
     }
 }
@@ -500,14 +773,14 @@ private fun StatusMetricGrid(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             StatusMetricCard(
-                label = "Root",
+                label = stringResource(R.string.status_root),
                 value = if (rootGranted) stringResource(R.string.status_authorized) else stringResource(R.string.status_partially_active),
                 icon = if (rootGranted) Icons.Default.Lock else Icons.Default.LockOpen,
                 color = if (rootGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
                 modifier = Modifier.weight(1f)
             )
             StatusMetricCard(
-                label = "Fork",
+                label = stringResource(R.string.status_fork),
                 value = if (forkReady) stringResource(R.string.status_synced) else stringResource(R.string.status_pending_check),
                 icon = Icons.Default.ForkRight,
                 color = if (forkReady) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.tertiary,
@@ -523,7 +796,7 @@ private fun StatusMetricGrid(
                 modifier = Modifier.weight(1f)
             )
             StatusMetricCard(
-                label = "Build",
+                label = stringResource(R.string.status_build),
                 value = buildStatusDisplay(buildStatus),
                 icon = Icons.Default.RunCircle,
                 color = buildStatusColor(buildStatus),
@@ -577,6 +850,7 @@ private fun StatusRow(icon: androidx.compose.ui.graphics.vector.ImageVector, tex
 private fun RunListItem(
     run: WorkflowRun,
     cancelling: Boolean,
+    actionsEnabled: Boolean,
     onCancel: () -> Unit
 ) {
     Row(
@@ -612,7 +886,7 @@ private fun RunListItem(
             Text(label, color = color, style = MaterialTheme.typography.labelSmall)
         }
         if (run.isActiveStatusRun()) {
-            IconButton(onClick = onCancel, enabled = !cancelling) {
+            IconButton(onClick = onCancel, enabled = actionsEnabled && !cancelling) {
                 if (cancelling) {
                     LoadingIndicator(
                         modifier = Modifier.size(18.dp),
@@ -651,4 +925,23 @@ private fun buildStatusColor(status: BuildStatus) = when (status) {
     BuildStatus.SUCCESS -> MaterialTheme.colorScheme.primary
     BuildStatus.FAILURE -> MaterialTheme.colorScheme.error
     BuildStatus.CANCELLED -> MaterialTheme.colorScheme.outline
+}
+
+private suspend fun readTextFromUri(
+    context: android.content.Context,
+    uri: Uri
+): String = withContext(Dispatchers.IO) {
+    context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { reader ->
+        reader.readText()
+    } ?: error("Unable to open imported layout")
+}
+
+private suspend fun writeTextToUri(
+    context: android.content.Context,
+    uri: Uri,
+    value: String
+) = withContext(Dispatchers.IO) {
+    context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use { writer ->
+        writer.write(value)
+    } ?: error("Unable to open export destination")
 }

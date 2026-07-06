@@ -10,6 +10,7 @@ import com.abk.kernel.data.model.RootGrantProfileRecoveryRecord
 import com.abk.kernel.data.model.normalizeBuildPageStyle
 import com.abk.kernel.data.model.normalizeAppUpdateLine
 import com.abk.kernel.data.model.normalizeAppUpdateStability
+import com.abk.kernel.dashboard.DashboardDensityPreset
 import com.abk.kernel.utils.DownloadDirectoryUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -64,6 +65,8 @@ class PreferencesRepository(private val context: Context) {
         val KEY_APP_UPDATE_LINE = stringPreferencesKey("app_update_line")
         val KEY_PREDICTIVE_BACK_ENABLED = booleanPreferencesKey("predictive_back_enabled")
         val KEY_BUILD_PAGE_STYLE = stringPreferencesKey("build_page_style")
+        val KEY_STATUS_PAGE_LAYOUT_JSON = stringPreferencesKey("status_page_layout_json")
+        val KEY_STATUS_PAGE_GRID_DENSITY_PRESET = stringPreferencesKey("status_page_grid_density_preset")
         val KEY_RUNTIME_NAVIGATION_ENABLED = booleanPreferencesKey("runtime_navigation_enabled")
         val KEY_WEBVIEW_DEBUG_ENABLED = booleanPreferencesKey("webview_debug_enabled")
         val KEY_TERMS_ACCEPTED_VERSION = intPreferencesKey("terms_accepted_version")
@@ -129,6 +132,10 @@ class PreferencesRepository(private val context: Context) {
     val predictiveBackEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_PREDICTIVE_BACK_ENABLED] ?: true }
     val buildPageStyle: Flow<String?> = context.dataStore.data.map {
         normalizeBuildPageStyle(it[KEY_BUILD_PAGE_STYLE])
+    }
+    val statusPageLayoutJson: Flow<String?> = context.dataStore.data.map { it[KEY_STATUS_PAGE_LAYOUT_JSON] }
+    val statusPageGridDensityPreset: Flow<DashboardDensityPreset> = context.dataStore.data.map {
+        DashboardDensityPreset.fromRawValue(it[KEY_STATUS_PAGE_GRID_DENSITY_PRESET])
     }
     val runtimeNavigationEnabled: Flow<Boolean> = context.dataStore.data.map {
         it[KEY_RUNTIME_NAVIGATION_ENABLED] ?: false
@@ -277,6 +284,12 @@ class PreferencesRepository(private val context: Context) {
         } else {
             preferences[KEY_BUILD_PAGE_STYLE] = normalized
         }
+    }
+    suspend fun saveStatusPageLayoutJson(json: String) = context.dataStore.edit {
+        it[KEY_STATUS_PAGE_LAYOUT_JSON] = json
+    }
+    suspend fun setStatusPageGridDensityPreset(preset: DashboardDensityPreset) = context.dataStore.edit {
+        it[KEY_STATUS_PAGE_GRID_DENSITY_PRESET] = preset.rawValue
     }
     suspend fun setRuntimeNavigationEnabled(v: Boolean) = context.dataStore.edit {
         it[KEY_RUNTIME_NAVIGATION_ENABLED] = v

@@ -790,6 +790,10 @@ private fun AbkMainScaffold(
                                 } else {
                                     AbkTab.RuntimeHome
                                 }
+                            },
+                            onOpenStatusLayoutEditor = {
+                                vm.enterStatusDashboardEditMode()
+                                selectedTab = AbkTab.Status
                             }
                         )
                     }

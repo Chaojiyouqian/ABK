@@ -88,6 +88,7 @@ import com.abk.kernel.data.model.ManagerSettingItem
 import com.abk.kernel.data.model.ManagerSettingKind
 import com.abk.kernel.data.model.normalizeAppUpdateLine
 import com.abk.kernel.data.model.normalizeAppUpdateStability
+import com.abk.kernel.dashboard.DashboardDensityPreset
 import com.abk.kernel.viewmodel.MainUiState
 import com.abk.kernel.viewmodel.MainViewModel
 import com.abk.kernel.viewmodel.exportDiagnosticBundle
@@ -99,7 +100,8 @@ fun SettingsScreen(
     vm: MainViewModel,
     outerPadding: PaddingValues = PaddingValues(0.dp),
     onChildPageVisibleChange: (Boolean) -> Unit = {},
-    onOpenInstalledModules: () -> Unit = {}
+    onOpenInstalledModules: () -> Unit = {},
+    onOpenStatusLayoutEditor: () -> Unit = {}
 ) {
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
@@ -367,7 +369,14 @@ fun SettingsScreen(
                         },
                         onBackgroundImageChange = { uri -> vm.setBackgroundImageUri(uri) },
                         onBackgroundImageEnabledChange = { enabled -> vm.setBackgroundImageEnabled(enabled) },
-                        onUiSurfaceAlphaChange = { alpha -> vm.setUiSurfaceAlpha(alpha) }
+                        onUiSurfaceAlphaChange = { alpha -> vm.setUiSurfaceAlpha(alpha) },
+                        statusLayoutDensityPreset = state.statusDashboardLayout.densityPreset,
+                        onStatusLayoutDensityChange = vm::setStatusDashboardDensityPreset,
+                        onOpenStatusLayoutEditor = {
+                            childPageBack.requestDismiss()
+                            onOpenStatusLayoutEditor()
+                        },
+                        onRestoreDefaultStatusLayout = vm::restoreDefaultStatusDashboardLayout
                     )
                 }
             }
@@ -1327,7 +1336,11 @@ private fun ThemeSettingsScreen(
     onCustomThemeColorsChange: (Int, Int) -> Unit,
     onBackgroundImageChange: (String?) -> Unit,
     onBackgroundImageEnabledChange: (Boolean) -> Unit,
-    onUiSurfaceAlphaChange: (Float) -> Unit
+    onUiSurfaceAlphaChange: (Float) -> Unit,
+    statusLayoutDensityPreset: DashboardDensityPreset,
+    onStatusLayoutDensityChange: (DashboardDensityPreset) -> Unit,
+    onOpenStatusLayoutEditor: () -> Unit,
+    onRestoreDefaultStatusLayout: () -> Unit
 ) {
     val context = LocalContext.current
     val dynamicColorAvailable = isDynamicColorAvailable()
@@ -1335,6 +1348,7 @@ private fun ThemeSettingsScreen(
     val colorScheme = MaterialTheme.colorScheme
     val selectedThemeColorArgb = customThemeColorArgb ?: colorScheme.primary.toArgb()
     val selectedAccentColorArgb = customAccentColorArgb ?: colorScheme.secondary.toArgb()
+    var showRestoreStatusLayoutDialog by rememberSaveable { mutableStateOf(false) }
     val backgroundPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -1353,6 +1367,30 @@ private fun ThemeSettingsScreen(
         Triple("light", stringResource(R.string.settings_theme_light), Icons.Default.LightMode),
         Triple("dark", stringResource(R.string.settings_theme_dark), Icons.Default.DarkMode)
     )
+
+    if (showRestoreStatusLayoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showRestoreStatusLayoutDialog = false },
+            title = { Text(stringResource(R.string.settings_status_layout_restore_default_title)) },
+            text = { Text(stringResource(R.string.settings_status_layout_restore_default_message)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showRestoreStatusLayoutDialog = false
+                        onRestoreDefaultStatusLayout()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(stringResource(R.string.settings_status_layout_restore_default_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestoreStatusLayoutDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -1422,6 +1460,31 @@ private fun ThemeSettingsScreen(
                     }
                 )
             }
+        }
+
+        SettingsGroup(title = stringResource(R.string.settings_status_layout)) {
+            ExpressiveListItem(
+                title = stringResource(R.string.settings_status_layout_edit),
+                subtitle = stringResource(R.string.settings_status_layout_edit_desc),
+                leadingIcon = Icons.Default.Edit,
+                trailingContent = {
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        contentDescription = stringResource(R.string.settings_enter_status_layout_edit)
+                    )
+                },
+                onClick = onOpenStatusLayoutEditor
+            )
+            StatusLayoutDensityPicker(
+                selected = statusLayoutDensityPreset,
+                onSelect = onStatusLayoutDensityChange
+            )
+            ExpressiveListItem(
+                title = stringResource(R.string.settings_status_layout_restore_default),
+                subtitle = stringResource(R.string.settings_status_layout_restore_default_desc),
+                leadingIcon = Icons.Default.Restore,
+                onClick = { showRestoreStatusLayoutDialog = true }
+            )
         }
 
         SettingsGroup(title = stringResource(R.string.settings_background)) {
@@ -1667,6 +1730,43 @@ private fun BuildPageStylePicker(
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun StatusLayoutDensityPicker(
+    selected: DashboardDensityPreset,
+    onSelect: (DashboardDensityPreset) -> Unit
+) {
+    val options = listOf(
+        AbkSegmentedButtonOption(
+            value = DashboardDensityPreset.COMPACT,
+            label = stringResource(R.string.settings_status_layout_density_compact)
+        ),
+        AbkSegmentedButtonOption(
+            value = DashboardDensityPreset.STANDARD,
+            label = stringResource(R.string.settings_status_layout_density_standard)
+        ),
+        AbkSegmentedButtonOption(
+            value = DashboardDensityPreset.RELAXED,
+            label = stringResource(R.string.settings_status_layout_density_relaxed)
+        )
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ExpressiveListItem(
+            title = stringResource(R.string.settings_status_layout_density),
+            subtitle = stringResource(
+                R.string.settings_status_layout_density_desc,
+                selected.columns
+            ),
+            leadingIcon = Icons.Default.GridView
+        )
+        AbkSingleChoiceSegmentedButtonRow(
+            options = options,
+            selectedValue = selected,
+            onSelect = onSelect,
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }
