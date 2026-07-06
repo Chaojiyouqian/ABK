@@ -4034,7 +4034,7 @@ class MainViewModel @JvmOverloads constructor(
             visible = true,
             definitions = StatusDashboardWidgets.definitions
         )
-        if (!DashboardLayoutEngine.canMoveItem(
+        val placedLayout = if (DashboardLayoutEngine.canMoveItem(
                 layout = visibleLayout,
                 widgetId = widgetId,
                 targetX = targetX,
@@ -4042,15 +4042,16 @@ class MainViewModel @JvmOverloads constructor(
                 definitions = StatusDashboardWidgets.definitions
             )
         ) {
-            return
+            DashboardLayoutEngine.moveItemExact(
+                layout = visibleLayout,
+                widgetId = widgetId,
+                targetX = targetX,
+                targetY = targetY,
+                definitions = StatusDashboardWidgets.definitions
+            )
+        } else {
+            visibleLayout
         }
-        val placedLayout = DashboardLayoutEngine.moveItemExact(
-            layout = visibleLayout,
-            widgetId = widgetId,
-            targetX = targetX,
-            targetY = targetY,
-            definitions = StatusDashboardWidgets.definitions
-        )
         _uiState.update { it.copy(statusDashboardDraftLayout = placedLayout) }
     }
 
