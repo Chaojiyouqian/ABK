@@ -278,14 +278,7 @@ private fun DashboardGridItem(
             shadowElevation = if (previewState != null) 8.dp else 0.dp
         ) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(
-                        start = if (editable) 6.dp else 0.dp,
-                        top = if (editable) 34.dp else 0.dp,
-                        end = if (editable) 6.dp else 0.dp,
-                        bottom = if (editable) 6.dp else 0.dp
-                    )
+                modifier = Modifier.fillMaxSize()
             ) {
                 content()
             }
