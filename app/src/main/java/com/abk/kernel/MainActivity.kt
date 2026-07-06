@@ -15,6 +15,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
@@ -75,6 +76,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
@@ -89,6 +91,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.abk.kernel.ui.components.AppBackgroundHost
 import com.abk.kernel.ui.components.AbkSnackbarHost
 import com.abk.kernel.ui.components.animateBottomNavForChildPage
+import com.abk.kernel.ui.components.childPageOverlayEnterTransition
+import com.abk.kernel.ui.components.childPageOverlayExitTransition
+import com.abk.kernel.ui.components.childPageScrimExitTransition
+import com.abk.kernel.ui.components.rememberChildPageBackController
+import com.abk.kernel.ui.components.rememberChildPageOverlayTransition
 import com.abk.kernel.ui.components.showAbkSnackbar
 import com.abk.kernel.extensions.AbkExtensionBootstrapActivity
 import com.abk.kernel.ui.screens.BuildScreen
@@ -459,6 +466,15 @@ private fun AbkMainScaffold(
         AbkTab.RuntimeHome -> managerPatchPageVisible
         else -> false
     } || showSimpleBuildFlow
+    val simpleBuildPageTransition = rememberChildPageOverlayTransition(
+        visible = showSimpleBuildFlow,
+        label = "main-simple-build"
+    )
+    val simpleBuildBack = rememberChildPageBackController(
+        enabled = showSimpleBuildFlow,
+        predictiveBackEnabled = state.predictiveBackEnabled,
+        onBack = { showSimpleBuildFlow = false }
+    )
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(state.snackbarMessage, state.snackbarLongDuration, state.error) {
@@ -809,24 +825,40 @@ private fun AbkMainScaffold(
                 )
                 .zIndex(4f)
         )
-        if (showSimpleBuildFlow) {
+        simpleBuildPageTransition.AnimatedVisibility(
+            visible = { it },
+            enter = fadeIn(animationSpec = motionScheme.defaultEffectsSpec()),
+            exit = childPageScrimExitTransition(state.predictiveBackEnabled, motionScheme),
+            modifier = Modifier.fillMaxSize().zIndex(5f)
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = simpleBuildBack.scrimAlpha))
+            )
+        }
+        simpleBuildPageTransition.AnimatedVisibility(
+            visible = { it },
+            enter = childPageOverlayEnterTransition(state.predictiveBackEnabled, motionScheme),
+            exit = childPageOverlayExitTransition(state.predictiveBackEnabled, motionScheme),
+            modifier = Modifier.fillMaxSize().zIndex(6f)
+        ) {
             CompositionLocalProvider(LocalUiSurfaceAlpha provides 1f) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surface)
-                        .zIndex(5f)
+                        .then(simpleBuildBack.backTransformModifier())
                 ) {
                     BuildScreen(
                         vm = vm,
                         outerPadding = PaddingValues(0.dp),
                         guidedMode = true,
-                        onPlanPageVisibleChange = { buildPlanPageVisible = it },
+                        onPlanPageVisibleChange = {},
                         onNavigateToStatus = {
                             selectedTab = if (state.runtimeNavigationEnabled) AbkTab.RuntimeHome else AbkTab.Status
                             showSimpleBuildFlow = false
                         },
-                        onDismissGuidedMode = { showSimpleBuildFlow = false }
+                        onDismissGuidedMode = { simpleBuildBack.requestDismiss() }
                     )
                 }
             }
