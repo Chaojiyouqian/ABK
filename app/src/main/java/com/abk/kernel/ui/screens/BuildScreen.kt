@@ -3501,38 +3501,6 @@ private fun BuildGuideHeader(
             progress = { ((activeIndex + 1).toFloat() / steps.size.toFloat()).coerceIn(0f, 1f) },
             modifier = Modifier.fillMaxWidth()
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            steps.forEachIndexed { index, step ->
-                AssistChip(
-                    onClick = {},
-                    enabled = false,
-                    label = {
-                        Text(
-                            text = "${index + 1}",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = if (step == activeStep) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerHigh
-                        },
-                        labelColor = if (step == activeStep) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                    )
-                )
-            }
-        }
     }
 }
 
