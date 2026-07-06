@@ -16,11 +16,11 @@
       "versionName": "1.2.4",
       "versionCode": 10024,
       "downloadUrl": "https://nightly.link/xingguangcuican6666/ABK/workflows/build-abk-app/dev/abk-apks.zip",
-      "publishedAt": "2026-07-06T16:00:06Z",
-      "buildTimestampEpochMillis": 1783353606000,
+      "publishedAt": "2026-07-06T16:48:49Z",
+      "buildTimestampEpochMillis": 1783356529000,
       "sourceWorkflow": "Build ABK App",
-      "commitSha": "9ddfcd69f4dd81f5734debbe7acbac3002daeae3",
-      "runId": 28805061858
+      "commitSha": "caaab01bc8f64a6dee7b9b49bf7b78ddae46e627",
+      "runId": 28808107481
     },
     "dev": {
       "versionName": "1.2.4",
