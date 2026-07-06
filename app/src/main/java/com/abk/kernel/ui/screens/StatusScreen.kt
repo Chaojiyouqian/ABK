@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.abk.kernel.BuildConfig
 import com.abk.kernel.R
+import com.abk.kernel.dashboard.DashboardLayoutMode
 import com.abk.kernel.dashboard.StatusDashboardWidgets
 import com.abk.kernel.data.model.BuildStatus
 import com.abk.kernel.data.model.WorkflowRun
@@ -55,6 +56,8 @@ import com.abk.kernel.ui.components.ExpressiveSectionCard
 import com.abk.kernel.ui.components.ExpressiveStatusChip
 import com.abk.kernel.ui.components.ExpressiveTopBar
 import com.abk.kernel.ui.components.ShimmerLinearProgress
+import com.abk.kernel.ui.dashboard.DashboardFreeform
+import com.abk.kernel.ui.dashboard.DashboardFreeformMetrics
 import com.abk.kernel.ui.dashboard.DashboardGridMetrics
 import com.abk.kernel.ui.dashboard.DashboardGrid
 import com.abk.kernel.ui.theme.appPageBackgroundColor
@@ -107,6 +110,7 @@ fun StatusScreen(
     var viewportHeightPx by remember { mutableStateOf(0f) }
     var activeDragPointerY by remember { mutableStateOf<Float?>(null) }
     var gridMetrics by remember { mutableStateOf<DashboardGridMetrics?>(null) }
+    var freeformMetrics by remember { mutableStateOf<DashboardFreeformMetrics?>(null) }
     var trayTopY by remember { mutableStateOf(Float.MAX_VALUE) }
     var hiddenWidgetDrag by remember { mutableStateOf<HiddenWidgetDragState?>(null) }
     val actionMenuRotation by animateFloatAsState(
@@ -258,58 +262,113 @@ fun StatusScreen(
                     ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                DashboardGrid(
-                    layout = dashboardLayout,
-                    widgetLabels = widgetLabels,
-                    editable = state.statusDashboardEditMode,
-                    canMoveItem = { widgetId, targetX, targetY ->
-                        com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
-                            layout = dashboardLayout,
+                when (dashboardLayout.layoutMode) {
+                    DashboardLayoutMode.GRID -> DashboardGrid(
+                        layout = dashboardLayout,
+                        widgetLabels = widgetLabels,
+                        editable = state.statusDashboardEditMode,
+                        canMoveItem = { widgetId, targetX, targetY ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                                layout = dashboardLayout,
+                                widgetId = widgetId,
+                                targetX = targetX,
+                                targetY = targetY,
+                                definitions = StatusDashboardWidgets.definitions
+                            )
+                        },
+                        canResizeItem = { widgetId, targetW, targetH ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                                layout = dashboardLayout,
+                                widgetId = widgetId,
+                                targetW = targetW,
+                                targetH = targetH,
+                                definitions = StatusDashboardWidgets.definitions
+                            )
+                        },
+                        canHideWidget = { widgetId ->
+                            StatusDashboardWidgets.definitionMap[widgetId]?.canHide == true
+                        },
+                        canMinimizeWidget = { widgetId ->
+                            StatusDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        canMaximizeWidget = { widgetId ->
+                            StatusDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        canResizeWidget = { widgetId ->
+                            StatusDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        onMoveItem = vm::moveStatusDashboardWidget,
+                        onResizeItem = vm::resizeStatusDashboardWidget,
+                        onSetItemSpanMode = vm::setStatusDashboardWidgetSpanMode,
+                        onHideItem = { widgetId -> vm.setStatusDashboardWidgetVisible(widgetId, false) },
+                        selectedWidgetId = selectedWidgetId,
+                        onSelectWidget = { selectedWidgetId = it },
+                        onGridMetricsChanged = { metrics -> gridMetrics = metrics },
+                        onDragPointerYChanged = { activeDragPointerY = it }
+                    ) { widgetId, interactionsEnabled ->
+                        StatusWidgetContent(
                             widgetId = widgetId,
-                            targetX = targetX,
-                            targetY = targetY,
-                            definitions = StatusDashboardWidgets.definitions
+                            state = state,
+                            vm = vm,
+                            ksuVersion = ksuVersion,
+                            kernelVersion = kernelVersion,
+                            actionsEnabled = interactionsEnabled,
+                            showManagerPlaceholder = false
                         )
-                    },
-                    canResizeItem = { widgetId, targetW, targetH ->
-                        com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
-                            layout = dashboardLayout,
+                    }
+                    DashboardLayoutMode.FREEFORM -> DashboardFreeform(
+                        layout = dashboardLayout,
+                        widgetLabels = widgetLabels,
+                        editable = state.statusDashboardEditMode,
+                        canMoveItem = { widgetId, targetX, targetY ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                                layout = dashboardLayout,
+                                widgetId = widgetId,
+                                targetX = targetX,
+                                targetY = targetY,
+                                definitions = StatusDashboardWidgets.definitions
+                            )
+                        },
+                        canResizeItem = { widgetId, targetW, targetH ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                                layout = dashboardLayout,
+                                widgetId = widgetId,
+                                targetW = targetW,
+                                targetH = targetH,
+                                definitions = StatusDashboardWidgets.definitions
+                            )
+                        },
+                        canHideWidget = { widgetId ->
+                            StatusDashboardWidgets.definitionMap[widgetId]?.canHide == true
+                        },
+                        canMinimizeWidget = { widgetId ->
+                            StatusDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        canMaximizeWidget = { widgetId ->
+                            StatusDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        canResizeWidget = { widgetId ->
+                            StatusDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        onMoveItem = vm::moveStatusDashboardWidget,
+                        onResizeItem = vm::resizeStatusDashboardWidget,
+                        onSetItemSpanMode = vm::setStatusDashboardWidgetSpanMode,
+                        onHideItem = { widgetId -> vm.setStatusDashboardWidgetVisible(widgetId, false) },
+                        selectedWidgetId = selectedWidgetId,
+                        onSelectWidget = { selectedWidgetId = it },
+                        onCanvasMetricsChanged = { metrics -> freeformMetrics = metrics },
+                        onDragPointerYChanged = { activeDragPointerY = it }
+                    ) { widgetId, interactionsEnabled ->
+                        StatusWidgetContent(
                             widgetId = widgetId,
-                            targetW = targetW,
-                            targetH = targetH,
-                            definitions = StatusDashboardWidgets.definitions
+                            state = state,
+                            vm = vm,
+                            ksuVersion = ksuVersion,
+                            kernelVersion = kernelVersion,
+                            actionsEnabled = interactionsEnabled,
+                            showManagerPlaceholder = false
                         )
-                    },
-                    canHideWidget = { widgetId ->
-                        StatusDashboardWidgets.definitionMap[widgetId]?.canHide == true
-                    },
-                    canMinimizeWidget = { widgetId ->
-                        StatusDashboardWidgets.definitionMap[widgetId]?.canResize == true
-                    },
-                    canMaximizeWidget = { widgetId ->
-                        StatusDashboardWidgets.definitionMap[widgetId]?.canResize == true
-                    },
-                    canResizeWidget = { widgetId ->
-                        StatusDashboardWidgets.definitionMap[widgetId]?.canResize == true
-                    },
-                    onMoveItem = vm::moveStatusDashboardWidget,
-                    onResizeItem = vm::resizeStatusDashboardWidget,
-                    onSetItemSpanMode = vm::setStatusDashboardWidgetSpanMode,
-                    onHideItem = { widgetId -> vm.setStatusDashboardWidgetVisible(widgetId, false) },
-                    selectedWidgetId = selectedWidgetId,
-                    onSelectWidget = { selectedWidgetId = it },
-                    onGridMetricsChanged = { metrics -> gridMetrics = metrics },
-                    onDragPointerYChanged = { activeDragPointerY = it }
-                ) { widgetId, interactionsEnabled ->
-                    StatusWidgetContent(
-                        widgetId = widgetId,
-                        state = state,
-                        vm = vm,
-                        ksuVersion = ksuVersion,
-                        kernelVersion = kernelVersion,
-                        actionsEnabled = interactionsEnabled,
-                        showManagerPlaceholder = false
-                    )
+                    }
                 }
             }
 
@@ -330,10 +389,18 @@ fun StatusScreen(
                     onHiddenWidgetDrop = { dragState ->
                         activeDragPointerY = null
                         hiddenWidgetDrag = null
-                        val metrics = gridMetrics ?: return@StatusEditorWidgetsTray
                         if (!dragState.leftTray || dragState.pointerY >= trayTopY) return@StatusEditorWidgetsTray
                         val item = dashboardLayout.items.firstOrNull { it.widgetId == dragState.widgetId } ?: return@StatusEditorWidgetsTray
-                        val target = computeHiddenWidgetDropTarget(metrics, item, dragState.pointerX, dragState.pointerY)
+                        val target = when (dashboardLayout.layoutMode) {
+                            DashboardLayoutMode.GRID -> {
+                                val metrics = gridMetrics ?: return@StatusEditorWidgetsTray
+                                computeHiddenWidgetDropTarget(metrics, item, dragState.pointerX, dragState.pointerY)
+                            }
+                            DashboardLayoutMode.FREEFORM -> {
+                                val metrics = freeformMetrics ?: return@StatusEditorWidgetsTray
+                                computeHiddenWidgetFreeformDropTarget(metrics, item, dragState.pointerX, dragState.pointerY, density)
+                            }
+                        }
                         vm.placeStatusDashboardHiddenWidget(
                             widgetId = dragState.widgetId,
                             targetX = target.first,
@@ -381,7 +448,9 @@ fun StatusScreen(
                 HiddenWidgetFloatingPreview(
                     dragState = hiddenWidgetDrag,
                     trayTopY = trayTopY,
+                    layoutMode = dashboardLayout.layoutMode,
                     gridMetrics = gridMetrics,
+                    freeformMetrics = freeformMetrics,
                     layout = dashboardLayout
                 )
             }
@@ -754,46 +823,64 @@ private fun HiddenWidgetThumbnail(
 private fun HiddenWidgetFloatingPreview(
     dragState: HiddenWidgetDragState?,
     trayTopY: Float,
+    layoutMode: DashboardLayoutMode,
     gridMetrics: DashboardGridMetrics?,
+    freeformMetrics: DashboardFreeformMetrics?,
     layout: com.abk.kernel.dashboard.DashboardLayout
 ) {
     val activeDrag = dragState ?: return
     if (!activeDrag.leftTray || activeDrag.pointerY >= trayTopY) return
-    val metrics = gridMetrics ?: return
     val density = LocalDensity.current
     val item = layout.items.firstOrNull { it.widgetId == activeDrag.widgetId } ?: return
-    val previewWidthDp = with(density) {
-        (metrics.cellWidthPx * item.w + metrics.gapPx * (item.w - 1)).toDp()
+    val (previewLeftDp, previewTopDp, previewWidthDp, previewHeightDp, borderColor) = when (layoutMode) {
+        DashboardLayoutMode.GRID -> {
+            val metrics = gridMetrics ?: return
+            val previewWidth = with(density) {
+                (metrics.cellWidthPx * item.w + metrics.gapPx * (item.w - 1)).toDp()
+            }
+            val previewHeight = with(density) {
+                (metrics.rowHeightPx * item.h + metrics.gapPx * (item.h - 1)).toDp()
+            }
+            val gridStepX = metrics.cellWidthPx + metrics.gapPx
+            val gridStepY = metrics.rowHeightPx + metrics.gapPx
+            val snappedX = ((activeDrag.pointerX - metrics.originX) / gridStepX)
+                .roundToInt()
+                .coerceIn(0, (metrics.columns - item.w).coerceAtLeast(0))
+            val snappedY = ((activeDrag.pointerY - metrics.originY) / gridStepY)
+                .roundToInt()
+                .coerceAtLeast(0)
+            val isValid = com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                layout = layout,
+                widgetId = activeDrag.widgetId,
+                targetX = snappedX,
+                targetY = snappedY,
+                definitions = StatusDashboardWidgets.definitions
+            )
+            val previewGridX = if (item.visible) item.x else snappedX
+            val previewGridY = if (item.visible) item.y else snappedY
+            val left = with(density) { (metrics.originX + previewGridX * gridStepX).toDp() }
+            val top = with(density) { (metrics.originY + previewGridY * gridStepY).toDp() }
+            val color = if (isValid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+            Quintuple(left, top, previewWidth, previewHeight, color)
+        }
+        DashboardLayoutMode.FREEFORM -> {
+            val metrics = freeformMetrics ?: return
+            val previewWidth = item.w.dp
+            val previewHeight = item.h.dp
+            val target = computeHiddenWidgetFreeformDropTarget(metrics, item, activeDrag.pointerX, activeDrag.pointerY, density)
+            val isValid = com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                layout = layout,
+                widgetId = activeDrag.widgetId,
+                targetX = target.first,
+                targetY = target.second,
+                definitions = StatusDashboardWidgets.definitions
+            )
+            val left = if (item.visible) item.x.dp else target.first.dp
+            val top = if (item.visible) item.y.dp else target.second.dp
+            val color = if (isValid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+            Quintuple(left, top, previewWidth, previewHeight, color)
+        }
     }
-    val previewHeightDp = with(density) {
-        (metrics.rowHeightPx * item.h + metrics.gapPx * (item.h - 1)).toDp()
-    }
-    val gridStepX = metrics.cellWidthPx + metrics.gapPx
-    val gridStepY = metrics.rowHeightPx + metrics.gapPx
-    val snappedX = ((activeDrag.pointerX - metrics.originX) / gridStepX)
-        .roundToInt()
-        .coerceIn(0, (metrics.columns - item.w).coerceAtLeast(0))
-    val snappedY = ((activeDrag.pointerY - metrics.originY) / gridStepY)
-        .roundToInt()
-        .coerceAtLeast(0)
-    val isValid = com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
-        layout = layout,
-        widgetId = activeDrag.widgetId,
-        targetX = snappedX,
-        targetY = snappedY,
-        definitions = StatusDashboardWidgets.definitions
-    )
-    val borderColor = if (isValid) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.error
-    }
-    val previewGridX = if (item.visible) item.x else snappedX
-    val previewGridY = if (item.visible) item.y else snappedY
-    val snappedLeftPx = metrics.originX + previewGridX * gridStepX
-    val snappedTopPx = metrics.originY + previewGridY * gridStepY
-    val previewLeftDp = with(density) { snappedLeftPx.toDp() }
-    val previewTopDp = with(density) { snappedTopPx.toDp() }
 
     Surface(
         modifier = Modifier
@@ -1393,3 +1480,26 @@ private fun computeHiddenWidgetDropTarget(
         .coerceAtLeast(0)
     return targetX to targetY
 }
+
+private fun computeHiddenWidgetFreeformDropTarget(
+    metrics: DashboardFreeformMetrics,
+    item: com.abk.kernel.dashboard.DashboardLayoutItem,
+    pointerX: Float,
+    pointerY: Float,
+    density: androidx.compose.ui.unit.Density
+): Pair<Int, Int> {
+    val itemWidthPx = with(density) { item.w.dp.toPx() }
+    val itemHeightPx = with(density) { item.h.dp.toPx() }
+    val leftPx = (pointerX - metrics.originX - itemWidthPx / 2f).coerceAtLeast(0f)
+    val topPx = (pointerY - metrics.originY - itemHeightPx / 2f).coerceAtLeast(0f)
+    return with(density) { leftPx.toDp().value.roundToInt() } to
+        with(density) { topPx.toDp().value.roundToInt() }
+}
+
+private data class Quintuple<A, B, C, D, E>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D,
+    val fifth: E
+)

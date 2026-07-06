@@ -156,4 +156,18 @@ class DashboardLayoutCodecTest {
             result.layout.items.first { it.widgetId == StatusDashboardWidgets.HERO }.spanMode
         )
     }
+
+    @Test
+    fun exportThenImportPreservesFreeformMode() {
+        val layout = StatusDashboardWidgets.defaultFreeformLayout(DashboardDensityPreset.STANDARD)
+
+        val restored = DashboardLayoutCodec.importStatusLayout(
+            json = DashboardLayoutCodec.export(layout),
+            definitions = StatusDashboardWidgets.definitions,
+            defaultLayoutForDensity = StatusDashboardWidgets::defaultLayout,
+            hideMissingWidgets = false
+        )
+
+        assertEquals(DashboardLayoutMode.FREEFORM, restored.layout.layoutMode)
+    }
 }

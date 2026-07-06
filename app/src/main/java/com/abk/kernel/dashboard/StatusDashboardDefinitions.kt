@@ -115,6 +115,15 @@ object StatusDashboardWidgets {
         )
     }
 
+    fun defaultFreeformLayout(
+        densityPreset: DashboardDensityPreset = DashboardDensityPreset.STANDARD
+    ): DashboardLayout = DashboardLayoutEngine.changeMode(
+        layout = defaultLayout(densityPreset),
+        targetMode = DashboardLayoutMode.FREEFORM,
+        definitions = definitions,
+        defaultLayout = defaultLayout(densityPreset)
+    )
+
     private fun seed(widgetId: String, x: Int, y: Int, w: Int, h: Int): DefaultSeed =
         DefaultSeed(widgetId = widgetId, x = x, y = y, w = w, h = h)
 

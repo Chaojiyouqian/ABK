@@ -29,6 +29,7 @@ import com.abk.kernel.dashboard.DashboardLayout
 import com.abk.kernel.dashboard.DashboardLayoutCodec
 import com.abk.kernel.dashboard.DashboardLayoutEngine
 import com.abk.kernel.dashboard.DashboardLayoutImportResult
+import com.abk.kernel.dashboard.DashboardLayoutMode
 import com.abk.kernel.dashboard.StatusDashboardWidgets
 import com.abk.kernel.utils.BuildMonitorService
 import com.abk.kernel.utils.BuildProgressUtils
@@ -626,7 +627,12 @@ class MainViewModel @JvmOverloads constructor(
                         DashboardLayoutEngine.sanitize(
                             layout = restoredLayout,
                             definitions = StatusDashboardWidgets.definitions,
-                            defaultLayout = StatusDashboardWidgets.defaultLayout(restoredLayout.densityPreset)
+                            defaultLayout = when (restoredLayout.layoutMode) {
+                                DashboardLayoutMode.FREEFORM ->
+                                    StatusDashboardWidgets.defaultFreeformLayout(restoredLayout.densityPreset)
+                                DashboardLayoutMode.GRID ->
+                                    StatusDashboardWidgets.defaultLayout(restoredLayout.densityPreset)
+                            }
                         )
                     } else {
                         DashboardLayoutEngine.sanitize(
@@ -4059,10 +4065,40 @@ class MainViewModel @JvmOverloads constructor(
         _uiState.update { it.copy(statusDashboardDraftLayout = placedLayout) }
     }
 
+    fun setStatusDashboardLayoutMode(mode: DashboardLayoutMode) {
+        val currentState = _uiState.value
+        val baseLayout = currentState.statusDashboardDraftLayout ?: currentState.statusDashboardLayout
+        val defaultLayout = when (mode) {
+            DashboardLayoutMode.FREEFORM -> StatusDashboardWidgets.defaultFreeformLayout(baseLayout.densityPreset)
+            DashboardLayoutMode.GRID -> StatusDashboardWidgets.defaultLayout(baseLayout.densityPreset)
+        }
+        val remappedLayout = DashboardLayoutEngine.changeMode(
+            layout = baseLayout,
+            targetMode = mode,
+            definitions = StatusDashboardWidgets.definitions,
+            defaultLayout = defaultLayout
+        )
+        _uiState.update { state ->
+            if (state.statusDashboardEditMode) {
+                state.copy(statusDashboardDraftLayout = remappedLayout)
+            } else {
+                state.copy(statusDashboardLayout = remappedLayout)
+            }
+        }
+        if (!currentState.statusDashboardEditMode) {
+            viewModelScope.launch {
+                persistStatusDashboardLayoutSafely(remappedLayout)
+            }
+        }
+    }
+
     fun setStatusDashboardDensityPreset(preset: DashboardDensityPreset) {
         val currentState = _uiState.value
         val baseLayout = currentState.statusDashboardDraftLayout ?: currentState.statusDashboardLayout
-        val defaultLayout = StatusDashboardWidgets.defaultLayout(preset)
+        val defaultLayout = when (baseLayout.layoutMode) {
+            DashboardLayoutMode.FREEFORM -> StatusDashboardWidgets.defaultFreeformLayout(preset)
+            DashboardLayoutMode.GRID -> StatusDashboardWidgets.defaultLayout(preset)
+        }
         val remappedLayout = DashboardLayoutEngine.remapDensity(
             layout = baseLayout,
             targetDensityPreset = preset,
@@ -4084,16 +4120,23 @@ class MainViewModel @JvmOverloads constructor(
     }
 
     fun resetStatusDashboardLayoutDraftToDefault() {
-        val densityPreset = (_uiState.value.statusDashboardDraftLayout ?: _uiState.value.statusDashboardLayout)
-            .densityPreset
+        val activeLayout = _uiState.value.statusDashboardDraftLayout ?: _uiState.value.statusDashboardLayout
         _uiState.update {
-            it.copy(statusDashboardDraftLayout = StatusDashboardWidgets.defaultLayout(densityPreset))
+            it.copy(
+                statusDashboardDraftLayout = when (activeLayout.layoutMode) {
+                    DashboardLayoutMode.FREEFORM -> StatusDashboardWidgets.defaultFreeformLayout(activeLayout.densityPreset)
+                    DashboardLayoutMode.GRID -> StatusDashboardWidgets.defaultLayout(activeLayout.densityPreset)
+                }
+            )
         }
     }
 
     fun restoreDefaultStatusDashboardLayout() {
-        val densityPreset = _uiState.value.statusDashboardLayout.densityPreset
-        val defaultLayout = StatusDashboardWidgets.defaultLayout(densityPreset)
+        val activeLayout = _uiState.value.statusDashboardLayout
+        val defaultLayout = when (activeLayout.layoutMode) {
+            DashboardLayoutMode.FREEFORM -> StatusDashboardWidgets.defaultFreeformLayout(activeLayout.densityPreset)
+            DashboardLayoutMode.GRID -> StatusDashboardWidgets.defaultLayout(activeLayout.densityPreset)
+        }
         _uiState.update { state ->
             state.copy(
                 statusDashboardLayout = defaultLayout,

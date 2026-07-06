@@ -89,6 +89,7 @@ import com.abk.kernel.data.model.ManagerSettingKind
 import com.abk.kernel.data.model.normalizeAppUpdateLine
 import com.abk.kernel.data.model.normalizeAppUpdateStability
 import com.abk.kernel.dashboard.DashboardDensityPreset
+import com.abk.kernel.dashboard.DashboardLayoutMode
 import com.abk.kernel.viewmodel.MainUiState
 import com.abk.kernel.viewmodel.MainViewModel
 import com.abk.kernel.viewmodel.exportDiagnosticBundle
@@ -370,6 +371,8 @@ fun SettingsScreen(
                         onBackgroundImageChange = { uri -> vm.setBackgroundImageUri(uri) },
                         onBackgroundImageEnabledChange = { enabled -> vm.setBackgroundImageEnabled(enabled) },
                         onUiSurfaceAlphaChange = { alpha -> vm.setUiSurfaceAlpha(alpha) },
+                        statusLayoutMode = state.statusDashboardLayout.layoutMode,
+                        onStatusLayoutModeChange = vm::setStatusDashboardLayoutMode,
                         statusLayoutDensityPreset = state.statusDashboardLayout.densityPreset,
                         onStatusLayoutDensityChange = vm::setStatusDashboardDensityPreset,
                         onOpenStatusLayoutEditor = {
@@ -1337,6 +1340,8 @@ private fun ThemeSettingsScreen(
     onBackgroundImageChange: (String?) -> Unit,
     onBackgroundImageEnabledChange: (Boolean) -> Unit,
     onUiSurfaceAlphaChange: (Float) -> Unit,
+    statusLayoutMode: DashboardLayoutMode,
+    onStatusLayoutModeChange: (DashboardLayoutMode) -> Unit,
     statusLayoutDensityPreset: DashboardDensityPreset,
     onStatusLayoutDensityChange: (DashboardDensityPreset) -> Unit,
     onOpenStatusLayoutEditor: () -> Unit,
@@ -1474,6 +1479,10 @@ private fun ThemeSettingsScreen(
                     )
                 },
                 onClick = onOpenStatusLayoutEditor
+            )
+            StatusLayoutModePicker(
+                selected = statusLayoutMode,
+                onSelect = onStatusLayoutModeChange
             )
             StatusLayoutDensityPicker(
                 selected = statusLayoutDensityPreset,
@@ -1730,6 +1739,36 @@ private fun BuildPageStylePicker(
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun StatusLayoutModePicker(
+    selected: DashboardLayoutMode,
+    onSelect: (DashboardLayoutMode) -> Unit
+) {
+    val options = listOf(
+        AbkSegmentedButtonOption(
+            value = DashboardLayoutMode.GRID,
+            label = stringResource(R.string.settings_status_layout_mode_grid)
+        ),
+        AbkSegmentedButtonOption(
+            value = DashboardLayoutMode.FREEFORM,
+            label = stringResource(R.string.settings_status_layout_mode_freeform)
+        )
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ExpressiveListItem(
+            title = stringResource(R.string.settings_status_layout_mode),
+            subtitle = stringResource(R.string.settings_status_layout_mode_desc),
+            leadingIcon = Icons.Default.DashboardCustomize
+        )
+        AbkSingleChoiceSegmentedButtonRow(
+            options = options,
+            selectedValue = selected,
+            onSelect = onSelect,
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }

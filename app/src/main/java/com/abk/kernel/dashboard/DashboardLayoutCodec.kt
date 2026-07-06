@@ -64,7 +64,22 @@ object DashboardLayoutCodec {
         val densityPreset = DashboardDensityPreset.fromRawValue(
             root.readString("densityPreset", "c")
         )
-        val fallbackLayout = defaultLayoutForDensity(densityPreset)
+        val layoutMode = DashboardLayoutMode.fromRawValue(
+            root.readString("layoutMode", "b")
+        ) ?: return failure(
+            error = DashboardLayoutImportError.UNSUPPORTED_LAYOUT_MODE,
+            fallbackLayout = defaultLayoutForDensity(densityPreset)
+        )
+        val gridFallbackLayout = defaultLayoutForDensity(densityPreset)
+        val fallbackLayout = when (layoutMode) {
+            DashboardLayoutMode.GRID -> gridFallbackLayout
+            DashboardLayoutMode.FREEFORM -> DashboardLayoutEngine.changeMode(
+                layout = gridFallbackLayout,
+                targetMode = DashboardLayoutMode.FREEFORM,
+                definitions = definitions,
+                defaultLayout = gridFallbackLayout
+            )
+        }
         val pageId = DashboardPageId.fromRawValue(
             root.readString("pageId", null)
                 ?: root.readString("statusPageId", null)
@@ -86,20 +101,6 @@ object DashboardLayoutCodec {
                 fallbackLayout = fallbackLayout
             )
         }
-        val layoutMode = DashboardLayoutMode.fromRawValue(
-            root.readString("layoutMode", "b")
-        )
-            ?: return failure(
-                error = DashboardLayoutImportError.UNSUPPORTED_LAYOUT_MODE,
-                fallbackLayout = fallbackLayout
-            )
-        if (layoutMode != DashboardLayoutMode.GRID) {
-            return failure(
-                error = DashboardLayoutImportError.UNSUPPORTED_LAYOUT_MODE,
-                fallbackLayout = fallbackLayout
-            )
-        }
-
         val knownWidgetIds = definitions.map { it.widgetId }.toSet()
         val rawItems = root.readArray("items", "d")
         val importedItems = rawItems.mapNotNull { itemObject ->

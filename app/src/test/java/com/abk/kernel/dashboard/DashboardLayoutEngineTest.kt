@@ -198,4 +198,19 @@ class DashboardLayoutEngineTest {
         assertEquals(buildActivity.bottom, recentRuns.y)
         assertTrue(DashboardLayoutEngine.isLayoutLegal(sanitized, StatusDashboardWidgets.definitions))
     }
+
+    @Test
+    fun changeModeConvertsGridLayoutToFreeform() {
+        val gridLayout = StatusDashboardWidgets.defaultLayout(DashboardDensityPreset.STANDARD)
+
+        val freeformLayout = DashboardLayoutEngine.changeMode(
+            layout = gridLayout,
+            targetMode = DashboardLayoutMode.FREEFORM,
+            definitions = StatusDashboardWidgets.definitions,
+            defaultLayout = StatusDashboardWidgets.defaultFreeformLayout(DashboardDensityPreset.STANDARD)
+        )
+
+        assertEquals(DashboardLayoutMode.FREEFORM, freeformLayout.layoutMode)
+        assertTrue(freeformLayout.items.all { it.w > 0 && it.h > 0 })
+    }
 }
