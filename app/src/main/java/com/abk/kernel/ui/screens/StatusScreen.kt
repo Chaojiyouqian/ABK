@@ -304,7 +304,7 @@ fun StatusScreen(
                         ksuVersion = ksuVersion,
                         kernelVersion = kernelVersion,
                         actionsEnabled = interactionsEnabled,
-                        showManagerPlaceholder = state.statusDashboardEditMode
+                        showManagerPlaceholder = false
                     )
                 }
             }
@@ -749,7 +749,7 @@ private fun HiddenWidgetThumbnail(
                         ksuVersion = ksuVersion,
                         kernelVersion = kernelVersion,
                         actionsEnabled = false,
-                        showManagerPlaceholder = true
+                        showManagerPlaceholder = false
                     )
                 }
             }
@@ -801,8 +801,10 @@ private fun HiddenWidgetFloatingPreview(
     } else {
         MaterialTheme.colorScheme.error
     }
-    val snappedLeftPx = metrics.originX + snappedX * gridStepX
-    val snappedTopPx = metrics.originY + snappedY * gridStepY
+    val previewGridX = if (item.visible) item.x else snappedX
+    val previewGridY = if (item.visible) item.y else snappedY
+    val snappedLeftPx = metrics.originX + previewGridX * gridStepX
+    val snappedTopPx = metrics.originY + previewGridY * gridStepY
     val previewLeftDp = with(density) { snappedLeftPx.toDp() }
     val previewTopDp = with(density) { snappedTopPx.toDp() }
 

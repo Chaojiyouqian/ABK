@@ -28,6 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -93,9 +94,13 @@ fun DashboardGrid(
     val rowHeight = layout.densityPreset.rowHeightDp.dp
     val gridGap = 4.dp
     val layoutRevision = remember(layout.items) { layout.items.hashCode() }
+    var previewBottomRow by remember(layoutRevision) { mutableIntStateOf(0) }
     val contentRows = max(
         1,
-        visibleItems.maxOfOrNull { it.bottom } ?: 0
+        max(
+            visibleItems.maxOfOrNull { it.bottom } ?: 0,
+            previewBottomRow
+        )
     )
 
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
@@ -173,7 +178,10 @@ fun DashboardGrid(
                     onResizeItem = { w, h -> onResizeItem(item.widgetId, w, h) },
                     onSetSpanMode = { spanMode -> onSetItemSpanMode(item.widgetId, spanMode) },
                     onHideItem = { onHideItem(item.widgetId) },
-                    onDragPointerYChanged = onDragPointerYChanged
+                    onDragPointerYChanged = onDragPointerYChanged,
+                    onPreviewBottomRowChanged = { nextBottom ->
+                        previewBottomRow = nextBottom ?: 0
+                    }
                 ) {
                     content(item.widgetId, !editable)
                 }
@@ -218,6 +226,7 @@ private fun DashboardGridItem(
     onSetSpanMode: (DashboardItemSpanMode) -> Unit,
     onHideItem: () -> Unit,
     onDragPointerYChanged: (Float?) -> Unit,
+    onPreviewBottomRowChanged: (Int?) -> Unit,
     content: @Composable () -> Unit
 ) {
     val density = LocalDensity.current
@@ -307,10 +316,12 @@ private fun DashboardGridItem(
                             },
                             onDragCancel = {
                                 onDragPointerYChanged(null)
+                                onPreviewBottomRowChanged(null)
                                 previewState = null
                             },
                             onDragEnd = {
                                 onDragPointerYChanged(null)
+                                onPreviewBottomRowChanged(null)
                                 previewState?.takeIf { it.valid }?.let { preview ->
                                     onMoveItem(preview.x, preview.y)
                                 }
@@ -339,6 +350,7 @@ private fun DashboardGridItem(
                                 valid = isMoveValid(boundedX, boundedY),
                                 mode = GridInteractionMode.MOVE
                             )
+                            onPreviewBottomRowChanged(previewState?.let { it.y + it.h })
                         }
                     }
             )
@@ -447,10 +459,12 @@ private fun DashboardGridItem(
                                 },
                                 onDragCancel = {
                                     onDragPointerYChanged(null)
+                                    onPreviewBottomRowChanged(null)
                                     previewState = null
                                 },
                                 onDragEnd = {
                                     onDragPointerYChanged(null)
+                                    onPreviewBottomRowChanged(null)
                                     previewState?.takeIf { it.valid }?.let { preview ->
                                         onResizeItem(preview.w, preview.h)
                                     }
@@ -479,6 +493,7 @@ private fun DashboardGridItem(
                                     valid = isResizeValid(boundedW, boundedH),
                                     mode = GridInteractionMode.RESIZE
                                 )
+                                onPreviewBottomRowChanged(previewState?.let { it.y + it.h })
                             }
                         },
                     contentAlignment = Alignment.Center
