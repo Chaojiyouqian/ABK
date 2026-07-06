@@ -146,6 +146,22 @@ class DashboardLayoutEngineTest {
     }
 
     @Test
+    fun minimizingBuildActivityUsesFourRows() {
+        val layout = StatusDashboardWidgets.defaultLayout(DashboardDensityPreset.STANDARD)
+
+        val minimized = DashboardLayoutEngine.setItemSpanMode(
+            layout = layout,
+            widgetId = StatusDashboardWidgets.BUILD_ACTIVITY,
+            spanMode = DashboardItemSpanMode.MINIMUM,
+            definitions = StatusDashboardWidgets.definitions
+        )
+
+        val buildActivity = minimized.items.first { it.widgetId == StatusDashboardWidgets.BUILD_ACTIVITY }
+        assertEquals(4, buildActivity.h)
+        assertEquals(DashboardItemSpanMode.MINIMUM, buildActivity.spanMode)
+    }
+
+    @Test
     fun sanitizePreservesTightStackingUsingSpatialOrderInsteadOfOriginalListOrder() {
         val layout = DashboardLayout(
             densityPreset = DashboardDensityPreset.STANDARD,

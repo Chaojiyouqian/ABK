@@ -36,9 +36,9 @@ object StatusDashboardWidgets {
             defaultW = DashboardDensityPreset.STANDARD.columns,
             defaultH = 9,
             minW = 8,
-            minH = 6,
+            minH = 4,
             collapsedW = 8,
-            collapsedH = 6,
+            collapsedH = 4,
             expandedH = 12,
             maxH = 12
         ),
