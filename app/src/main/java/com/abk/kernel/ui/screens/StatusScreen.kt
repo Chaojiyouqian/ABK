@@ -179,7 +179,10 @@ fun StatusScreen(
                 else -> 0f
             }
             if (delta != 0f) {
-                scrollState.scrollBy(delta)
+                scrollState.scrollTo(
+                    (scrollState.value + delta.roundToInt())
+                        .coerceIn(0, scrollState.maxValue)
+                )
             }
             delay(16)
         }
