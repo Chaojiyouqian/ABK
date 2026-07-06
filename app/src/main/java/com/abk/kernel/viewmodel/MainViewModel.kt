@@ -30,6 +30,7 @@ import com.abk.kernel.dashboard.DashboardLayoutCodec
 import com.abk.kernel.dashboard.DashboardLayoutEngine
 import com.abk.kernel.dashboard.DashboardLayoutImportResult
 import com.abk.kernel.dashboard.DashboardLayoutMode
+import com.abk.kernel.dashboard.RuntimeDashboardWidgets
 import com.abk.kernel.dashboard.StatusDashboardWidgets
 import com.abk.kernel.utils.BuildMonitorService
 import com.abk.kernel.utils.BuildProgressUtils
@@ -200,6 +201,7 @@ data class MainUiState(
     val predictiveBackEnabled: Boolean = true,
     val buildPageStyle: String? = null,
     val statusDashboardLayout: DashboardLayout = StatusDashboardWidgets.defaultLayout(),
+    val runtimeDashboardLayout: DashboardLayout = RuntimeDashboardWidgets.defaultLayout(),
     val statusDashboardDraftLayout: DashboardLayout? = null,
     val statusDashboardEditMode: Boolean = false,
     val runtimeNavigationEnabled: Boolean = false,
@@ -658,6 +660,51 @@ class MainViewModel @JvmOverloads constructor(
         }
         viewModelScope.launch {
             combine(
+                prefs.runtimeHomeLayoutJson,
+                prefs.runtimeHomeGridDensityPreset
+            ) { json, densityPreset ->
+                json to densityPreset
+            }.collect { (json, densityPreset) ->
+                val defaultLayout = RuntimeDashboardWidgets.defaultLayout(densityPreset)
+                val normalizedLayout = runCatching {
+                    val restoredLayout = json
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let {
+                            DashboardLayoutCodec.importStatusLayout(
+                                json = it,
+                                definitions = RuntimeDashboardWidgets.definitions,
+                                defaultLayoutForDensity = RuntimeDashboardWidgets::defaultLayout,
+                                hideMissingWidgets = false
+                            ).layout
+                        }
+                    if (restoredLayout != null) {
+                        DashboardLayoutEngine.sanitize(
+                            layout = restoredLayout,
+                            definitions = RuntimeDashboardWidgets.definitions,
+                            defaultLayout = when (restoredLayout.layoutMode) {
+                                DashboardLayoutMode.FREEFORM ->
+                                    RuntimeDashboardWidgets.defaultFreeformLayout(restoredLayout.densityPreset)
+                                DashboardLayoutMode.GRID ->
+                                    RuntimeDashboardWidgets.defaultLayout(restoredLayout.densityPreset)
+                            }
+                        )
+                    } else {
+                        DashboardLayoutEngine.sanitize(
+                            layout = defaultLayout,
+                            definitions = RuntimeDashboardWidgets.definitions,
+                            defaultLayout = defaultLayout
+                        )
+                    }
+                }.getOrElse {
+                    defaultLayout
+                }
+                _uiState.update { state ->
+                    state.copy(runtimeDashboardLayout = normalizedLayout)
+                }
+            }
+        }
+        viewModelScope.launch {
+            combine(
                 prefs.workflowForegroundRefreshEnabled,
                 prefs.workflowForegroundRefreshIntervalSec
             ) { enabled, intervalSec ->
@@ -933,6 +980,7 @@ class MainViewModel @JvmOverloads constructor(
                     prebuiltGkiEnabled = it.prebuiltGkiEnabled,
                     predictiveBackEnabled = it.predictiveBackEnabled,
                     statusDashboardLayout = it.statusDashboardLayout,
+                    runtimeDashboardLayout = it.runtimeDashboardLayout,
                     runtimeNavigationEnabled = it.runtimeNavigationEnabled,
                     webViewDebugEnabled = it.webViewDebugEnabled,
                     runtimeModuleRepositories = it.runtimeModuleRepositories,

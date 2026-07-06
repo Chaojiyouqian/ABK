@@ -60,6 +60,8 @@ import com.abk.kernel.R
 import com.abk.kernel.data.model.AbkRuntimeBuildInfo
 import com.abk.kernel.data.model.AbkRuntimeModule
 import com.abk.kernel.data.model.AbkRuntimeStatus
+import com.abk.kernel.dashboard.DashboardLayoutMode
+import com.abk.kernel.dashboard.RuntimeDashboardWidgets
 import com.abk.kernel.ui.components.AbkScreenHorizontalPadding
 import com.abk.kernel.ui.components.ObserveChildPageVisibility
 import com.abk.kernel.ui.components.childPageOverlayEnterTransition
@@ -73,6 +75,8 @@ import com.abk.kernel.ui.components.ExpressiveSectionCard
 import com.abk.kernel.ui.components.ExpressiveStatusChip
 import com.abk.kernel.ui.components.ExpressiveTopBar
 import com.abk.kernel.ui.components.ShimmerLinearProgress
+import com.abk.kernel.ui.dashboard.DashboardFreeform
+import com.abk.kernel.ui.dashboard.DashboardGrid
 import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
 import com.abk.kernel.ui.webui.ModuleWebUiActivity
@@ -164,22 +168,65 @@ fun RuntimeHomeScreen(
                     .padding(horizontal = AbkScreenHorizontalPadding),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                RuntimeStatusHeader(
-                    runtimeStatus = state.abkRuntimeStatus,
-                    hasNativeManagerPermission = state.hasNativeManagerPermission,
-                    loading = state.abkRuntimeLoading,
-                    error = state.abkRuntimeError,
-                    onRefresh = vm::refreshAbkRuntimeStatus,
-                    onOpenManagerPatch = {
-                        childPageBack.resetProgress()
-                        managerPatchBackEnabled = true
-                        showManagerPatchPage = true
-                    }
+                val runtimeLayout = state.runtimeDashboardLayout
+                val widgetLabels = mapOf(
+                    RuntimeDashboardWidgets.STATUS_HEADER to stringResource(R.string.runtime_manager_active),
+                    RuntimeDashboardWidgets.MANAGER to stringResource(R.string.runtime_manager_title),
+                    RuntimeDashboardWidgets.BUILD_PARAMETERS to stringResource(R.string.runtime_build_params_title)
                 )
-
-                state.abkRuntimeStatus?.let { runtimeStatus ->
-                    RuntimeManagerCard(runtimeStatus)
-                    RuntimeBuildParametersCard(runtimeStatus)
+                when (runtimeLayout.layoutMode) {
+                    DashboardLayoutMode.GRID -> DashboardGrid(
+                        layout = runtimeLayout,
+                        widgetLabels = widgetLabels,
+                        editable = false,
+                        canMoveItem = { _, _, _ -> false },
+                        canResizeItem = { _, _, _ -> false },
+                        canHideWidget = { false },
+                        canMinimizeWidget = { false },
+                        canMaximizeWidget = { false },
+                        canResizeWidget = { false },
+                        onMoveItem = { _, _, _ -> },
+                        onResizeItem = { _, _, _ -> },
+                        onSetItemSpanMode = { _, _ -> },
+                        onHideItem = { _ -> }
+                    ) { widgetId, _ ->
+                        RuntimeDashboardWidgetContent(
+                            widgetId = widgetId,
+                            state = state,
+                            vm = vm,
+                            onOpenManagerPatch = {
+                                childPageBack.resetProgress()
+                                managerPatchBackEnabled = true
+                                showManagerPatchPage = true
+                            }
+                        )
+                    }
+                    DashboardLayoutMode.FREEFORM -> DashboardFreeform(
+                        layout = runtimeLayout,
+                        widgetLabels = widgetLabels,
+                        editable = false,
+                        canMoveItem = { _, _, _ -> false },
+                        canResizeItem = { _, _, _ -> false },
+                        canHideWidget = { false },
+                        canMinimizeWidget = { false },
+                        canMaximizeWidget = { false },
+                        canResizeWidget = { false },
+                        onMoveItem = { _, _, _ -> },
+                        onResizeItem = { _, _, _ -> },
+                        onSetItemSpanMode = { _, _ -> },
+                        onHideItem = { _ -> }
+                    ) { widgetId, _ ->
+                        RuntimeDashboardWidgetContent(
+                            widgetId = widgetId,
+                            state = state,
+                            vm = vm,
+                            onOpenManagerPatch = {
+                                childPageBack.resetProgress()
+                                managerPatchBackEnabled = true
+                                showManagerPatchPage = true
+                            }
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
@@ -561,6 +608,49 @@ fun InstalledModulesScreen(
             }
         )
     }
+}
+
+@Composable
+private fun RuntimeDashboardWidgetContent(
+    widgetId: String,
+    state: com.abk.kernel.viewmodel.MainUiState,
+    vm: MainViewModel,
+    onOpenManagerPatch: () -> Unit
+) {
+    when (widgetId) {
+        RuntimeDashboardWidgets.STATUS_HEADER -> RuntimeStatusHeader(
+            runtimeStatus = state.abkRuntimeStatus,
+            hasNativeManagerPermission = state.hasNativeManagerPermission,
+            loading = state.abkRuntimeLoading,
+            error = state.abkRuntimeError,
+            onRefresh = vm::refreshAbkRuntimeStatus,
+            onOpenManagerPatch = onOpenManagerPatch
+        )
+        RuntimeDashboardWidgets.MANAGER ->
+            state.abkRuntimeStatus?.let { RuntimeManagerCard(it) }
+                ?: RuntimeRuntimeUnavailableCard(
+                    title = stringResource(R.string.runtime_manager_title),
+                    message = state.abkRuntimeError ?: stringResource(R.string.runtime_inactive_desc)
+                )
+        RuntimeDashboardWidgets.BUILD_PARAMETERS ->
+            state.abkRuntimeStatus?.let { RuntimeBuildParametersCard(it) }
+                ?: RuntimeRuntimeUnavailableCard(
+                    title = stringResource(R.string.runtime_build_params_title),
+                    message = state.abkRuntimeError ?: stringResource(R.string.runtime_old_schema)
+                )
+    }
+}
+
+@Composable
+private fun RuntimeRuntimeUnavailableCard(
+    title: String,
+    message: String
+) {
+    ExpressiveSectionCard(
+        title = title,
+        subtitle = message,
+        icon = Icons.Default.Error
+    ) {}
 }
 
 @Composable

@@ -3,7 +3,8 @@ package com.abk.kernel.dashboard
 const val DASHBOARD_LAYOUT_VERSION = 1
 
 enum class DashboardPageId(val rawValue: String) {
-    STATUS("status");
+    STATUS("status"),
+    RUNTIME_HOME("runtime_home");
 
     companion object {
         fun fromRawValue(rawValue: String?): DashboardPageId? =

@@ -67,6 +67,8 @@ class PreferencesRepository(private val context: Context) {
         val KEY_BUILD_PAGE_STYLE = stringPreferencesKey("build_page_style")
         val KEY_STATUS_PAGE_LAYOUT_JSON = stringPreferencesKey("status_page_layout_json")
         val KEY_STATUS_PAGE_GRID_DENSITY_PRESET = stringPreferencesKey("status_page_grid_density_preset")
+        val KEY_RUNTIME_HOME_LAYOUT_JSON = stringPreferencesKey("runtime_home_layout_json")
+        val KEY_RUNTIME_HOME_GRID_DENSITY_PRESET = stringPreferencesKey("runtime_home_grid_density_preset")
         val KEY_RUNTIME_NAVIGATION_ENABLED = booleanPreferencesKey("runtime_navigation_enabled")
         val KEY_WEBVIEW_DEBUG_ENABLED = booleanPreferencesKey("webview_debug_enabled")
         val KEY_TERMS_ACCEPTED_VERSION = intPreferencesKey("terms_accepted_version")
@@ -136,6 +138,10 @@ class PreferencesRepository(private val context: Context) {
     val statusPageLayoutJson: Flow<String?> = context.dataStore.data.map { it[KEY_STATUS_PAGE_LAYOUT_JSON] }
     val statusPageGridDensityPreset: Flow<DashboardDensityPreset> = context.dataStore.data.map {
         DashboardDensityPreset.fromRawValue(it[KEY_STATUS_PAGE_GRID_DENSITY_PRESET])
+    }
+    val runtimeHomeLayoutJson: Flow<String?> = context.dataStore.data.map { it[KEY_RUNTIME_HOME_LAYOUT_JSON] }
+    val runtimeHomeGridDensityPreset: Flow<DashboardDensityPreset> = context.dataStore.data.map {
+        DashboardDensityPreset.fromRawValue(it[KEY_RUNTIME_HOME_GRID_DENSITY_PRESET])
     }
     val runtimeNavigationEnabled: Flow<Boolean> = context.dataStore.data.map {
         it[KEY_RUNTIME_NAVIGATION_ENABLED] ?: false

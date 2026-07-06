@@ -71,27 +71,28 @@ object StatusDashboardWidgets {
     fun defaultLayout(
         densityPreset: DashboardDensityPreset = DashboardDensityPreset.STANDARD
     ): DashboardLayout {
+        val columns = densityPreset.columns
         val items = when (densityPreset) {
             DashboardDensityPreset.COMPACT -> listOf(
-                seed(HERO, 0, 0, 20, 4),
-                seed(METRICS, 0, 4, 8, 4),
-                seed(DEVICE_REPOSITORY, 8, 4, 12, 6),
-                seed(BUILD_ACTIVITY, 0, 10, 20, 9),
-                seed(RECENT_RUNS, 0, 19, 20, 8),
+                seed(HERO, 0, 0, columns, 4),
+                seed(METRICS, 0, 4, columns, 4),
+                seed(BUILD_ACTIVITY, 0, 8, columns, 9),
+                seed(DEVICE_REPOSITORY, 0, 17, columns, 6),
+                seed(RECENT_RUNS, 0, 23, columns, 8),
             )
             DashboardDensityPreset.STANDARD -> listOf(
-                seed(HERO, 0, 0, 16, 4),
-                seed(METRICS, 0, 4, 6, 4),
-                seed(DEVICE_REPOSITORY, 6, 4, 10, 6),
-                seed(BUILD_ACTIVITY, 0, 10, 16, 9),
-                seed(RECENT_RUNS, 0, 19, 16, 8),
+                seed(HERO, 0, 0, columns, 4),
+                seed(METRICS, 0, 4, columns, 4),
+                seed(BUILD_ACTIVITY, 0, 8, columns, 9),
+                seed(DEVICE_REPOSITORY, 0, 17, columns, 6),
+                seed(RECENT_RUNS, 0, 23, columns, 8),
             )
             DashboardDensityPreset.RELAXED -> listOf(
-                seed(HERO, 0, 0, 12, 4),
-                seed(METRICS, 0, 4, 5, 4),
-                seed(DEVICE_REPOSITORY, 5, 4, 7, 6),
-                seed(BUILD_ACTIVITY, 0, 10, 12, 9),
-                seed(RECENT_RUNS, 0, 19, 12, 8),
+                seed(HERO, 0, 0, columns, 4),
+                seed(METRICS, 0, 4, columns, 4),
+                seed(BUILD_ACTIVITY, 0, 8, columns, 9),
+                seed(DEVICE_REPOSITORY, 0, 17, columns, 6),
+                seed(RECENT_RUNS, 0, 23, columns, 8),
             )
         }
         return DashboardLayout(
