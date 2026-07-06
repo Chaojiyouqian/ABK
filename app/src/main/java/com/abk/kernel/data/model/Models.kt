@@ -660,6 +660,8 @@ const val KSU_VARIANT_SUKISU = "SukiSU"
 const val KSU_VARIANT_RESUKISU = "ReSukiSU"
 const val BUILD_TARGET_GKI = "gki"
 const val BUILD_TARGET_ONEPLUS = "oneplus"
+const val BUILD_PAGE_STYLE_CLASSIC = "classic"
+const val BUILD_PAGE_STYLE_SIMPLE = "simple"
 
 val KSU_BRANCH_STANDARD_OPTIONS = listOf(
     KSU_BRANCH_STABLE,
@@ -680,6 +682,13 @@ val ONEPLUS_KSU_VARIANT_OPTIONS = listOf(
     KSU_VARIANT_RESUKISU,
     KSU_VARIANT_NONE
 )
+val BUILD_PAGE_STYLE_OPTIONS = listOf(
+    BUILD_PAGE_STYLE_CLASSIC,
+    BUILD_PAGE_STYLE_SIMPLE
+)
+
+fun normalizeBuildPageStyle(value: String?): String? =
+    value?.trim()?.lowercase()?.takeIf { it in BUILD_PAGE_STYLE_OPTIONS }
 
 // App-level build config model (mirrors kernel-custom.yml inputs)
 data class KernelBuildConfig(
