@@ -15,6 +15,7 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -51,6 +52,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.motionEventSpy
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -78,7 +81,9 @@ import com.abk.kernel.ui.components.ExpressiveStatusChip
 import com.abk.kernel.ui.components.ExpressiveTopBar
 import com.abk.kernel.ui.components.ShimmerLinearProgress
 import com.abk.kernel.ui.dashboard.DashboardFreeform
+import com.abk.kernel.ui.dashboard.DashboardFreeformMetrics
 import com.abk.kernel.ui.dashboard.DashboardGrid
+import com.abk.kernel.ui.dashboard.DashboardGridMetrics
 import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
 import com.abk.kernel.ui.webui.ModuleWebUiActivity
@@ -86,8 +91,10 @@ import com.abk.kernel.utils.RootUtils
 import com.abk.kernel.viewmodel.MainViewModel
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 @Composable
 fun RuntimeHomeScreen(
@@ -100,6 +107,10 @@ fun RuntimeHomeScreen(
     onRequestPagePicker: () -> Unit = {}
 ) {
     val state by vm.uiState.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val scrollState = rememberScrollState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val editorActive = state.runtimeDashboardEditMode && !readOnlyPreview
     val runtimeLayout = if (readOnlyPreview) {
@@ -109,7 +120,71 @@ fun RuntimeHomeScreen(
     } else {
         state.runtimeDashboardLayout
     }
+    val widgetLabels = mapOf(
+        RuntimeDashboardWidgets.STATUS_HEADER to stringResource(R.string.runtime_manager_active),
+        RuntimeDashboardWidgets.MANAGER to stringResource(R.string.runtime_manager_title),
+        RuntimeDashboardWidgets.BUILD_PARAMETERS to stringResource(R.string.runtime_build_params_title)
+    )
+    var actionMenuExpanded by remember { mutableStateOf(false) }
+    var widgetsTrayExpanded by remember { mutableStateOf(false) }
+    var selectedWidgetId by remember { mutableStateOf<String?>(null) }
+    var viewportHeightPx by remember { mutableStateOf(0f) }
+    var activeDragPointerY by remember { mutableStateOf<Float?>(null) }
+    var gridMetrics by remember { mutableStateOf<DashboardGridMetrics?>(null) }
+    var freeformMetrics by remember { mutableStateOf<DashboardFreeformMetrics?>(null) }
+    var trayTopY by remember { mutableStateOf(Float.MAX_VALUE) }
+    var hiddenWidgetDrag by remember { mutableStateOf<DashboardHiddenWidgetDragState?>(null) }
+    val actionMenuRotation by animateFloatAsState(
+        targetValue = if (actionMenuExpanded) 45f else 0f,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "runtime-layout-fab-rotation"
+    )
+    val trayWidgetIds = remember(runtimeLayout.items, hiddenWidgetDrag) {
+        buildList {
+            val hiddenIds = runtimeLayout.items.filter { !it.visible }.map { it.widgetId }
+            addAll(hiddenIds)
+            val draggingWidgetId = hiddenWidgetDrag?.widgetId
+            if (draggingWidgetId != null && draggingWidgetId !in this) {
+                add(draggingWidgetId)
+            }
+        }
+    }
     val pinchObserver = rememberEditorPinchObserver(onRequestPagePicker)
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                val payload = readLayoutTextFromUri(context, uri)
+                vm.importRuntimeDashboardLayoutJson(payload)
+            }.onSuccess { result ->
+                val messageRes = if (result.error == null) {
+                    R.string.status_layout_import_success
+                } else {
+                    R.string.status_layout_import_failed_reset
+                }
+                val message = if (result.error == null) {
+                    context.getString(
+                        messageRes,
+                        result.importedItemCount,
+                        result.ignoredItemCount
+                    )
+                } else {
+                    context.getString(messageRes)
+                }
+                vm.showSnackbar(message, longDuration = result.error != null)
+            }.onFailure { error ->
+                vm.showSnackbar(
+                    context.getString(
+                        R.string.status_layout_import_failed,
+                        error.message ?: error::class.java.simpleName
+                    ),
+                    longDuration = true
+                )
+            }
+        }
+    }
     var showManagerPatchPage by rememberSaveable { mutableStateOf(false) }
     val managerPatchPageTransition = rememberChildPageOverlayTransition(
         visible = showManagerPatchPage,
@@ -120,6 +195,47 @@ fun RuntimeHomeScreen(
 
     LaunchedEffect(state.runtimeNavigationEnabled, state.rootGranted) {
         if (state.runtimeNavigationEnabled) vm.refreshAbkRuntimeStatus()
+    }
+    LaunchedEffect(editorActive) {
+        if (!editorActive) {
+            actionMenuExpanded = false
+            widgetsTrayExpanded = false
+            selectedWidgetId = null
+            hiddenWidgetDrag = null
+            activeDragPointerY = null
+        }
+    }
+    LaunchedEffect(pagePickerActive) {
+        if (pagePickerActive) {
+            actionMenuExpanded = false
+        }
+    }
+    LaunchedEffect(activeDragPointerY, viewportHeightPx) {
+        val triggerY = activeDragPointerY ?: return@LaunchedEffect
+        if (viewportHeightPx <= 0f) return@LaunchedEffect
+        val thresholdPx = with(density) { 88.dp.toPx() }
+        while (activeDragPointerY != null) {
+            val currentY = activeDragPointerY ?: break
+            val topDistance = currentY
+            val bottomDistance = viewportHeightPx - currentY
+            val delta = when {
+                topDistance < thresholdPx -> {
+                    val ratio = 1f - (topDistance / thresholdPx).coerceIn(0f, 1f)
+                    -((4f) + ratio * 28f)
+                }
+                bottomDistance < thresholdPx -> {
+                    val ratio = 1f - (bottomDistance / thresholdPx).coerceIn(0f, 1f)
+                    (4f) + ratio * 28f
+                }
+                else -> 0f
+            }
+            if (delta != 0f) {
+                scrollState.animateScrollTo(
+                    (scrollState.value + delta.roundToInt()).coerceIn(0, scrollState.maxValue)
+                )
+            }
+            delay(16)
+        }
     }
 
     fun closeManagerPatchPage() {
@@ -164,12 +280,17 @@ fun RuntimeHomeScreen(
         val childPageModifier = Modifier
             .fillMaxWidth()
             .height(maxHeight + childPageBottomInset)
+        val editorDockHeight = 92.dp
 
         Scaffold(
             containerColor = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
             topBar = {
                 ExpressiveTopBar(
-                    title = "AnyBase Kernel",
+                    title = if (editorActive) {
+                        stringResource(R.string.runtime_layout_editor_title)
+                    } else {
+                        "AnyBase Kernel"
+                    },
                     compactTitle = true,
                     scrollBehavior = scrollBehavior,
                     actions = {
@@ -190,15 +311,18 @@ fun RuntimeHomeScreen(
                     .padding(padding)
                     .fillMaxSize()
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = AbkScreenHorizontalPadding),
+                    .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() }
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = AbkScreenHorizontalPadding)
+                    .padding(
+                        bottom = if (editorActive) {
+                            editorDockHeight + 28.dp
+                        } else {
+                            80.dp + outerPadding.calculateBottomPadding()
+                        }
+                    ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                val widgetLabels = mapOf(
-                    RuntimeDashboardWidgets.STATUS_HEADER to stringResource(R.string.runtime_manager_active),
-                    RuntimeDashboardWidgets.MANAGER to stringResource(R.string.runtime_manager_title),
-                    RuntimeDashboardWidgets.BUILD_PARAMETERS to stringResource(R.string.runtime_build_params_title)
-                )
                 when (runtimeLayout.layoutMode) {
                     DashboardLayoutMode.GRID -> DashboardGrid(
                         layout = runtimeLayout,
@@ -222,7 +346,9 @@ fun RuntimeHomeScreen(
                                 definitions = RuntimeDashboardWidgets.definitions
                             )
                         },
-                        canHideWidget = { false },
+                        canHideWidget = { widgetId ->
+                            RuntimeDashboardWidgets.definitionMap[widgetId]?.canHide == true
+                        },
                         canMinimizeWidget = { widgetId ->
                             RuntimeDashboardWidgets.definitionMap[widgetId]?.canResize == true
                         },
@@ -235,7 +361,11 @@ fun RuntimeHomeScreen(
                         onMoveItem = vm::moveRuntimeDashboardWidget,
                         onResizeItem = vm::resizeRuntimeDashboardWidget,
                         onSetItemSpanMode = vm::setRuntimeDashboardWidgetSpanMode,
-                        onHideItem = { _ -> }
+                        onHideItem = { widgetId -> vm.setRuntimeDashboardWidgetVisible(widgetId, false) },
+                        selectedWidgetId = selectedWidgetId,
+                        onSelectWidget = { selectedWidgetId = it },
+                        onGridMetricsChanged = { metrics -> gridMetrics = metrics },
+                        onDragPointerYChanged = { activeDragPointerY = it }
                     ) { widgetId, interactionsEnabled ->
                         RuntimeDashboardWidgetContent(
                             widgetId = widgetId,
@@ -272,7 +402,9 @@ fun RuntimeHomeScreen(
                                 definitions = RuntimeDashboardWidgets.definitions
                             )
                         },
-                        canHideWidget = { false },
+                        canHideWidget = { widgetId ->
+                            RuntimeDashboardWidgets.definitionMap[widgetId]?.canHide == true
+                        },
                         canMinimizeWidget = { widgetId ->
                             RuntimeDashboardWidgets.definitionMap[widgetId]?.canResize == true
                         },
@@ -285,7 +417,11 @@ fun RuntimeHomeScreen(
                         onMoveItem = vm::moveRuntimeDashboardWidget,
                         onResizeItem = vm::resizeRuntimeDashboardWidget,
                         onSetItemSpanMode = vm::setRuntimeDashboardWidgetSpanMode,
-                        onHideItem = { _ -> }
+                        onHideItem = { widgetId -> vm.setRuntimeDashboardWidgetVisible(widgetId, false) },
+                        selectedWidgetId = selectedWidgetId,
+                        onSelectWidget = { selectedWidgetId = it },
+                        onCanvasMetricsChanged = { metrics -> freeformMetrics = metrics },
+                        onDragPointerYChanged = { activeDragPointerY = it }
                     ) { widgetId, interactionsEnabled ->
                         RuntimeDashboardWidgetContent(
                             widgetId = widgetId,
@@ -302,29 +438,99 @@ fun RuntimeHomeScreen(
                     }
                 }
 
-                Spacer(
-                    Modifier.height(
-                        if (editorActive) 112.dp else 80.dp + outerPadding.calculateBottomPadding()
-                    )
-                )
             }
         }
 
-        AnimatedVisibility(
-            visible = editorActive && !pagePickerActive,
-            enter = fadeIn(animationSpec = motionScheme.defaultEffectsSpec()),
-            exit = fadeOut(animationSpec = motionScheme.fastEffectsSpec()),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 24.dp, bottom = 28.dp)
-        ) {
-            FloatingActionButton(
-                onClick = vm::saveRuntimeDashboardLayoutDraft,
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-            ) {
-                Icon(Icons.Default.Save, contentDescription = stringResource(R.string.status_layout_save_exit))
+        if (editorActive) {
+            DashboardEditorWidgetsTray(
+                visible = widgetsTrayExpanded,
+                hiddenItems = trayWidgetIds,
+                widgetLabels = widgetLabels,
+                dashboardLayout = runtimeLayout,
+                onHiddenWidgetDrag = { dragState ->
+                    hiddenWidgetDrag = dragState
+                    activeDragPointerY = dragState?.pointerY
+                },
+                onHiddenWidgetDrop = { dragState ->
+                    activeDragPointerY = null
+                    hiddenWidgetDrag = null
+                    if (!dragState.leftTray || dragState.pointerY >= trayTopY) return@DashboardEditorWidgetsTray
+                    val item = runtimeLayout.items.firstOrNull { it.widgetId == dragState.widgetId } ?: return@DashboardEditorWidgetsTray
+                    val target = when (runtimeLayout.layoutMode) {
+                        DashboardLayoutMode.GRID -> {
+                            val metrics = gridMetrics ?: return@DashboardEditorWidgetsTray
+                            computeHiddenWidgetDropTarget(metrics, item, dragState.pointerX, dragState.pointerY)
+                        }
+                        DashboardLayoutMode.FREEFORM -> {
+                            val metrics = freeformMetrics ?: return@DashboardEditorWidgetsTray
+                            computeHiddenWidgetFreeformDropTarget(metrics, item, dragState.pointerX, dragState.pointerY, density)
+                        }
+                    }
+                    vm.placeRuntimeDashboardHiddenWidget(
+                        widgetId = dragState.widgetId,
+                        targetX = target.first,
+                        targetY = target.second
+                    )
+                    selectedWidgetId = dragState.widgetId
+                },
+                activeDragWidgetId = hiddenWidgetDrag?.widgetId,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .onGloballyPositioned { trayTopY = it.positionInRoot().y }
+            ) { widgetId ->
+                RuntimeDashboardWidgetContent(
+                    widgetId = widgetId,
+                    state = state,
+                    vm = vm,
+                    onOpenManagerPatch = {}
+                )
             }
+
+            AnimatedVisibility(
+                visible = !pagePickerActive,
+                enter = fadeIn(animationSpec = motionScheme.defaultEffectsSpec()),
+                exit = fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 24.dp, bottom = 28.dp)
+            ) {
+                DashboardEditorFabMenu(
+                    expanded = actionMenuExpanded,
+                    rotation = actionMenuRotation,
+                    onToggle = { actionMenuExpanded = !actionMenuExpanded },
+                    onImport = {
+                        actionMenuExpanded = false
+                        importLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                    },
+                    onShare = {
+                        actionMenuExpanded = false
+                        shareDashboardLayout(
+                            context = context,
+                            payload = vm.exportRuntimeDashboardLayoutJson(),
+                            title = context.getString(R.string.runtime_layout_editor_title)
+                        )
+                    },
+                    onSaveAndExit = {
+                        actionMenuExpanded = false
+                        vm.saveRuntimeDashboardLayoutDraft()
+                    },
+                    onToggleWidgets = {
+                        widgetsTrayExpanded = !widgetsTrayExpanded
+                        actionMenuExpanded = false
+                    }
+                )
+            }
+
+            DashboardHiddenWidgetFloatingPreview(
+                dragState = hiddenWidgetDrag,
+                trayTopY = trayTopY,
+                layoutMode = runtimeLayout.layoutMode,
+                gridMetrics = gridMetrics,
+                freeformMetrics = freeformMetrics,
+                layout = runtimeLayout,
+                definitions = RuntimeDashboardWidgets.definitions
+            )
         }
 
         managerPatchPageTransition.AnimatedVisibility(

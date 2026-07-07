@@ -4415,9 +4415,36 @@ class MainViewModel @JvmOverloads constructor(
                         runtimeDashboardEditMode = false
                     )
                 }
-                showSnackbar(text(R.string.status_layout_saved))
+                showSnackbar(text(R.string.runtime_layout_saved))
             }
         }
+    }
+
+    fun exportRuntimeDashboardLayoutJson(useDraft: Boolean = true): String {
+        val sourceLayout = if (useDraft) {
+            _uiState.value.runtimeDashboardDraftLayout ?: _uiState.value.runtimeDashboardLayout
+        } else {
+            _uiState.value.runtimeDashboardLayout
+        }
+        return DashboardLayoutCodec.export(normalizeRuntimeDashboardLayout(sourceLayout))
+    }
+
+    fun importRuntimeDashboardLayoutJson(json: String): DashboardLayoutImportResult {
+        val result = DashboardLayoutCodec.importLayout(
+            json = json,
+            expectedPageId = DashboardPageId.RUNTIME_HOME,
+            definitions = RuntimeDashboardWidgets.definitions,
+            defaultLayoutForDensity = RuntimeDashboardWidgets::defaultLayout,
+            hideMissingWidgets = false
+        )
+        _uiState.update { state ->
+            state.copy(
+                runtimeDashboardDraftLayout = result.layout,
+                runtimeDashboardEditMode = true,
+                statusDashboardEditMode = false
+            )
+        }
+        return result
     }
 
     fun addBuildModuleRepository(url: String) {
@@ -4539,7 +4566,7 @@ class MainViewModel @JvmOverloads constructor(
         }.onFailure { error ->
             showSnackbar(
                 text(
-                    R.string.status_layout_save_failed,
+                    R.string.runtime_layout_save_failed,
                     error.message ?: error::class.java.simpleName
                 ),
                 longDuration = true

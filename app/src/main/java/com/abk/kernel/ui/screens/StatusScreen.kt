@@ -72,12 +72,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-private data class HiddenWidgetDragState(
-    val widgetId: String,
-    val pointerX: Float,
-    val pointerY: Float,
-    val leftTray: Boolean
-)
+private typealias HiddenWidgetDragState = DashboardHiddenWidgetDragState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -119,7 +114,7 @@ fun StatusScreen(
     var gridMetrics by remember { mutableStateOf<DashboardGridMetrics?>(null) }
     var freeformMetrics by remember { mutableStateOf<DashboardFreeformMetrics?>(null) }
     var trayTopY by remember { mutableStateOf(Float.MAX_VALUE) }
-    var hiddenWidgetDrag by remember { mutableStateOf<HiddenWidgetDragState?>(null) }
+    var hiddenWidgetDrag by remember { mutableStateOf<DashboardHiddenWidgetDragState?>(null) }
     val actionMenuRotation by animateFloatAsState(
         targetValue = if (actionMenuExpanded) 45f else 0f,
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
@@ -142,7 +137,7 @@ fun StatusScreen(
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             runCatching {
-                val payload = readTextFromUri(context, uri)
+                val payload = readLayoutTextFromUri(context, uri)
                 vm.importStatusDashboardLayoutJson(payload)
             }.onSuccess { result ->
                 val messageRes = if (result.error == null) {
@@ -393,15 +388,11 @@ fun StatusScreen(
             }
 
             if (editorActive) {
-                StatusEditorWidgetsTray(
+                DashboardEditorWidgetsTray(
                     visible = widgetsTrayExpanded,
                     hiddenItems = trayWidgetIds,
                     widgetLabels = widgetLabels,
                     dashboardLayout = dashboardLayout,
-                    state = state,
-                    vm = vm,
-                    ksuVersion = ksuVersion,
-                    kernelVersion = kernelVersion,
                     onHiddenWidgetDrag = { dragState ->
                         hiddenWidgetDrag = dragState
                         activeDragPointerY = dragState?.pointerY
@@ -409,15 +400,15 @@ fun StatusScreen(
                     onHiddenWidgetDrop = { dragState ->
                         activeDragPointerY = null
                         hiddenWidgetDrag = null
-                        if (!dragState.leftTray || dragState.pointerY >= trayTopY) return@StatusEditorWidgetsTray
-                        val item = dashboardLayout.items.firstOrNull { it.widgetId == dragState.widgetId } ?: return@StatusEditorWidgetsTray
+                        if (!dragState.leftTray || dragState.pointerY >= trayTopY) return@DashboardEditorWidgetsTray
+                        val item = dashboardLayout.items.firstOrNull { it.widgetId == dragState.widgetId } ?: return@DashboardEditorWidgetsTray
                         val target = when (dashboardLayout.layoutMode) {
                             DashboardLayoutMode.GRID -> {
-                                val metrics = gridMetrics ?: return@StatusEditorWidgetsTray
+                                val metrics = gridMetrics ?: return@DashboardEditorWidgetsTray
                                 computeHiddenWidgetDropTarget(metrics, item, dragState.pointerX, dragState.pointerY)
                             }
                             DashboardLayoutMode.FREEFORM -> {
-                                val metrics = freeformMetrics ?: return@StatusEditorWidgetsTray
+                                val metrics = freeformMetrics ?: return@DashboardEditorWidgetsTray
                                 computeHiddenWidgetFreeformDropTarget(metrics, item, dragState.pointerX, dragState.pointerY, density)
                             }
                         }
@@ -433,12 +424,15 @@ fun StatusScreen(
                         .align(Alignment.BottomCenter)
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                         .onGloballyPositioned { trayTopY = it.positionInRoot().y }
-                )
-                if (!widgetsTrayExpanded) {
-                    StatusEditorBottomDock(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) { widgetId ->
+                    StatusWidgetContent(
+                        widgetId = widgetId,
+                        state = state,
+                        vm = vm,
+                        ksuVersion = ksuVersion,
+                        kernelVersion = kernelVersion,
+                        actionsEnabled = false,
+                        showManagerPlaceholder = false
                     )
                 }
                 AnimatedVisibility(
@@ -449,7 +443,7 @@ fun StatusScreen(
                         .align(Alignment.BottomEnd)
                         .padding(end = 24.dp, bottom = 28.dp)
                 ) {
-                    StatusEditorFabMenu(
+                    DashboardEditorFabMenu(
                         expanded = actionMenuExpanded,
                         rotation = actionMenuRotation,
                         onToggle = { actionMenuExpanded = !actionMenuExpanded },
@@ -459,7 +453,11 @@ fun StatusScreen(
                         },
                         onShare = {
                             actionMenuExpanded = false
-                            shareStatusLayout(context, vm.exportStatusDashboardLayoutJson())
+                            shareDashboardLayout(
+                                context = context,
+                                payload = vm.exportStatusDashboardLayoutJson(),
+                                title = context.getString(R.string.status_layout_editor_title)
+                            )
                         },
                         onSaveAndExit = {
                             actionMenuExpanded = false
@@ -471,13 +469,14 @@ fun StatusScreen(
                         }
                     )
                 }
-                HiddenWidgetFloatingPreview(
+                DashboardHiddenWidgetFloatingPreview(
                     dragState = hiddenWidgetDrag,
                     trayTopY = trayTopY,
                     layoutMode = dashboardLayout.layoutMode,
                     gridMetrics = gridMetrics,
                     freeformMetrics = freeformMetrics,
-                    layout = dashboardLayout
+                    layout = dashboardLayout,
+                    definitions = StatusDashboardWidgets.definitions
                 )
             }
         }
