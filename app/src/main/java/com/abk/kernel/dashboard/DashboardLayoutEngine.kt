@@ -106,7 +106,7 @@ object DashboardLayoutEngine {
 
         return layout.copy(
             version = DASHBOARD_LAYOUT_VERSION,
-            pageId = DashboardPageId.STATUS,
+            pageId = layout.pageId,
             layoutMode = layout.layoutMode,
             items = placedVisibleItems + hiddenItems
         )

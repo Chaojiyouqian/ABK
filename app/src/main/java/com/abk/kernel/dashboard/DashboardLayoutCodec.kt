@@ -103,12 +103,6 @@ object DashboardLayoutCodec {
                 error = DashboardLayoutImportError.UNSUPPORTED_PAGE,
                 fallbackLayout = fallbackLayout
             )
-        if (pageId != expectedPageId) {
-            return failure(
-                error = DashboardLayoutImportError.UNSUPPORTED_PAGE,
-                fallbackLayout = fallbackLayout
-            )
-        }
         if (root.readInt("version", "a") != DASHBOARD_LAYOUT_VERSION) {
             return failure(
                 error = DashboardLayoutImportError.UNSUPPORTED_VERSION,
@@ -143,11 +137,23 @@ object DashboardLayoutCodec {
                 ignoredItemCount = ignoredItemCount
             )
         }
+        val effectivePageId = when {
+            pageId == expectedPageId -> expectedPageId
+            // Legacy runtime saves briefly persisted the wrong page id (`status`).
+            pageId == DashboardPageId.STATUS && expectedPageId == DashboardPageId.RUNTIME_HOME -> expectedPageId
+            else -> {
+                return failure(
+                    error = DashboardLayoutImportError.UNSUPPORTED_PAGE,
+                    fallbackLayout = fallbackLayout,
+                    ignoredItemCount = ignoredItemCount
+                )
+            }
+        }
 
         val sanitizedLayout = DashboardLayoutEngine.sanitize(
             layout = DashboardLayout(
                 version = DASHBOARD_LAYOUT_VERSION,
-                pageId = DashboardPageId.STATUS,
+                pageId = effectivePageId,
                 layoutMode = layoutMode,
                 densityPreset = densityPreset,
                 items = importedItems
