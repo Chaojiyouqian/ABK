@@ -14,6 +14,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -69,7 +70,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 private data class HiddenWidgetDragState(
@@ -104,7 +104,9 @@ fun StatusScreen(
         StatusDashboardWidgets.RECENT_RUNS to stringResource(R.string.status_widget_recent_runs)
     )
     val editorActive = state.statusDashboardEditMode && !readOnlyPreview
-    val dashboardLayout = if (editorActive) {
+    val dashboardLayout = if (readOnlyPreview) {
+        state.statusDashboardDraftLayout ?: state.statusDashboardLayout
+    } else if (editorActive) {
         state.statusDashboardDraftLayout ?: state.statusDashboardLayout
     } else {
         state.statusDashboardLayout
@@ -228,7 +230,7 @@ fun StatusScreen(
                 compactTitle = true,
                 scrollBehavior = scrollBehavior,
                 actions = {
-                    if (!editorActive) {
+                    if (!editorActive && !readOnlyPreview) {
                         IconButton(onClick = onToggleRuntimeNavigation) {
                             Icon(
                                 imageVector = if (runtimeNavigationEnabled) Icons.Default.SwapHoriz else Icons.Default.Home,
@@ -253,32 +255,11 @@ fun StatusScreen(
                 .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() }
                 .pointerInput(editorActive, pagePickerActive) {
                     if (!editorActive || pagePickerActive) return@pointerInput
-                    awaitPointerEventScope {
-                        var baselineDistance: Float? = null
-                        var openedForGesture = false
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val pressedPointers = event.changes.filter { it.pressed }
-                            if (pressedPointers.size < 2) {
-                                baselineDistance = null
-                                openedForGesture = false
-                                continue
-                            }
-                            val first = pressedPointers[0].position
-                            val second = pressedPointers[1].position
-                            val distance = hypot(
-                                (second.x - first.x).toDouble(),
-                                (second.y - first.y).toDouble()
-                            ).toFloat()
-                            val baseline = baselineDistance
-                            if (baseline == null || baseline <= 0f) {
-                                baselineDistance = distance
-                                continue
-                            }
-                            if (!openedForGesture && distance / baseline < 0.92f) {
-                                openedForGesture = true
-                                onRequestPagePicker()
-                            }
+                    var opened = false
+                    detectTransformGestures { _, _, zoom, _ ->
+                        if (!opened && zoom < 0.92f) {
+                            opened = true
+                            onRequestPagePicker()
                         }
                     }
                 }

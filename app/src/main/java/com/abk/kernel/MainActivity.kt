@@ -465,14 +465,23 @@ private fun AbkMainScaffold(
             }
         }
     }
-    val activeTab = if (selectedTab in visibleTabs) selectedTab else visibleTabs.first()
+    val anyDashboardEditing = state.statusDashboardEditMode || state.runtimeDashboardEditMode
+    val activeTab = when {
+        anyDashboardEditing && selectedTab in dashboardEditorTabs -> selectedTab
+        selectedTab in visibleTabs -> selectedTab
+        else -> visibleTabs.first()
+    }
     val motionScheme = MaterialTheme.motionScheme
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
     val isTabletLayout = configuration.smallestScreenWidthDp >= 600
-    val statusDashboardEditing = activeTab == AbkTab.Status && state.statusDashboardEditMode
+    val dashboardEditingCurrentTab = when (activeTab) {
+        AbkTab.Status -> state.statusDashboardEditMode
+        AbkTab.RuntimeHome -> state.runtimeDashboardEditMode
+        else -> false
+    }
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
-    val contentStartPadding = if (isTabletLayout && !statusDashboardEditing) {
+    val contentStartPadding = if (isTabletLayout && !dashboardEditingCurrentTab) {
         AbkTabletRailWidth
     } else {
         0.dp
@@ -583,8 +592,8 @@ private fun AbkMainScaffold(
         }
     }
 
-    LaunchedEffect(visibleTabs, selectedTab, state.runtimeNavigationEnabled, dashboardEditorTabs) {
-        if (selectedTab !in visibleTabs) {
+    LaunchedEffect(visibleTabs, selectedTab, state.runtimeNavigationEnabled, dashboardEditorTabs, anyDashboardEditing) {
+        if (selectedTab !in visibleTabs && !(anyDashboardEditing && selectedTab in dashboardEditorTabs)) {
             selectedTab = if (state.runtimeNavigationEnabled) AbkTab.RuntimeHome else AbkTab.Status
         }
         if (pagePickerCandidateTab !in dashboardEditorTabs) {
@@ -637,7 +646,7 @@ private fun AbkMainScaffold(
         !childPageVisible &&
         !showSimpleBuildFlow &&
         !state.showOobe &&
-        !state.statusDashboardEditMode &&
+        !anyDashboardEditing &&
         activeTab == AbkTab.Status
 
     Box(
@@ -645,7 +654,7 @@ private fun AbkMainScaffold(
             .fillMaxSize()
             .background(appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)))
     ) {
-        if (isTabletLayout && !statusDashboardEditing) {
+        if (isTabletLayout && !dashboardEditingCurrentTab) {
             val railHideDistancePx = with(density) { AbkTabletRailWidth.toPx() }
             Box(
                 modifier = Modifier
@@ -697,7 +706,7 @@ private fun AbkMainScaffold(
                     }
                 }
             }
-        } else if (!statusDashboardEditing) {
+        } else if (!dashboardEditingCurrentTab) {
             NavigationBar(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -818,7 +827,16 @@ private fun AbkMainScaffold(
                             vm = vm,
                             outerPadding = contentPadding,
                             onSwitchToClassic = { vm.setRuntimeNavigationEnabled(false) },
-                            onManagerPatchPageVisibleChange = { managerPatchPageVisible = it }
+                            onManagerPatchPageVisibleChange = { managerPatchPageVisible = it },
+                            pagePickerActive = pagePickerVisible,
+                            onRequestPagePicker = {
+                                pagePickerCandidateTab = if (activeTab in dashboardEditorTabs) {
+                                    activeTab
+                                } else {
+                                    dashboardEditorTabs.first()
+                                }
+                                pagePickerVisible = true
+                            }
                         )
                         AbkTab.InstalledModules -> InstalledModulesScreen(
                             vm = vm,
@@ -903,13 +921,15 @@ private fun AbkMainScaffold(
                 onCancel = { pagePickerVisible = false },
                 onConfirm = {
                     val targetTab = pagePickerCandidateTab ?: activeTab
-                    if (state.statusDashboardEditMode && activeTab == AbkTab.Status && targetTab != AbkTab.Status) {
-                        vm.saveStatusDashboardLayoutDraft()
-                    }
                     if (targetTab == AbkTab.RuntimeHome && !state.runtimeNavigationEnabled) {
                         vm.setRuntimeNavigationEnabled(true)
                     } else if (targetTab == AbkTab.Status && state.runtimeNavigationEnabled) {
                         vm.setRuntimeNavigationEnabled(false)
+                    }
+                    when (targetTab) {
+                        AbkTab.Status -> vm.enterStatusDashboardEditMode()
+                        AbkTab.RuntimeHome -> vm.enterRuntimeDashboardEditMode()
+                        else -> Unit
                     }
                     selectedTab = targetTab
                     pagePickerVisible = false

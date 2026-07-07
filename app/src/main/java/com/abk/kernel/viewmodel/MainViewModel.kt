@@ -205,6 +205,8 @@ data class MainUiState(
     val runtimeDashboardLayout: DashboardLayout = RuntimeDashboardWidgets.defaultLayout(),
     val statusDashboardDraftLayout: DashboardLayout? = null,
     val statusDashboardEditMode: Boolean = false,
+    val runtimeDashboardDraftLayout: DashboardLayout? = null,
+    val runtimeDashboardEditMode: Boolean = false,
     val runtimeNavigationEnabled: Boolean = false,
     val webViewDebugEnabled: Boolean = false,
     val managerAccessState: ManagerAccessState = ManagerAccessState.UNKNOWN,
@@ -701,7 +703,14 @@ class MainViewModel @JvmOverloads constructor(
                     defaultLayout
                 }
                 _uiState.update { state ->
-                    state.copy(runtimeDashboardLayout = normalizedLayout)
+                    state.copy(
+                        runtimeDashboardLayout = normalizedLayout,
+                        runtimeDashboardDraftLayout = if (state.runtimeDashboardEditMode) {
+                            state.runtimeDashboardDraftLayout ?: normalizedLayout
+                        } else {
+                            state.runtimeDashboardDraftLayout
+                        }
+                    )
                 }
             }
         }
@@ -4000,11 +4009,27 @@ class MainViewModel @JvmOverloads constructor(
     }
 
     fun enterStatusDashboardEditMode() {
+        activateDashboardEditorPage(DashboardPageId.STATUS)
+    }
+
+    fun enterRuntimeDashboardEditMode() {
+        activateDashboardEditorPage(DashboardPageId.RUNTIME_HOME)
+    }
+
+    private fun activateDashboardEditorPage(pageId: DashboardPageId) {
         _uiState.update { state ->
-            state.copy(
-                statusDashboardEditMode = true,
-                statusDashboardDraftLayout = state.statusDashboardLayout
-            )
+            when (pageId) {
+                DashboardPageId.STATUS -> state.copy(
+                    statusDashboardEditMode = true,
+                    statusDashboardDraftLayout = state.statusDashboardDraftLayout ?: state.statusDashboardLayout,
+                    runtimeDashboardEditMode = false
+                )
+                DashboardPageId.RUNTIME_HOME -> state.copy(
+                    runtimeDashboardEditMode = true,
+                    runtimeDashboardDraftLayout = state.runtimeDashboardDraftLayout ?: state.runtimeDashboardLayout,
+                    statusDashboardEditMode = false
+                )
+            }
         }
     }
 
@@ -4013,6 +4038,15 @@ class MainViewModel @JvmOverloads constructor(
             it.copy(
                 statusDashboardEditMode = false,
                 statusDashboardDraftLayout = null
+            )
+        }
+    }
+
+    fun discardRuntimeDashboardLayoutDraft() {
+        _uiState.update {
+            it.copy(
+                runtimeDashboardEditMode = false,
+                runtimeDashboardDraftLayout = null
             )
         }
     }
@@ -4234,10 +4268,156 @@ class MainViewModel @JvmOverloads constructor(
         _uiState.update { state ->
             state.copy(
                 statusDashboardDraftLayout = result.layout,
-                statusDashboardEditMode = true
+                statusDashboardEditMode = true,
+                runtimeDashboardEditMode = false
             )
         }
         return result
+    }
+
+    fun moveRuntimeDashboardWidget(widgetId: String, targetX: Int, targetY: Int) {
+        val draft = _uiState.value.runtimeDashboardDraftLayout ?: return
+        val updated = DashboardLayoutEngine.moveItemExact(
+            layout = draft,
+            widgetId = widgetId,
+            targetX = targetX,
+            targetY = targetY,
+            definitions = RuntimeDashboardWidgets.definitions
+        )
+        if (updated != draft) {
+            _uiState.update { it.copy(runtimeDashboardDraftLayout = updated) }
+        }
+    }
+
+    fun resizeRuntimeDashboardWidget(widgetId: String, targetW: Int, targetH: Int) {
+        val draft = _uiState.value.runtimeDashboardDraftLayout ?: return
+        val updated = DashboardLayoutEngine.resizeItemExact(
+            layout = draft,
+            widgetId = widgetId,
+            targetW = targetW,
+            targetH = targetH,
+            definitions = RuntimeDashboardWidgets.definitions
+        )
+        if (updated != draft) {
+            _uiState.update { it.copy(runtimeDashboardDraftLayout = updated) }
+        }
+    }
+
+    fun setRuntimeDashboardWidgetSpanMode(widgetId: String, spanMode: DashboardItemSpanMode) {
+        val draft = _uiState.value.runtimeDashboardDraftLayout ?: return
+        val updated = DashboardLayoutEngine.setItemSpanMode(
+            layout = draft,
+            widgetId = widgetId,
+            spanMode = spanMode,
+            definitions = RuntimeDashboardWidgets.definitions
+        )
+        if (updated != draft) {
+            _uiState.update { it.copy(runtimeDashboardDraftLayout = updated) }
+        }
+    }
+
+    fun setRuntimeDashboardWidgetVisible(widgetId: String, visible: Boolean) {
+        val targetLayout = _uiState.value.runtimeDashboardDraftLayout ?: _uiState.value.runtimeDashboardLayout
+        val updated = DashboardLayoutEngine.setItemVisibility(
+            layout = targetLayout,
+            widgetId = widgetId,
+            visible = visible,
+            definitions = RuntimeDashboardWidgets.definitions
+        )
+        _uiState.update { state ->
+            if (state.runtimeDashboardEditMode) {
+                state.copy(runtimeDashboardDraftLayout = updated)
+            } else {
+                state.copy(runtimeDashboardLayout = updated)
+            }
+        }
+        if (!_uiState.value.runtimeDashboardEditMode) {
+            viewModelScope.launch {
+                persistRuntimeDashboardLayoutSafely(updated)
+            }
+        }
+    }
+
+    fun placeRuntimeDashboardHiddenWidget(widgetId: String, targetX: Int, targetY: Int) {
+        val draft = _uiState.value.runtimeDashboardDraftLayout ?: return
+        val visibleLayout = DashboardLayoutEngine.setItemVisibility(
+            layout = draft,
+            widgetId = widgetId,
+            visible = true,
+            definitions = RuntimeDashboardWidgets.definitions
+        )
+        val defaultSizedLayout = DashboardLayoutEngine.setItemSpanMode(
+            layout = visibleLayout,
+            widgetId = widgetId,
+            spanMode = DashboardItemSpanMode.DEFAULT,
+            definitions = RuntimeDashboardWidgets.definitions
+        )
+        val placedLayout = if (DashboardLayoutEngine.canMoveItem(
+                layout = defaultSizedLayout,
+                widgetId = widgetId,
+                targetX = targetX,
+                targetY = targetY,
+                definitions = RuntimeDashboardWidgets.definitions
+            )
+        ) {
+            DashboardLayoutEngine.moveItemExact(
+                layout = defaultSizedLayout,
+                widgetId = widgetId,
+                targetX = targetX,
+                targetY = targetY,
+                definitions = RuntimeDashboardWidgets.definitions
+            )
+        } else {
+            defaultSizedLayout
+        }
+        _uiState.update { it.copy(runtimeDashboardDraftLayout = placedLayout) }
+    }
+
+    fun resetRuntimeDashboardLayoutDraftToDefault() {
+        val activeLayout = _uiState.value.runtimeDashboardDraftLayout ?: _uiState.value.runtimeDashboardLayout
+        _uiState.update {
+            it.copy(
+                runtimeDashboardDraftLayout = when (activeLayout.layoutMode) {
+                    DashboardLayoutMode.FREEFORM -> RuntimeDashboardWidgets.defaultFreeformLayout(activeLayout.densityPreset)
+                    DashboardLayoutMode.GRID -> RuntimeDashboardWidgets.defaultLayout(activeLayout.densityPreset)
+                }
+            )
+        }
+    }
+
+    fun restoreDefaultRuntimeDashboardLayout() {
+        val activeLayout = _uiState.value.runtimeDashboardLayout
+        val defaultLayout = when (activeLayout.layoutMode) {
+            DashboardLayoutMode.FREEFORM -> RuntimeDashboardWidgets.defaultFreeformLayout(activeLayout.densityPreset)
+            DashboardLayoutMode.GRID -> RuntimeDashboardWidgets.defaultLayout(activeLayout.densityPreset)
+        }
+        _uiState.update { state ->
+            state.copy(
+                runtimeDashboardLayout = defaultLayout,
+                runtimeDashboardDraftLayout = if (state.runtimeDashboardEditMode) defaultLayout else state.runtimeDashboardDraftLayout
+            )
+        }
+        viewModelScope.launch {
+            persistRuntimeDashboardLayoutSafely(defaultLayout)
+        }
+    }
+
+    fun saveRuntimeDashboardLayoutDraft() {
+        val draft = _uiState.value.runtimeDashboardDraftLayout ?: return
+        val normalized = normalizeRuntimeDashboardLayout(draft)
+        viewModelScope.launch {
+            val persisted = persistRuntimeDashboardLayoutSafely(normalized)
+            if (persisted) {
+                _uiState.update {
+                    it.copy(
+                        runtimeDashboardLayout = normalized,
+                        runtimeDashboardDraftLayout = null,
+                        runtimeDashboardEditMode = false
+                    )
+                }
+                showSnackbar(text(R.string.status_layout_saved))
+            }
+        }
     }
 
     fun addBuildModuleRepository(url: String) {
@@ -4315,6 +4495,15 @@ class MainViewModel @JvmOverloads constructor(
         )
     }
 
+    private fun normalizeRuntimeDashboardLayout(layout: DashboardLayout): DashboardLayout {
+        val defaultLayout = RuntimeDashboardWidgets.defaultLayout(layout.densityPreset)
+        return DashboardLayoutEngine.sanitize(
+            layout = layout,
+            definitions = RuntimeDashboardWidgets.definitions,
+            defaultLayout = defaultLayout
+        )
+    }
+
     private suspend fun persistStatusDashboardLayout(layout: DashboardLayout) {
         val normalized = normalizeStatusDashboardLayout(layout)
         prefs.saveStatusPageLayoutState(
@@ -4323,9 +4512,30 @@ class MainViewModel @JvmOverloads constructor(
         )
     }
 
+    private suspend fun persistRuntimeDashboardLayout(layout: DashboardLayout) {
+        val normalized = normalizeRuntimeDashboardLayout(layout)
+        prefs.saveRuntimeHomeLayoutState(
+            json = DashboardLayoutCodec.export(normalized),
+            preset = normalized.densityPreset
+        )
+    }
+
     private suspend fun persistStatusDashboardLayoutSafely(layout: DashboardLayout): Boolean =
         runCatching {
             persistStatusDashboardLayout(layout)
+        }.onFailure { error ->
+            showSnackbar(
+                text(
+                    R.string.status_layout_save_failed,
+                    error.message ?: error::class.java.simpleName
+                ),
+                longDuration = true
+            )
+        }.isSuccess
+
+    private suspend fun persistRuntimeDashboardLayoutSafely(layout: DashboardLayout): Boolean =
+        runCatching {
+            persistRuntimeDashboardLayout(layout)
         }.onFailure { error ->
             showSnackbar(
                 text(

@@ -20,6 +20,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Tune
@@ -49,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -93,10 +96,20 @@ fun RuntimeHomeScreen(
     outerPadding: PaddingValues = PaddingValues(0.dp),
     onSwitchToClassic: () -> Unit,
     onManagerPatchPageVisibleChange: (Boolean) -> Unit = {},
-    readOnlyPreview: Boolean = false
+    readOnlyPreview: Boolean = false,
+    pagePickerActive: Boolean = false,
+    onRequestPagePicker: () -> Unit = {}
 ) {
     val state by vm.uiState.collectAsState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val editorActive = state.runtimeDashboardEditMode && !readOnlyPreview
+    val runtimeLayout = if (readOnlyPreview) {
+        state.runtimeDashboardDraftLayout ?: state.runtimeDashboardLayout
+    } else if (editorActive) {
+        state.runtimeDashboardDraftLayout ?: state.runtimeDashboardLayout
+    } else {
+        state.runtimeDashboardLayout
+    }
     var showManagerPatchPage by rememberSaveable { mutableStateOf(false) }
     val managerPatchPageTransition = rememberChildPageOverlayTransition(
         visible = showManagerPatchPage,
@@ -136,7 +149,20 @@ fun RuntimeHomeScreen(
         }
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(
+        Modifier
+            .fillMaxSize()
+            .pointerInput(editorActive, pagePickerActive) {
+                if (!editorActive || pagePickerActive) return@pointerInput
+                var opened = false
+                detectTransformGestures { _, _, zoom, _ ->
+                    if (!opened && zoom < 0.92f) {
+                        opened = true
+                        onRequestPagePicker()
+                    }
+                }
+            }
+    ) {
         val childPageBottomInset = outerPadding.calculateBottomPadding()
         val childPageModifier = Modifier
             .fillMaxWidth()
@@ -150,7 +176,7 @@ fun RuntimeHomeScreen(
                     compactTitle = true,
                     scrollBehavior = scrollBehavior,
                     actions = {
-                        if (!readOnlyPreview) {
+                        if (!readOnlyPreview && !editorActive) {
                             IconButton(onClick = { vm.refreshAbkRuntimeStatus() }) {
                                 Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.runtime_refresh))
                             }
@@ -171,7 +197,6 @@ fun RuntimeHomeScreen(
                     .padding(horizontal = AbkScreenHorizontalPadding),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                val runtimeLayout = state.runtimeDashboardLayout
                 val widgetLabels = mapOf(
                     RuntimeDashboardWidgets.STATUS_HEADER to stringResource(R.string.runtime_manager_active),
                     RuntimeDashboardWidgets.MANAGER to stringResource(R.string.runtime_manager_title),
@@ -181,63 +206,132 @@ fun RuntimeHomeScreen(
                     DashboardLayoutMode.GRID -> DashboardGrid(
                         layout = runtimeLayout,
                         widgetLabels = widgetLabels,
-                        editable = false,
-                        canMoveItem = { _, _, _ -> false },
-                        canResizeItem = { _, _, _ -> false },
+                        editable = editorActive,
+                        canMoveItem = { widgetId, targetX, targetY ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                                layout = runtimeLayout,
+                                widgetId = widgetId,
+                                targetX = targetX,
+                                targetY = targetY,
+                                definitions = RuntimeDashboardWidgets.definitions
+                            )
+                        },
+                        canResizeItem = { widgetId, targetW, targetH ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                                layout = runtimeLayout,
+                                widgetId = widgetId,
+                                targetW = targetW,
+                                targetH = targetH,
+                                definitions = RuntimeDashboardWidgets.definitions
+                            )
+                        },
                         canHideWidget = { false },
-                        canMinimizeWidget = { false },
-                        canMaximizeWidget = { false },
-                        canResizeWidget = { false },
-                        onMoveItem = { _, _, _ -> },
-                        onResizeItem = { _, _, _ -> },
-                        onSetItemSpanMode = { _, _ -> },
+                        canMinimizeWidget = { widgetId ->
+                            RuntimeDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        canMaximizeWidget = { widgetId ->
+                            RuntimeDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        canResizeWidget = { widgetId ->
+                            RuntimeDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        onMoveItem = vm::moveRuntimeDashboardWidget,
+                        onResizeItem = vm::resizeRuntimeDashboardWidget,
+                        onSetItemSpanMode = vm::setRuntimeDashboardWidgetSpanMode,
                         onHideItem = { _ -> }
-                    ) { widgetId, _ ->
+                    ) { widgetId, interactionsEnabled ->
                         RuntimeDashboardWidgetContent(
                             widgetId = widgetId,
                             state = state,
                             vm = vm,
                             onOpenManagerPatch = {
-                                childPageBack.resetProgress()
-                                managerPatchBackEnabled = true
-                                showManagerPatchPage = true
+                                if (!editorActive && interactionsEnabled) {
+                                    childPageBack.resetProgress()
+                                    managerPatchBackEnabled = true
+                                    showManagerPatchPage = true
+                                }
                             }
                         )
                     }
                     DashboardLayoutMode.FREEFORM -> DashboardFreeform(
                         layout = runtimeLayout,
                         widgetLabels = widgetLabels,
-                        editable = false,
-                        canMoveItem = { _, _, _ -> false },
-                        canResizeItem = { _, _, _ -> false },
+                        editable = editorActive,
+                        canMoveItem = { widgetId, targetX, targetY ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                                layout = runtimeLayout,
+                                widgetId = widgetId,
+                                targetX = targetX,
+                                targetY = targetY,
+                                definitions = RuntimeDashboardWidgets.definitions
+                            )
+                        },
+                        canResizeItem = { widgetId, targetW, targetH ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                                layout = runtimeLayout,
+                                widgetId = widgetId,
+                                targetW = targetW,
+                                targetH = targetH,
+                                definitions = RuntimeDashboardWidgets.definitions
+                            )
+                        },
                         canHideWidget = { false },
-                        canMinimizeWidget = { false },
-                        canMaximizeWidget = { false },
-                        canResizeWidget = { false },
-                        onMoveItem = { _, _, _ -> },
-                        onResizeItem = { _, _, _ -> },
-                        onSetItemSpanMode = { _, _ -> },
+                        canMinimizeWidget = { widgetId ->
+                            RuntimeDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        canMaximizeWidget = { widgetId ->
+                            RuntimeDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        canResizeWidget = { widgetId ->
+                            RuntimeDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        onMoveItem = vm::moveRuntimeDashboardWidget,
+                        onResizeItem = vm::resizeRuntimeDashboardWidget,
+                        onSetItemSpanMode = vm::setRuntimeDashboardWidgetSpanMode,
                         onHideItem = { _ -> }
-                    ) { widgetId, _ ->
+                    ) { widgetId, interactionsEnabled ->
                         RuntimeDashboardWidgetContent(
                             widgetId = widgetId,
                             state = state,
                             vm = vm,
                             onOpenManagerPatch = {
-                                childPageBack.resetProgress()
-                                managerPatchBackEnabled = true
-                                showManagerPatchPage = true
+                                if (!editorActive && interactionsEnabled) {
+                                    childPageBack.resetProgress()
+                                    managerPatchBackEnabled = true
+                                    showManagerPatchPage = true
+                                }
                             }
                         )
                     }
                 }
 
-                Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
+                Spacer(
+                    Modifier.height(
+                        if (editorActive) 112.dp else 80.dp + outerPadding.calculateBottomPadding()
+                    )
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = editorActive && !pagePickerActive,
+            enter = fadeIn(animationSpec = motionScheme.defaultEffectsSpec()),
+            exit = fadeOut(animationSpec = motionScheme.fastEffectsSpec()),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 24.dp, bottom = 28.dp)
+        ) {
+            FloatingActionButton(
+                onClick = vm::saveRuntimeDashboardLayoutDraft,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            ) {
+                Icon(Icons.Default.Save, contentDescription = stringResource(R.string.status_layout_save_exit))
             }
         }
 
         managerPatchPageTransition.AnimatedVisibility(
-            visible = { it },
+            visible = { it && !editorActive },
             enter = fadeIn(animationSpec = motionScheme.defaultEffectsSpec()),
             exit = childPageScrimExitTransition(state.predictiveBackEnabled, motionScheme),
             modifier = childPageModifier
@@ -250,7 +344,7 @@ fun RuntimeHomeScreen(
         }
 
         managerPatchPageTransition.AnimatedVisibility(
-            visible = { it },
+            visible = { it && !editorActive },
             enter = childPageOverlayEnterTransition(state.predictiveBackEnabled, motionScheme),
             exit = childPageOverlayExitTransition(state.predictiveBackEnabled, motionScheme),
             modifier = childPageModifier

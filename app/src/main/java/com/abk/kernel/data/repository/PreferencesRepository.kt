@@ -301,6 +301,16 @@ class PreferencesRepository(private val context: Context) {
         it[KEY_STATUS_PAGE_LAYOUT_JSON] = json
         it[KEY_STATUS_PAGE_GRID_DENSITY_PRESET] = preset.rawValue
     }
+    suspend fun saveRuntimeHomeLayoutJson(json: String) = context.dataStore.edit {
+        it[KEY_RUNTIME_HOME_LAYOUT_JSON] = json
+    }
+    suspend fun setRuntimeHomeGridDensityPreset(preset: DashboardDensityPreset) = context.dataStore.edit {
+        it[KEY_RUNTIME_HOME_GRID_DENSITY_PRESET] = preset.rawValue
+    }
+    suspend fun saveRuntimeHomeLayoutState(json: String, preset: DashboardDensityPreset) = context.dataStore.edit {
+        it[KEY_RUNTIME_HOME_LAYOUT_JSON] = json
+        it[KEY_RUNTIME_HOME_GRID_DENSITY_PRESET] = preset.rawValue
+    }
     suspend fun setRuntimeNavigationEnabled(v: Boolean) = context.dataStore.edit {
         it[KEY_RUNTIME_NAVIGATION_ENABLED] = v
     }
