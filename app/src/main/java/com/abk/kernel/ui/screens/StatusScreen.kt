@@ -244,16 +244,6 @@ fun StatusScreen(
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() }
-                .pointerInput(state.statusDashboardEditMode, pagePickerActive) {
-                    if (!state.statusDashboardEditMode || pagePickerActive) return@pointerInput
-                    var opened = false
-                    detectTransformGestures { _, _, zoom, _ ->
-                        if (!opened && zoom < 0.92f) {
-                            opened = true
-                            onRequestPagePicker()
-                        }
-                    }
-                }
         ) {
             val ksuVersion = remember(state.rootGranted) {
                 if (state.rootGranted) RootUtils.getKsuVersion() else "N/A"
@@ -465,6 +455,22 @@ fun StatusScreen(
                     gridMetrics = gridMetrics,
                     freeformMetrics = freeformMetrics,
                     layout = dashboardLayout
+                )
+            }
+            if (state.statusDashboardEditMode && !pagePickerActive) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(5f)
+                        .pointerInput(state.statusDashboardEditMode, pagePickerActive) {
+                            var opened = false
+                            detectTransformGestures { _, _, zoom, _ ->
+                                if (!opened && zoom < 0.92f) {
+                                    opened = true
+                                    onRequestPagePicker()
+                                }
+                            }
+                        }
                 )
             }
         }
