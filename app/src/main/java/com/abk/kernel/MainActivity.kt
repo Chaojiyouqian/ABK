@@ -457,7 +457,7 @@ private fun AbkMainScaffold(
     var lastBackAt by remember { mutableStateOf(0L) }
     val runtimeNativeManagerActive = state.hasNativeManagerPermission
     val dashboardEditorTabs = remember {
-        listOf(AbkTab.Status, AbkTab.RuntimeHome)
+        listOf(AbkTab.Status, AbkTab.Build, AbkTab.RuntimeHome)
     }
     val visibleTabs = remember(state.runtimeNavigationEnabled, state.rootGranted, runtimeNativeManagerActive, buildPageStyle) {
         if (state.runtimeNavigationEnabled) {
@@ -818,7 +818,17 @@ private fun AbkMainScaffold(
                             vm = vm,
                             outerPadding = contentPadding,
                             onPlanPageVisibleChange = { buildPlanPageVisible = it },
-                            onNavigateToStatus = { selectedTab = AbkTab.Status }
+                            onNavigateToStatus = { selectedTab = AbkTab.Status },
+                            pagePickerActive = pagePickerVisible,
+                            onRequestPagePicker = {
+                                vm.prepareDashboardEditorPagePicker(DashboardPageId.BUILD)
+                                pagePickerCandidateTab = if (activeTab in dashboardEditorTabs) {
+                                    activeTab
+                                } else {
+                                    dashboardEditorTabs.first()
+                                }
+                                pagePickerVisible = true
+                            }
                         )
                         AbkTab.Modules -> ModuleRepositoryScreen(
                             vm = vm,
@@ -941,6 +951,7 @@ private fun AbkMainScaffold(
                     }
                     when (targetTab) {
                         AbkTab.Status -> vm.enterStatusDashboardEditMode()
+                        AbkTab.Build -> vm.enterBuildDashboardEditMode()
                         AbkTab.RuntimeHome -> vm.enterRuntimeDashboardEditMode()
                         else -> Unit
                     }
@@ -1245,7 +1256,8 @@ private fun DashboardPagePreviewContent(
             vm = vm,
             outerPadding = previewPadding,
             onPlanPageVisibleChange = {},
-            onNavigateToStatus = {}
+            onNavigateToStatus = {},
+            readOnlyPreview = true
         )
         AbkTab.Modules -> ModuleRepositoryScreen(
             vm = vm,

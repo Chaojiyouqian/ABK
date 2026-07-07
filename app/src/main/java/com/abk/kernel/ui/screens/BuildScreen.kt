@@ -34,6 +34,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.motionEventSpy
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -43,6 +46,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.abk.kernel.R
+import com.abk.kernel.dashboard.BuildDashboardWidgets
+import com.abk.kernel.dashboard.DashboardLayoutMode
 import com.abk.kernel.data.model.BuildPlan
 import com.abk.kernel.data.model.BuildQueueItem
 import com.abk.kernel.data.model.BuildQueueItemStatus
@@ -94,6 +99,10 @@ import com.abk.kernel.ui.components.ExpressiveSectionCard
 import com.abk.kernel.ui.components.ExpressiveStatusChip
 import com.abk.kernel.ui.components.ExpressiveSwitchItem
 import com.abk.kernel.ui.components.ExpressiveTopBar
+import com.abk.kernel.ui.dashboard.DashboardFreeform
+import com.abk.kernel.ui.dashboard.DashboardFreeformMetrics
+import com.abk.kernel.ui.dashboard.DashboardGrid
+import com.abk.kernel.ui.dashboard.DashboardGridMetrics
 import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
 import com.abk.kernel.viewmodel.BuildPlanImportPreview
@@ -106,6 +115,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 private const val CATALOG_MODULE_REMOVE_DELAY_MS = 260L
 
@@ -117,13 +127,31 @@ fun BuildScreen(
     guidedMode: Boolean = false,
     onPlanPageVisibleChange: (Boolean) -> Unit = {},
     onNavigateToStatus: () -> Unit = {},
-    onDismissGuidedMode: (() -> Unit)? = null
+    onDismissGuidedMode: (() -> Unit)? = null,
+    pagePickerActive: Boolean = false,
+    onRequestPagePicker: () -> Unit = {},
+    readOnlyPreview: Boolean = false
 ) {
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val density = LocalDensity.current
+    val scrollState = rememberScrollState()
     val rawConfig = state.buildConfig
     val config = remember(rawConfig) { KernelSupport.normalize(rawConfig) }
+    val editorActive = state.dashboardEditingPageId == com.abk.kernel.dashboard.DashboardPageId.BUILD && !readOnlyPreview && !guidedMode
+    val buildLayout = if (readOnlyPreview) {
+        state.dashboardDraftLayouts[com.abk.kernel.dashboard.DashboardPageId.BUILD]
+            ?: state.dashboardLayouts[com.abk.kernel.dashboard.DashboardPageId.BUILD]
+            ?: BuildDashboardWidgets.defaultLayout()
+    } else if (editorActive) {
+        state.dashboardDraftLayouts[com.abk.kernel.dashboard.DashboardPageId.BUILD]
+            ?: state.dashboardLayouts[com.abk.kernel.dashboard.DashboardPageId.BUILD]
+            ?: BuildDashboardWidgets.defaultLayout()
+    } else {
+        state.dashboardLayouts[com.abk.kernel.dashboard.DashboardPageId.BUILD]
+            ?: BuildDashboardWidgets.defaultLayout()
+    }
     val isOnePlusBuild = config.buildTarget == BUILD_TARGET_ONEPLUS
     val recommended = state.recommendedBuildConfig
     val motionScheme = MaterialTheme.motionScheme
@@ -189,7 +217,61 @@ fun BuildScreen(
     var editingModuleSetChildIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var editingModuleSetStageSelections by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var removingCustomModuleKeys by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var actionMenuExpanded by remember { mutableStateOf(false) }
+    var widgetsTrayExpanded by remember { mutableStateOf(false) }
+    var selectedWidgetId by remember { mutableStateOf<String?>(null) }
+    var viewportHeightPx by remember { mutableStateOf(0f) }
+    var activeDragPointerY by remember { mutableStateOf<Float?>(null) }
+    var gridMetrics by remember { mutableStateOf<DashboardGridMetrics?>(null) }
+    var freeformMetrics by remember { mutableStateOf<DashboardFreeformMetrics?>(null) }
+    var trayTopY by remember { mutableStateOf(Float.MAX_VALUE) }
+    var hiddenWidgetDrag by remember { mutableStateOf<DashboardHiddenWidgetDragState?>(null) }
+    val actionMenuRotation by animateFloatAsState(
+        targetValue = if (actionMenuExpanded) 45f else 0f,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "build-layout-fab-rotation"
+    )
+    val trayWidgetIds = remember(buildLayout.items, hiddenWidgetDrag) {
+        buildList {
+            val hiddenIds = buildLayout.items.filter { !it.visible }.map { it.widgetId }
+            addAll(hiddenIds)
+            val draggingWidgetId = hiddenWidgetDrag?.widgetId
+            if (draggingWidgetId != null && draggingWidgetId !in this) add(draggingWidgetId)
+        }
+    }
     val coroutineScope = rememberCoroutineScope()
+    val pinchObserver = rememberEditorPinchObserver(onRequestPagePicker)
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            runCatching {
+                val payload = readLayoutTextFromUri(context, uri)
+                vm.importBuildDashboardLayoutJson(payload)
+            }.onSuccess { result ->
+                val messageRes = if (result.error == null) {
+                    R.string.status_layout_import_success
+                } else {
+                    R.string.status_layout_import_failed_reset
+                }
+                val message = if (result.error == null) {
+                    context.getString(messageRes, result.importedItemCount, result.ignoredItemCount)
+                } else {
+                    context.getString(messageRes)
+                }
+                vm.showSnackbar(message, longDuration = result.error != null)
+            }.onFailure { error ->
+                vm.showSnackbar(
+                    context.getString(
+                        R.string.status_layout_import_failed,
+                        error.message ?: error::class.java.simpleName
+                    ),
+                    longDuration = true
+                )
+            }
+        }
+    }
     val catalogModules = remember(state.buildModuleRepositories) {
         mergeBuildCatalogModules(state.buildModuleRepositories)
     }
@@ -221,6 +303,50 @@ fun BuildScreen(
 
     LaunchedEffect(config, rawConfig) {
         if (config != rawConfig) vm.updateBuildConfig(config)
+    }
+
+    LaunchedEffect(editorActive) {
+        if (!editorActive) {
+            actionMenuExpanded = false
+            widgetsTrayExpanded = false
+            selectedWidgetId = null
+            hiddenWidgetDrag = null
+            activeDragPointerY = null
+        }
+    }
+
+    LaunchedEffect(pagePickerActive) {
+        if (pagePickerActive) {
+            actionMenuExpanded = false
+        }
+    }
+
+    LaunchedEffect(activeDragPointerY, viewportHeightPx) {
+        val triggerY = activeDragPointerY ?: return@LaunchedEffect
+        if (viewportHeightPx <= 0f) return@LaunchedEffect
+        val thresholdPx = with(density) { 88.dp.toPx() }
+        while (activeDragPointerY != null) {
+            val currentY = activeDragPointerY ?: break
+            val topDistance = currentY
+            val bottomDistance = viewportHeightPx - currentY
+            val delta = when {
+                topDistance < thresholdPx -> {
+                    val ratio = 1f - (topDistance / thresholdPx).coerceIn(0f, 1f)
+                    -((4f) + ratio * 28f)
+                }
+                bottomDistance < thresholdPx -> {
+                    val ratio = 1f - (bottomDistance / thresholdPx).coerceIn(0f, 1f)
+                    (4f) + ratio * 28f
+                }
+                else -> 0f
+            }
+            if (delta != 0f) {
+                scrollState.scrollTo(
+                    (scrollState.value + delta.roundToInt()).coerceIn(0, scrollState.maxValue)
+                )
+            }
+            delay(16)
+        }
     }
 
     fun closeChildPage() {
@@ -338,6 +464,449 @@ fun BuildScreen(
         customKernelConfigImportText = ""
         customKernelConfigImportError = null
         showCustomKernelConfigImportDialog = false
+    }
+
+    val buildWidgetLabels = mapOf(
+        BuildDashboardWidgets.OVERVIEW to stringResource(R.string.build_title),
+        BuildDashboardWidgets.TOOLS to stringResource(R.string.build_plan_tools_title),
+        BuildDashboardWidgets.CONFIG to stringResource(R.string.build_features),
+        BuildDashboardWidgets.SUBMIT to stringResource(R.string.build_submit)
+    )
+
+    @Composable
+    fun BuildDashboardWidget(widgetId: String) {
+        when (widgetId) {
+            BuildDashboardWidgets.OVERVIEW -> Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                BuildPlanHero(config, recommended, state.buildStatus)
+                BuildTargetSelector(
+                    selected = config.buildTarget,
+                    onSelect = { target ->
+                        val next = if (target == BUILD_TARGET_ONEPLUS) {
+                            config.copy(
+                                buildTarget = BUILD_TARGET_ONEPLUS,
+                                androidVersion = "android14",
+                                kernelVersion = "6.1",
+                                kernelsuVariant = KSU_VARIANT_SUKISU,
+                                cancelSusfs = true,
+                                useKpm = false,
+                                useBbg = true,
+                                onePlusCpu = "sm8650",
+                                onePlusDeviceManifest = "oneplus_12_b",
+                                onePlusUseLz4kd = false,
+                                onePlusUseBbr = false,
+                                onePlusUseProxyOptimization = true,
+                                onePlusUseUnicodeBypass = false
+                            )
+                        } else {
+                            config.copy(
+                                buildTarget = BUILD_TARGET_GKI,
+                                kernelsuVariant = KSU_VARIANT_RESUKISU
+                            )
+                        }
+                        vm.updateBuildConfig(KernelSupport.normalize(next))
+                    }
+                )
+                AnimatedVisibility(
+                    visible = state.buildStatus != BuildStatus.IDLE,
+                    enter = fadeIn() + slideInVertically { -it / 3 } + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    val kernelActiveRuns = remember(state.activeBuildRuns) {
+                        state.activeBuildRuns.filter { it.isKernelBuild() }
+                    }
+                    val managerActiveRuns = remember(state.activeBuildRuns) {
+                        state.activeBuildRuns.filter { it.isManagerBuild() }
+                    }
+                    val kernelRunningChips = remember(kernelActiveRuns, state.buildQueue) {
+                        buildRunChipsForStatus(kernelActiveRuns, state.buildQueue, running = true)
+                    }
+                    val kernelQueuedChips = remember(kernelActiveRuns, state.buildQueue) {
+                        buildRunChipsForStatus(kernelActiveRuns, state.buildQueue, running = false)
+                    }
+                    val managerRunningChips = remember(managerActiveRuns, state.buildQueue) {
+                        buildRunChipsForStatus(managerActiveRuns, state.buildQueue, running = true)
+                    }
+                    val managerQueuedChips = remember(managerActiveRuns, state.buildQueue) {
+                        buildRunChipsForStatus(managerActiveRuns, state.buildQueue, running = false)
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        BuildKindProgressBlock(
+                            title = stringResource(R.string.status_build),
+                            status = state.kernelBuildStatus,
+                            progress = state.kernelBuildProgress,
+                            currentRun = state.kernelCurrentRun,
+                            activeRunCount = state.kernelActiveBuildRuns.size,
+                            cancellingRunIds = state.cancellingWorkflowRunIds,
+                            runningChips = kernelRunningChips,
+                            queuedChips = kernelQueuedChips,
+                            onCancel = vm::cancelWorkflowRun,
+                        )
+                        if (state.managerBuildStatus != BuildStatus.IDLE || state.managerCurrentRun != null) {
+                            BuildKindProgressBlock(
+                                title = stringResource(R.string.status_manager_build),
+                                status = state.managerBuildStatus,
+                                progress = state.managerBuildProgress,
+                                currentRun = state.managerCurrentRun,
+                                activeRunCount = state.managerActiveBuildRuns.size,
+                                cancellingRunIds = state.cancellingWorkflowRunIds,
+                                runningChips = managerRunningChips,
+                                queuedChips = managerQueuedChips,
+                                onCancel = vm::cancelWorkflowRun,
+                            )
+                        }
+                    }
+                }
+            }
+
+            BuildDashboardWidgets.TOOLS -> BuildPlanToolsCard(
+                plansCount = state.buildPlans.size,
+                pendingQueueCount = pendingQueueCount,
+                activeQueueCount = activeQueueCount,
+                expanded = planToolsExpanded,
+                currentSummary = buildPlanSummary(config),
+                onExpandedChange = { planToolsExpanded = it },
+                onSave = {
+                    savePlanName = suggestedPlanName
+                    showSavePlanDialog = true
+                },
+                onLibrary = ::openPlanLibraryPage,
+                onQueue = ::openBuildQueuePage,
+                onShare = { sharePlanTarget = BuildPlan(name = suggestedPlanName, config = config) },
+                onImport = {
+                    importPlanCode = ""
+                    importPlanPreview = null
+                    importPlanError = null
+                    showImportPlanDialog = true
+                }
+            )
+
+            BuildDashboardWidgets.CONFIG -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SectionCard(section = BuildSection.KernelVersion) {
+                    if (isOnePlusBuild) {
+                        DropdownField(
+                            label = stringResource(R.string.build_oneplus_device_manifest),
+                            value = config.onePlusDeviceManifest,
+                            options = KernelSupport.onePlusDeviceManifestOptions,
+                            optionLabel = KernelSupport::onePlusDeviceLabel,
+                            onSelect = { manifest ->
+                                val profile = KernelSupport.onePlusDeviceProfile(manifest)
+                                vm.updateBuildConfig(
+                                    KernelSupport.normalize(
+                                        config.copy(
+                                            onePlusDeviceManifest = manifest,
+                                            onePlusCpu = profile?.cpu ?: config.onePlusCpu,
+                                            androidVersion = profile?.androidVersion ?: config.androidVersion,
+                                            kernelVersion = profile?.kernelVersion ?: config.kernelVersion
+                                        )
+                                    )
+                                )
+                            }
+                        )
+                        Text(
+                            text = stringResource(R.string.build_oneplus_profile_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        ReadOnlyField(label = stringResource(R.string.build_oneplus_cpu), value = config.onePlusCpu)
+                        ReadOnlyField(label = stringResource(R.string.build_android_version), value = config.androidVersion)
+                        ReadOnlyField(label = stringResource(R.string.build_kernel_version), value = config.kernelVersion)
+                    } else {
+                        DropdownField(
+                            label = stringResource(R.string.build_android_version),
+                            value = config.androidVersion,
+                            options = KernelSupport.androidVersions(),
+                            recommendedValue = recommended?.androidVersion,
+                            onSelect = {
+                                vm.updateBuildConfig(
+                                    KernelSupport.normalize(
+                                        config.copy(
+                                            androidVersion = it,
+                                            kernelVersion = KernelSupport.kernelForAndroid(it)
+                                        )
+                                    )
+                                )
+                            }
+                        )
+                        DropdownField(
+                            label = stringResource(R.string.build_kernel_version),
+                            value = config.kernelVersion,
+                            options = KernelSupport.kernelVersions(),
+                            recommendedValue = recommended?.kernelVersion,
+                            onSelect = {
+                                vm.updateBuildConfig(
+                                    KernelSupport.normalize(
+                                        config.copy(
+                                            androidVersion = KernelSupport.androidForKernel(it),
+                                            kernelVersion = it
+                                        )
+                                    )
+                                )
+                            }
+                        )
+                        DropdownField(
+                            label = stringResource(R.string.build_sub_level),
+                            value = config.subLevel,
+                            options = subLevelOptions,
+                            recommendedValue = recommended
+                                ?.takeIf {
+                                    it.androidVersion == config.androidVersion && it.kernelVersion == config.kernelVersion
+                                }
+                                ?.subLevel,
+                            onSelect = { vm.updateBuildConfig(KernelSupport.normalize(config.copy(subLevel = it))) }
+                        )
+                        DropdownField(
+                            label = stringResource(R.string.build_security_patch_level),
+                            value = config.osPatchLevel,
+                            options = osPatchOptions,
+                            recommendedValue = recommended
+                                ?.takeIf {
+                                    it.androidVersion == config.androidVersion &&
+                                        it.kernelVersion == config.kernelVersion &&
+                                        it.subLevel == config.subLevel
+                                }
+                                ?.osPatchLevel,
+                            onSelect = { vm.updateBuildConfig(config.copy(osPatchLevel = it)) }
+                        )
+                        if (config.kernelVersion == "5.10") {
+                            OutlinedTextField(
+                                value = config.revision,
+                                onValueChange = { vm.updateBuildConfig(config.copy(revision = it)) },
+                                label = {
+                                    Text(
+                                        recommended?.revision?.let {
+                                            stringResource(R.string.build_revision_recommended, it)
+                                        } ?: stringResource(R.string.build_revision_510)
+                                    )
+                                },
+                                placeholder = { Text(stringResource(R.string.build_revision_placeholder)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                        }
+                    }
+                }
+                SectionCard(section = BuildSection.KernelSu) {
+                    val noRootScheme = config.kernelsuVariant == KSU_VARIANT_NONE
+                    DropdownField(
+                        label = stringResource(R.string.build_kernelsu_variant),
+                        value = config.kernelsuVariant,
+                        options = ksuVariantOptions,
+                        onSelect = { vm.updateBuildConfig(KernelSupport.normalize(config.copy(kernelsuVariant = it))) }
+                    )
+                    if (noRootScheme) {
+                        Text(
+                            text = if (isOnePlusBuild) {
+                                stringResource(R.string.build_oneplus_no_root_scheme_desc)
+                            } else {
+                                stringResource(R.string.build_no_root_scheme_desc)
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else if (!isOnePlusBuild) {
+                        DropdownField(
+                            label = stringResource(R.string.build_ksu_branch),
+                            value = KernelSupport.normalizeKsuBranch(config.kernelsuBranch),
+                            options = ksuBranchOptions,
+                            onSelect = {
+                                vm.updateBuildConfig(
+                                    KernelSupport.normalize(config.copy(kernelsuBranch = it))
+                                )
+                            }
+                        )
+                        AnimatedVisibility(config.kernelsuBranch == KSU_BRANCH_LATEST) {
+                            Text(
+                                text = stringResource(R.string.build_ksu_branch_latest_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        AnimatedVisibility(config.kernelsuBranch == KSU_BRANCH_CUSTOM) {
+                            OutlinedTextField(
+                                value = config.customRef,
+                                onValueChange = { vm.updateBuildConfig(config.copy(customRef = it)) },
+                                label = { Text(stringResource(R.string.build_custom_ksu_ref)) },
+                                placeholder = { Text(stringResource(R.string.build_custom_ksu_ref_placeholder)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = stringResource(R.string.build_oneplus_ksu_branch_desc),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                SectionCard(section = BuildSection.Features) {
+                    val noRootScheme = config.kernelsuVariant == KSU_VARIANT_NONE
+                    val kpmSupported = KernelSupport.isKpmSupported(
+                        config.buildTarget,
+                        config.kernelsuVariant,
+                        config.kernelsuBranch
+                    )
+                    if (isOnePlusBuild) {
+                        val proxyAllowed = !config.onePlusCpu.startsWith("mt")
+                        val onePlusSusfsSupported = KernelSupport.onePlusSusfsSupported(config.androidVersion, config.kernelVersion)
+                        SwitchRow(
+                            stringResource(R.string.build_enable_susfs),
+                            !config.cancelSusfs && onePlusSusfsSupported,
+                            enabled = !noRootScheme && onePlusSusfsSupported
+                        ) { vm.updateBuildConfig(KernelSupport.normalize(config.copy(cancelSusfs = !it))) }
+                        if (!onePlusSusfsSupported) {
+                            Text(
+                                text = stringResource(R.string.build_oneplus_susfs_unsupported),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        SwitchRow(stringResource(R.string.build_enable_kpm), config.useKpm, enabled = kpmSupported && !noRootScheme) {
+                            vm.updateBuildConfig(KernelSupport.normalize(config.copy(useKpm = it)))
+                        }
+                        SwitchRow(stringResource(R.string.build_oneplus_lz4kd), config.onePlusUseLz4kd) {
+                            vm.updateBuildConfig(config.copy(onePlusUseLz4kd = it))
+                        }
+                        SwitchRow(stringResource(R.string.build_enable_bbg), config.useBbg) {
+                            vm.updateBuildConfig(config.copy(useBbg = it))
+                        }
+                        SwitchRow(stringResource(R.string.build_oneplus_bbr), config.onePlusUseBbr) {
+                            vm.updateBuildConfig(config.copy(onePlusUseBbr = it))
+                        }
+                        SwitchRow(
+                            stringResource(R.string.build_oneplus_proxy_optimization),
+                            config.onePlusUseProxyOptimization,
+                            enabled = proxyAllowed
+                        ) { vm.updateBuildConfig(KernelSupport.normalize(config.copy(onePlusUseProxyOptimization = it))) }
+                        if (!proxyAllowed) {
+                            Text(
+                                text = stringResource(R.string.build_oneplus_proxy_mtk_disabled),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        SwitchRow(stringResource(R.string.build_oneplus_unicode_bypass), config.onePlusUseUnicodeBypass) {
+                            vm.updateBuildConfig(config.copy(onePlusUseUnicodeBypass = it))
+                        }
+                    } else {
+                        SwitchRow(stringResource(R.string.build_enable_susfs), !config.cancelSusfs, enabled = !noRootScheme) {
+                            vm.updateBuildConfig(KernelSupport.normalize(config.copy(cancelSusfs = !it)))
+                        }
+                        SwitchRow(stringResource(R.string.build_enable_zram), config.useZram) {
+                            vm.updateBuildConfig(config.copy(useZram = it))
+                        }
+                        SwitchRow(stringResource(R.string.build_enable_bbg), config.useBbg) {
+                            vm.updateBuildConfig(config.copy(useBbg = it))
+                        }
+                        SwitchRow(stringResource(R.string.build_enable_ddk), config.useDdk) {
+                            vm.updateBuildConfig(config.copy(useDdk = it))
+                        }
+                        SwitchRow(stringResource(R.string.build_enable_ntsync), config.useNtsync) {
+                            vm.updateBuildConfig(config.copy(useNtsync = it))
+                        }
+                        SwitchRow(stringResource(R.string.build_enable_networking), config.useNetworking) {
+                            vm.updateBuildConfig(config.copy(useNetworking = it))
+                        }
+                        SwitchRow(stringResource(R.string.build_enable_kpm), config.useKpm, enabled = kpmSupported && !noRootScheme) {
+                            vm.updateBuildConfig(KernelSupport.normalize(config.copy(useKpm = it)))
+                        }
+                        SwitchRow(stringResource(R.string.build_enable_rekernel), config.useRekernel) {
+                            vm.updateBuildConfig(config.copy(useRekernel = it))
+                        }
+                        DropdownField(
+                            label = stringResource(R.string.build_virtualization_support),
+                            value = config.virtualizationSupport,
+                            options = virtualizationSupportOptions,
+                            onSelect = { vm.updateBuildConfig(config.copy(virtualizationSupport = it)) }
+                        )
+                        Text(
+                            text = stringResource(R.string.build_virtualization_userns_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        SwitchRow(stringResource(R.string.build_enable_oneplus_8e), config.suppOp) {
+                            vm.updateBuildConfig(config.copy(suppOp = it))
+                        }
+                    }
+                }
+                AnimatedVisibility(!isOnePlusBuild && config.useZram) {
+                    SectionCard(section = BuildSection.ZramOptions) {
+                        SwitchRow(stringResource(R.string.build_zram_full_algo), config.zramFullAlgo) {
+                            vm.updateBuildConfig(config.copy(zramFullAlgo = it))
+                        }
+                        if (!config.zramFullAlgo) {
+                            OutlinedTextField(
+                                value = config.zramExtraAlgos,
+                                onValueChange = { vm.updateBuildConfig(config.copy(zramExtraAlgos = it)) },
+                                label = { Text(stringResource(R.string.build_zram_custom_algo)) },
+                                placeholder = { Text(stringResource(R.string.build_zram_algo_placeholder)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                        }
+                    }
+                }
+                AnimatedVisibility(!isOnePlusBuild && config.useKpm) {
+                    SectionCard(section = BuildSection.KpmOptions) {
+                        OutlinedTextField(
+                            value = config.kpmPassword,
+                            onValueChange = { vm.updateBuildConfig(config.copy(kpmPassword = it)) },
+                            label = { Text(stringResource(R.string.build_kpm_password)) },
+                            placeholder = { Text(stringResource(R.string.build_kpm_password_placeholder)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                }
+                if (!isOnePlusBuild) {
+                    SectionCard(section = BuildSection.CustomModules) {
+                        SwitchRow(stringResource(R.string.build_enable_custom_modules), config.useCustomExternalModules) {
+                            vm.updateBuildConfig(config.copy(useCustomExternalModules = it))
+                        }
+                        Text(
+                            text = stringResource(R.string.build_section_custom_modules_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                SectionCard(section = BuildSection.OptionalConfig) {
+                    OutlinedTextField(
+                        value = config.version,
+                        onValueChange = { vm.updateBuildConfig(config.copy(version = it)) },
+                        label = { Text(stringResource(R.string.build_custom_version_optional)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    ConfigPreviewText(versionPreview)
+                    OutlinedTextField(
+                        value = config.buildTime,
+                        onValueChange = { vm.updateBuildConfig(config.copy(buildTime = it)) },
+                        label = { Text(stringResource(R.string.build_custom_time_optional)) },
+                        placeholder = { Text(stringResource(R.string.build_time_placeholder)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    ConfigPreviewText(buildTimePreview)
+                }
+            }
+
+            BuildDashboardWidgets.SUBMIT -> Button(
+                onClick = { showConfirmDialog = true },
+                enabled = true,
+                modifier = Modifier.fillMaxWidth().height(52.dp)
+            ) {
+                Icon(Icons.Default.RocketLaunch, null)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (activeBuild || activeQueueCount > 0 || state.buildQueueProcessing) {
+                        stringResource(R.string.build_add_queue)
+                    } else {
+                        stringResource(R.string.build_submit)
+                    }
+                )
+            }
+        }
     }
 
     fun openModuleSetEditor(group: BuildCustomModuleGroup) {
@@ -1138,17 +1707,227 @@ fun BuildScreen(
                 {}
             }
         ) { padding ->
-            Column(
-                modifier = Modifier
-                    .padding(padding)
-                    .fillMaxSize()
-                    .then(
-                        if (guidedMode) Modifier else Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
-                    )
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = AbkScreenHorizontalPadding),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+            if (!guidedMode) {
+                val editorDockHeight = 92.dp
+                Box(
+                    modifier = Modifier
+                        .padding(padding)
+                        .fillMaxSize()
+                        .nestedScroll(scrollBehavior.nestedScrollConnection)
+                        .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() }
+                        .then(
+                            if (editorActive && !pagePickerActive) {
+                                Modifier.motionEventSpy(pinchObserver)
+                            } else {
+                                Modifier
+                            }
+                        )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(scrollState)
+                            .padding(horizontal = AbkScreenHorizontalPadding)
+                            .padding(
+                                bottom = if (editorActive) {
+                                    editorDockHeight + 28.dp
+                                } else {
+                                    80.dp + outerPadding.calculateBottomPadding()
+                                }
+                            ),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        when (buildLayout.layoutMode) {
+                            DashboardLayoutMode.GRID -> DashboardGrid(
+                                layout = buildLayout,
+                                widgetLabels = buildWidgetLabels,
+                                editable = editorActive,
+                                canMoveItem = { widgetId, targetX, targetY ->
+                                    com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                                        layout = buildLayout,
+                                        widgetId = widgetId,
+                                        targetX = targetX,
+                                        targetY = targetY,
+                                        definitions = BuildDashboardWidgets.definitions
+                                    )
+                                },
+                                canResizeItem = { widgetId, targetW, targetH ->
+                                    com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                                        layout = buildLayout,
+                                        widgetId = widgetId,
+                                        targetW = targetW,
+                                        targetH = targetH,
+                                        definitions = BuildDashboardWidgets.definitions
+                                    )
+                                },
+                                canHideWidget = { widgetId ->
+                                    BuildDashboardWidgets.definitionMap[widgetId]?.canHide == true
+                                },
+                                canMinimizeWidget = { widgetId ->
+                                    BuildDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                                },
+                                canMaximizeWidget = { widgetId ->
+                                    BuildDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                                },
+                                canResizeWidget = { widgetId ->
+                                    BuildDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                                },
+                                onMoveItem = vm::moveBuildDashboardWidget,
+                                onResizeItem = vm::resizeBuildDashboardWidget,
+                                onSetItemSpanMode = vm::setBuildDashboardWidgetSpanMode,
+                                onHideItem = { widgetId -> vm.setBuildDashboardWidgetVisible(widgetId, false) },
+                                selectedWidgetId = selectedWidgetId,
+                                onSelectWidget = { selectedWidgetId = it },
+                                onGridMetricsChanged = { metrics -> gridMetrics = metrics },
+                                onDragPointerYChanged = { activeDragPointerY = it }
+                            ) { widgetId, _ ->
+                                BuildDashboardWidget(widgetId)
+                            }
+                            DashboardLayoutMode.FREEFORM -> DashboardFreeform(
+                                layout = buildLayout,
+                                widgetLabels = buildWidgetLabels,
+                                editable = editorActive,
+                                canMoveItem = { widgetId, targetX, targetY ->
+                                    com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                                        layout = buildLayout,
+                                        widgetId = widgetId,
+                                        targetX = targetX,
+                                        targetY = targetY,
+                                        definitions = BuildDashboardWidgets.definitions
+                                    )
+                                },
+                                canResizeItem = { widgetId, targetW, targetH ->
+                                    com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                                        layout = buildLayout,
+                                        widgetId = widgetId,
+                                        targetW = targetW,
+                                        targetH = targetH,
+                                        definitions = BuildDashboardWidgets.definitions
+                                    )
+                                },
+                                canHideWidget = { widgetId ->
+                                    BuildDashboardWidgets.definitionMap[widgetId]?.canHide == true
+                                },
+                                canMinimizeWidget = { widgetId ->
+                                    BuildDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                                },
+                                canMaximizeWidget = { widgetId ->
+                                    BuildDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                                },
+                                canResizeWidget = { widgetId ->
+                                    BuildDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                                },
+                                onMoveItem = vm::moveBuildDashboardWidget,
+                                onResizeItem = vm::resizeBuildDashboardWidget,
+                                onSetItemSpanMode = vm::setBuildDashboardWidgetSpanMode,
+                                onHideItem = { widgetId -> vm.setBuildDashboardWidgetVisible(widgetId, false) },
+                                selectedWidgetId = selectedWidgetId,
+                                onSelectWidget = { selectedWidgetId = it },
+                                onCanvasMetricsChanged = { metrics -> freeformMetrics = metrics },
+                                onDragPointerYChanged = { activeDragPointerY = it }
+                            ) { widgetId, _ ->
+                                BuildDashboardWidget(widgetId)
+                            }
+                        }
+                    }
+
+                    if (editorActive) {
+                        DashboardEditorWidgetsTray(
+                            visible = widgetsTrayExpanded,
+                            hiddenItems = trayWidgetIds,
+                            widgetLabels = buildWidgetLabels,
+                            dashboardLayout = buildLayout,
+                            onHiddenWidgetDrag = { dragState ->
+                                hiddenWidgetDrag = dragState
+                                activeDragPointerY = dragState?.pointerY
+                            },
+                            onHiddenWidgetDrop = { dragState ->
+                                activeDragPointerY = null
+                                hiddenWidgetDrag = null
+                                if (!dragState.leftTray || dragState.pointerY >= trayTopY) return@DashboardEditorWidgetsTray
+                                val item = buildLayout.items.firstOrNull { it.widgetId == dragState.widgetId } ?: return@DashboardEditorWidgetsTray
+                                val target = when (buildLayout.layoutMode) {
+                                    DashboardLayoutMode.GRID -> {
+                                        val metrics = gridMetrics ?: return@DashboardEditorWidgetsTray
+                                        computeHiddenWidgetDropTarget(metrics, item, dragState.pointerX, dragState.pointerY)
+                                    }
+                                    DashboardLayoutMode.FREEFORM -> {
+                                        val metrics = freeformMetrics ?: return@DashboardEditorWidgetsTray
+                                        computeHiddenWidgetFreeformDropTarget(metrics, item, dragState.pointerX, dragState.pointerY, density)
+                                    }
+                                }
+                                vm.placeBuildDashboardHiddenWidget(
+                                    widgetId = dragState.widgetId,
+                                    targetX = target.first,
+                                    targetY = target.second
+                                )
+                                selectedWidgetId = dragState.widgetId
+                            },
+                            activeDragWidgetId = hiddenWidgetDrag?.widgetId,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                                .onGloballyPositioned { trayTopY = it.positionInRoot().y }
+                        ) { widgetId ->
+                            BuildDashboardWidget(widgetId)
+                        }
+                        AnimatedVisibility(
+                            visible = !pagePickerActive,
+                            enter = fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
+                            exit = fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 24.dp, bottom = 28.dp)
+                        ) {
+                            DashboardEditorFabMenu(
+                                expanded = actionMenuExpanded,
+                                rotation = actionMenuRotation,
+                                onToggle = { actionMenuExpanded = !actionMenuExpanded },
+                                onImport = {
+                                    actionMenuExpanded = false
+                                    importLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                                },
+                                onShare = {
+                                    actionMenuExpanded = false
+                                    shareDashboardLayout(
+                                        context = context,
+                                        payload = vm.exportBuildDashboardLayoutJson(),
+                                        title = context.getString(R.string.build_title)
+                                    )
+                                },
+                                onSaveAndExit = {
+                                    actionMenuExpanded = false
+                                    vm.saveBuildDashboardLayoutDraft()
+                                },
+                                onToggleWidgets = {
+                                    widgetsTrayExpanded = !widgetsTrayExpanded
+                                    actionMenuExpanded = false
+                                }
+                            )
+                        }
+                        DashboardHiddenWidgetFloatingPreview(
+                            dragState = hiddenWidgetDrag,
+                            trayTopY = trayTopY,
+                            layoutMode = buildLayout.layoutMode,
+                            gridMetrics = gridMetrics,
+                            freeformMetrics = freeformMetrics,
+                            layout = buildLayout,
+                            definitions = BuildDashboardWidgets.definitions
+                        )
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .padding(padding)
+                        .fillMaxSize()
+                        .then(
+                            if (guidedMode) Modifier else Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+                        )
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = AbkScreenHorizontalPadding),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                 if (guidedMode) {
                     BuildGuideHeader(
                         steps = guideSteps,
@@ -1911,30 +2690,6 @@ fun BuildScreen(
                         )
                     }
                 }
-            }
-            }
-            }
-
-            // Submit button
-            if (!guidedMode) {
-                Button(
-                    onClick = { showConfirmDialog = true },
-                    enabled = true,
-                    modifier = Modifier.fillMaxWidth().height(52.dp)
-                ) {
-                    Icon(Icons.Default.RocketLaunch, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        if (activeBuild || activeQueueCount > 0 || state.buildQueueProcessing) {
-                            stringResource(R.string.build_add_queue)
-                        } else {
-                            stringResource(R.string.build_submit)
-                        }
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
             }
         }
 
