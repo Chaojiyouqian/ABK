@@ -207,6 +207,9 @@ data class MainUiState(
     val statusDashboardEditMode: Boolean = false,
     val runtimeDashboardDraftLayout: DashboardLayout? = null,
     val runtimeDashboardEditMode: Boolean = false,
+    val dashboardLayouts: Map<DashboardPageId, DashboardLayout> = defaultDashboardLayouts(),
+    val dashboardDraftLayouts: Map<DashboardPageId, DashboardLayout> = emptyMap(),
+    val dashboardEditingPageId: DashboardPageId? = null,
     val runtimeNavigationEnabled: Boolean = false,
     val webViewDebugEnabled: Boolean = false,
     val managerAccessState: ManagerAccessState = ManagerAccessState.UNKNOWN,
@@ -248,6 +251,82 @@ data class MainUiState(
 ) {
     val isDownloading: Boolean
         get() = activeDownloadTasks.isNotEmpty() || downloadProgress.isNotEmpty()
+}
+
+private fun defaultDashboardLayouts(): Map<DashboardPageId, DashboardLayout> = buildMap {
+    put(DashboardPageId.STATUS, StatusDashboardWidgets.defaultLayout())
+    put(DashboardPageId.BUILD, DashboardLayout(pageId = DashboardPageId.BUILD))
+    put(DashboardPageId.MODULES, DashboardLayout(pageId = DashboardPageId.MODULES))
+    put(DashboardPageId.FLASH, DashboardLayout(pageId = DashboardPageId.FLASH))
+    put(DashboardPageId.RUNTIME_HOME, RuntimeDashboardWidgets.defaultLayout())
+    put(DashboardPageId.INSTALLED_MODULES, DashboardLayout(pageId = DashboardPageId.INSTALLED_MODULES))
+    put(DashboardPageId.ROOT_AUTH, DashboardLayout(pageId = DashboardPageId.ROOT_AUTH))
+    put(DashboardPageId.SETTINGS, DashboardLayout(pageId = DashboardPageId.SETTINGS))
+}
+
+private fun MainUiState.withDashboardLayoutEntry(
+    pageId: DashboardPageId,
+    layout: DashboardLayout
+): MainUiState {
+    val updatedLayouts = dashboardLayouts + (pageId to layout)
+    return when (pageId) {
+        DashboardPageId.STATUS -> copy(
+            statusDashboardLayout = layout,
+            dashboardLayouts = updatedLayouts
+        )
+        DashboardPageId.RUNTIME_HOME -> copy(
+            runtimeDashboardLayout = layout,
+            dashboardLayouts = updatedLayouts
+        )
+        else -> copy(dashboardLayouts = updatedLayouts)
+    }
+}
+
+private fun MainUiState.withDashboardDraftEntry(
+    pageId: DashboardPageId,
+    layout: DashboardLayout?
+): MainUiState {
+    val updatedDrafts = if (layout == null) {
+        dashboardDraftLayouts - pageId
+    } else {
+        dashboardDraftLayouts + (pageId to layout)
+    }
+    return when (pageId) {
+        DashboardPageId.STATUS -> copy(
+            statusDashboardDraftLayout = layout,
+            dashboardDraftLayouts = updatedDrafts
+        )
+        DashboardPageId.RUNTIME_HOME -> copy(
+            runtimeDashboardDraftLayout = layout,
+            dashboardDraftLayouts = updatedDrafts
+        )
+        else -> copy(dashboardDraftLayouts = updatedDrafts)
+    }
+}
+
+private fun MainUiState.withDashboardEditingPage(
+    pageId: DashboardPageId?
+): MainUiState = when (pageId) {
+    DashboardPageId.STATUS -> copy(
+        statusDashboardEditMode = true,
+        runtimeDashboardEditMode = false,
+        dashboardEditingPageId = pageId
+    )
+    DashboardPageId.RUNTIME_HOME -> copy(
+        statusDashboardEditMode = false,
+        runtimeDashboardEditMode = true,
+        dashboardEditingPageId = pageId
+    )
+    null -> copy(
+        statusDashboardEditMode = false,
+        runtimeDashboardEditMode = false,
+        dashboardEditingPageId = null
+    )
+    else -> copy(
+        statusDashboardEditMode = false,
+        runtimeDashboardEditMode = false,
+        dashboardEditingPageId = pageId
+    )
 }
 
 class MainViewModel @JvmOverloads constructor(
@@ -650,14 +729,16 @@ class MainViewModel @JvmOverloads constructor(
                     defaultLayout
                 }
                 _uiState.update { state ->
-                    state.copy(
-                        statusDashboardLayout = normalizedLayout,
-                        statusDashboardDraftLayout = if (state.statusDashboardEditMode) {
-                            state.statusDashboardDraftLayout ?: normalizedLayout
-                        } else {
-                            null
-                        }
-                    )
+                    state
+                        .withDashboardLayoutEntry(DashboardPageId.STATUS, normalizedLayout)
+                        .withDashboardDraftEntry(
+                            DashboardPageId.STATUS,
+                            if (state.statusDashboardEditMode) {
+                                state.statusDashboardDraftLayout ?: normalizedLayout
+                            } else {
+                                null
+                            }
+                        )
                 }
             }
         }
@@ -703,14 +784,16 @@ class MainViewModel @JvmOverloads constructor(
                     defaultLayout
                 }
                 _uiState.update { state ->
-                    state.copy(
-                        runtimeDashboardLayout = normalizedLayout,
-                        runtimeDashboardDraftLayout = if (state.runtimeDashboardEditMode) {
-                            state.runtimeDashboardDraftLayout ?: normalizedLayout
-                        } else {
-                            state.runtimeDashboardDraftLayout
-                        }
-                    )
+                    state
+                        .withDashboardLayoutEntry(DashboardPageId.RUNTIME_HOME, normalizedLayout)
+                        .withDashboardDraftEntry(
+                            DashboardPageId.RUNTIME_HOME,
+                            if (state.runtimeDashboardEditMode) {
+                                state.runtimeDashboardDraftLayout ?: normalizedLayout
+                            } else {
+                                state.runtimeDashboardDraftLayout
+                            }
+                        )
                 }
             }
         }
@@ -992,6 +1075,7 @@ class MainViewModel @JvmOverloads constructor(
                     predictiveBackEnabled = it.predictiveBackEnabled,
                     statusDashboardLayout = it.statusDashboardLayout,
                     runtimeDashboardLayout = it.runtimeDashboardLayout,
+                    dashboardLayouts = it.dashboardLayouts,
                     runtimeNavigationEnabled = it.runtimeNavigationEnabled,
                     webViewDebugEnabled = it.webViewDebugEnabled,
                     runtimeModuleRepositories = it.runtimeModuleRepositories,
@@ -4019,16 +4103,19 @@ class MainViewModel @JvmOverloads constructor(
     private fun activateDashboardEditorPage(pageId: DashboardPageId) {
         _uiState.update { state ->
             when (pageId) {
-                DashboardPageId.STATUS -> state.copy(
-                    statusDashboardEditMode = true,
-                    statusDashboardDraftLayout = state.statusDashboardDraftLayout ?: state.statusDashboardLayout,
-                    runtimeDashboardEditMode = false
-                )
-                DashboardPageId.RUNTIME_HOME -> state.copy(
-                    runtimeDashboardEditMode = true,
-                    runtimeDashboardDraftLayout = state.runtimeDashboardDraftLayout ?: state.runtimeDashboardLayout,
-                    statusDashboardEditMode = false
-                )
+                DashboardPageId.STATUS -> state
+                    .withDashboardDraftEntry(
+                        DashboardPageId.STATUS,
+                        state.statusDashboardDraftLayout ?: state.statusDashboardLayout
+                    )
+                    .withDashboardEditingPage(DashboardPageId.STATUS)
+                DashboardPageId.RUNTIME_HOME -> state
+                    .withDashboardDraftEntry(
+                        DashboardPageId.RUNTIME_HOME,
+                        state.runtimeDashboardDraftLayout ?: state.runtimeDashboardLayout
+                    )
+                    .withDashboardEditingPage(DashboardPageId.RUNTIME_HOME)
+                else -> state.withDashboardEditingPage(pageId)
             }
         }
     }
@@ -4038,6 +4125,7 @@ class MainViewModel @JvmOverloads constructor(
             val referenceLayout = when (sourcePageId) {
                 DashboardPageId.STATUS -> state.statusDashboardDraftLayout ?: state.statusDashboardLayout
                 DashboardPageId.RUNTIME_HOME -> state.runtimeDashboardDraftLayout ?: state.runtimeDashboardLayout
+                else -> state.dashboardLayouts[sourcePageId] ?: DashboardLayout(pageId = sourcePageId)
             }
             when (sourcePageId) {
                 DashboardPageId.STATUS -> {
@@ -4047,7 +4135,7 @@ class MainViewModel @JvmOverloads constructor(
                     } else {
                         runtimeBase
                     }
-                    state.copy(runtimeDashboardDraftLayout = remappedRuntimeDraft)
+                    state.withDashboardDraftEntry(DashboardPageId.RUNTIME_HOME, remappedRuntimeDraft)
                 }
 
                 DashboardPageId.RUNTIME_HOME -> {
@@ -4057,27 +4145,27 @@ class MainViewModel @JvmOverloads constructor(
                     } else {
                         statusBase
                     }
-                    state.copy(statusDashboardDraftLayout = remappedStatusDraft)
+                    state.withDashboardDraftEntry(DashboardPageId.STATUS, remappedStatusDraft)
                 }
+
+                else -> state
             }
         }
     }
 
     fun discardStatusDashboardLayoutDraft() {
         _uiState.update {
-            it.copy(
-                statusDashboardEditMode = false,
-                statusDashboardDraftLayout = null
-            )
+            it
+                .withDashboardDraftEntry(DashboardPageId.STATUS, null)
+                .withDashboardEditingPage(null)
         }
     }
 
     fun discardRuntimeDashboardLayoutDraft() {
         _uiState.update {
-            it.copy(
-                runtimeDashboardEditMode = false,
-                runtimeDashboardDraftLayout = null
-            )
+            it
+                .withDashboardDraftEntry(DashboardPageId.RUNTIME_HOME, null)
+                .withDashboardEditingPage(null)
         }
     }
 
@@ -4091,7 +4179,7 @@ class MainViewModel @JvmOverloads constructor(
             definitions = StatusDashboardWidgets.definitions
         )
         if (updated != draft) {
-            _uiState.update { it.copy(statusDashboardDraftLayout = updated) }
+            _uiState.update { it.withDashboardDraftEntry(DashboardPageId.STATUS, updated) }
         }
     }
 
@@ -4105,7 +4193,7 @@ class MainViewModel @JvmOverloads constructor(
             definitions = StatusDashboardWidgets.definitions
         )
         if (updated != draft) {
-            _uiState.update { it.copy(statusDashboardDraftLayout = updated) }
+            _uiState.update { it.withDashboardDraftEntry(DashboardPageId.STATUS, updated) }
         }
     }
 
@@ -4118,7 +4206,7 @@ class MainViewModel @JvmOverloads constructor(
             definitions = StatusDashboardWidgets.definitions
         )
         if (updated != draft) {
-            _uiState.update { it.copy(statusDashboardDraftLayout = updated) }
+            _uiState.update { it.withDashboardDraftEntry(DashboardPageId.STATUS, updated) }
         }
     }
 
@@ -4132,9 +4220,9 @@ class MainViewModel @JvmOverloads constructor(
         )
         _uiState.update { state ->
             if (state.statusDashboardEditMode) {
-                state.copy(statusDashboardDraftLayout = updated)
+                state.withDashboardDraftEntry(DashboardPageId.STATUS, updated)
             } else {
-                state.copy(statusDashboardLayout = updated)
+                state.withDashboardLayoutEntry(DashboardPageId.STATUS, updated)
             }
         }
         if (!_uiState.value.statusDashboardEditMode) {
@@ -4176,7 +4264,7 @@ class MainViewModel @JvmOverloads constructor(
         } else {
             defaultSizedLayout
         }
-        _uiState.update { it.copy(statusDashboardDraftLayout = placedLayout) }
+        _uiState.update { it.withDashboardDraftEntry(DashboardPageId.STATUS, placedLayout) }
     }
 
     fun setStatusDashboardLayoutMode(mode: DashboardLayoutMode) {
@@ -4194,9 +4282,9 @@ class MainViewModel @JvmOverloads constructor(
         )
         _uiState.update { state ->
             if (state.statusDashboardEditMode) {
-                state.copy(statusDashboardDraftLayout = remappedLayout)
+                state.withDashboardDraftEntry(DashboardPageId.STATUS, remappedLayout)
             } else {
-                state.copy(statusDashboardLayout = remappedLayout)
+                state.withDashboardLayoutEntry(DashboardPageId.STATUS, remappedLayout)
             }
         }
         if (!currentState.statusDashboardEditMode) {
@@ -4221,9 +4309,9 @@ class MainViewModel @JvmOverloads constructor(
         )
         _uiState.update { state ->
             if (state.statusDashboardEditMode) {
-                state.copy(statusDashboardDraftLayout = remappedLayout)
+                state.withDashboardDraftEntry(DashboardPageId.STATUS, remappedLayout)
             } else {
-                state.copy(statusDashboardLayout = remappedLayout)
+                state.withDashboardLayoutEntry(DashboardPageId.STATUS, remappedLayout)
             }
         }
         if (!currentState.statusDashboardEditMode) {
@@ -4236,8 +4324,9 @@ class MainViewModel @JvmOverloads constructor(
     fun resetStatusDashboardLayoutDraftToDefault() {
         val activeLayout = _uiState.value.statusDashboardDraftLayout ?: _uiState.value.statusDashboardLayout
         _uiState.update {
-            it.copy(
-                statusDashboardDraftLayout = when (activeLayout.layoutMode) {
+            it.withDashboardDraftEntry(
+                DashboardPageId.STATUS,
+                when (activeLayout.layoutMode) {
                     DashboardLayoutMode.FREEFORM -> StatusDashboardWidgets.defaultFreeformLayout(activeLayout.densityPreset)
                     DashboardLayoutMode.GRID -> StatusDashboardWidgets.defaultLayout(activeLayout.densityPreset)
                 }
@@ -4252,10 +4341,12 @@ class MainViewModel @JvmOverloads constructor(
             DashboardLayoutMode.GRID -> StatusDashboardWidgets.defaultLayout(activeLayout.densityPreset)
         }
         _uiState.update { state ->
-            state.copy(
-                statusDashboardLayout = defaultLayout,
-                statusDashboardDraftLayout = if (state.statusDashboardEditMode) defaultLayout else state.statusDashboardDraftLayout
-            )
+            state
+                .withDashboardLayoutEntry(DashboardPageId.STATUS, defaultLayout)
+                .withDashboardDraftEntry(
+                    DashboardPageId.STATUS,
+                    if (state.statusDashboardEditMode) defaultLayout else state.statusDashboardDraftLayout
+                )
         }
         viewModelScope.launch {
             persistStatusDashboardLayoutSafely(defaultLayout)
@@ -4269,11 +4360,10 @@ class MainViewModel @JvmOverloads constructor(
             val persisted = persistStatusDashboardLayoutSafely(normalized)
             if (persisted) {
                 _uiState.update {
-                    it.copy(
-                        statusDashboardLayout = normalized,
-                        statusDashboardDraftLayout = null,
-                        statusDashboardEditMode = false
-                    )
+                    it
+                        .withDashboardLayoutEntry(DashboardPageId.STATUS, normalized)
+                        .withDashboardDraftEntry(DashboardPageId.STATUS, null)
+                        .withDashboardEditingPage(null)
                 }
                 showSnackbar(text(R.string.status_layout_saved))
             }
@@ -4296,11 +4386,9 @@ class MainViewModel @JvmOverloads constructor(
             defaultLayoutForDensity = StatusDashboardWidgets::defaultLayout
         )
         _uiState.update { state ->
-            state.copy(
-                statusDashboardDraftLayout = result.layout,
-                statusDashboardEditMode = true,
-                runtimeDashboardEditMode = false
-            )
+            state
+                .withDashboardDraftEntry(DashboardPageId.STATUS, result.layout)
+                .withDashboardEditingPage(DashboardPageId.STATUS)
         }
         return result
     }
@@ -4315,7 +4403,7 @@ class MainViewModel @JvmOverloads constructor(
             definitions = RuntimeDashboardWidgets.definitions
         )
         if (updated != draft) {
-            _uiState.update { it.copy(runtimeDashboardDraftLayout = updated) }
+            _uiState.update { it.withDashboardDraftEntry(DashboardPageId.RUNTIME_HOME, updated) }
         }
     }
 
@@ -4329,7 +4417,7 @@ class MainViewModel @JvmOverloads constructor(
             definitions = RuntimeDashboardWidgets.definitions
         )
         if (updated != draft) {
-            _uiState.update { it.copy(runtimeDashboardDraftLayout = updated) }
+            _uiState.update { it.withDashboardDraftEntry(DashboardPageId.RUNTIME_HOME, updated) }
         }
     }
 
@@ -4342,7 +4430,7 @@ class MainViewModel @JvmOverloads constructor(
             definitions = RuntimeDashboardWidgets.definitions
         )
         if (updated != draft) {
-            _uiState.update { it.copy(runtimeDashboardDraftLayout = updated) }
+            _uiState.update { it.withDashboardDraftEntry(DashboardPageId.RUNTIME_HOME, updated) }
         }
     }
 
@@ -4356,9 +4444,9 @@ class MainViewModel @JvmOverloads constructor(
         )
         _uiState.update { state ->
             if (state.runtimeDashboardEditMode) {
-                state.copy(runtimeDashboardDraftLayout = updated)
+                state.withDashboardDraftEntry(DashboardPageId.RUNTIME_HOME, updated)
             } else {
-                state.copy(runtimeDashboardLayout = updated)
+                state.withDashboardLayoutEntry(DashboardPageId.RUNTIME_HOME, updated)
             }
         }
         if (!_uiState.value.runtimeDashboardEditMode) {
@@ -4400,14 +4488,15 @@ class MainViewModel @JvmOverloads constructor(
         } else {
             defaultSizedLayout
         }
-        _uiState.update { it.copy(runtimeDashboardDraftLayout = placedLayout) }
+        _uiState.update { it.withDashboardDraftEntry(DashboardPageId.RUNTIME_HOME, placedLayout) }
     }
 
     fun resetRuntimeDashboardLayoutDraftToDefault() {
         val activeLayout = _uiState.value.runtimeDashboardDraftLayout ?: _uiState.value.runtimeDashboardLayout
         _uiState.update {
-            it.copy(
-                runtimeDashboardDraftLayout = when (activeLayout.layoutMode) {
+            it.withDashboardDraftEntry(
+                DashboardPageId.RUNTIME_HOME,
+                when (activeLayout.layoutMode) {
                     DashboardLayoutMode.FREEFORM -> RuntimeDashboardWidgets.defaultFreeformLayout(activeLayout.densityPreset)
                     DashboardLayoutMode.GRID -> RuntimeDashboardWidgets.defaultLayout(activeLayout.densityPreset)
                 }
@@ -4422,10 +4511,12 @@ class MainViewModel @JvmOverloads constructor(
             DashboardLayoutMode.GRID -> RuntimeDashboardWidgets.defaultLayout(activeLayout.densityPreset)
         }
         _uiState.update { state ->
-            state.copy(
-                runtimeDashboardLayout = defaultLayout,
-                runtimeDashboardDraftLayout = if (state.runtimeDashboardEditMode) defaultLayout else state.runtimeDashboardDraftLayout
-            )
+            state
+                .withDashboardLayoutEntry(DashboardPageId.RUNTIME_HOME, defaultLayout)
+                .withDashboardDraftEntry(
+                    DashboardPageId.RUNTIME_HOME,
+                    if (state.runtimeDashboardEditMode) defaultLayout else state.runtimeDashboardDraftLayout
+                )
         }
         viewModelScope.launch {
             persistRuntimeDashboardLayoutSafely(defaultLayout)
@@ -4439,11 +4530,10 @@ class MainViewModel @JvmOverloads constructor(
             val persisted = persistRuntimeDashboardLayoutSafely(normalized)
             if (persisted) {
                 _uiState.update {
-                    it.copy(
-                        runtimeDashboardLayout = normalized,
-                        runtimeDashboardDraftLayout = null,
-                        runtimeDashboardEditMode = false
-                    )
+                    it
+                        .withDashboardLayoutEntry(DashboardPageId.RUNTIME_HOME, normalized)
+                        .withDashboardDraftEntry(DashboardPageId.RUNTIME_HOME, null)
+                        .withDashboardEditingPage(null)
                 }
                 showSnackbar(text(R.string.runtime_layout_saved))
             }
@@ -4468,11 +4558,9 @@ class MainViewModel @JvmOverloads constructor(
             hideMissingWidgets = false
         )
         _uiState.update { state ->
-            state.copy(
-                runtimeDashboardDraftLayout = result.layout,
-                runtimeDashboardEditMode = true,
-                statusDashboardEditMode = false
-            )
+            state
+                .withDashboardDraftEntry(DashboardPageId.RUNTIME_HOME, result.layout)
+                .withDashboardEditingPage(DashboardPageId.RUNTIME_HOME)
         }
         return result
     }

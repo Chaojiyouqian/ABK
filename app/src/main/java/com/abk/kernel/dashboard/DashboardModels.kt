@@ -4,7 +4,13 @@ const val DASHBOARD_LAYOUT_VERSION = 1
 
 enum class DashboardPageId(val rawValue: String) {
     STATUS("status"),
-    RUNTIME_HOME("runtime_home");
+    BUILD("build"),
+    MODULES("modules"),
+    FLASH("flash"),
+    RUNTIME_HOME("runtime_home"),
+    INSTALLED_MODULES("installed_modules"),
+    ROOT_AUTH("root_auth"),
+    SETTINGS("settings");
 
     companion object {
         fun fromRawValue(rawValue: String?): DashboardPageId? =

@@ -415,6 +415,17 @@ private enum class AbkTab(@StringRes val labelRes: Int) {
     Settings(R.string.nav_settings)
 }
 
+private fun AbkTab.dashboardPageIdOrNull(): DashboardPageId? = when (this) {
+    AbkTab.Status -> DashboardPageId.STATUS
+    AbkTab.Build -> DashboardPageId.BUILD
+    AbkTab.Modules -> DashboardPageId.MODULES
+    AbkTab.Flash -> DashboardPageId.FLASH
+    AbkTab.RuntimeHome -> DashboardPageId.RUNTIME_HOME
+    AbkTab.InstalledModules -> DashboardPageId.INSTALLED_MODULES
+    AbkTab.RootAuth -> DashboardPageId.ROOT_AUTH
+    AbkTab.Settings -> DashboardPageId.SETTINGS
+}
+
 private val AbkTabletRailWidth = 92.dp
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -467,9 +478,11 @@ private fun AbkMainScaffold(
             }
         }
     }
-    val anyDashboardEditing = state.statusDashboardEditMode || state.runtimeDashboardEditMode
+    val editingTab = dashboardEditorTabs.firstOrNull { it.dashboardPageIdOrNull() == state.dashboardEditingPageId }
+    val anyDashboardEditing = state.dashboardEditingPageId != null
     val activeTab = when {
-        anyDashboardEditing && selectedTab in dashboardEditorTabs -> selectedTab
+        anyDashboardEditing && selectedTab.dashboardPageIdOrNull() == state.dashboardEditingPageId -> selectedTab
+        editingTab != null -> editingTab
         selectedTab in visibleTabs -> selectedTab
         else -> visibleTabs.first()
     }
@@ -477,11 +490,7 @@ private fun AbkMainScaffold(
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
     val isTabletLayout = configuration.smallestScreenWidthDp >= 600
-    val dashboardEditingCurrentTab = when (activeTab) {
-        AbkTab.Status -> state.statusDashboardEditMode
-        AbkTab.RuntimeHome -> state.runtimeDashboardEditMode
-        else -> false
-    }
+    val dashboardEditingCurrentTab = activeTab.dashboardPageIdOrNull() == state.dashboardEditingPageId
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     val contentStartPadding = if (isTabletLayout && !dashboardEditingCurrentTab) {
         AbkTabletRailWidth
@@ -595,7 +604,7 @@ private fun AbkMainScaffold(
     }
 
     LaunchedEffect(visibleTabs, selectedTab, state.runtimeNavigationEnabled, dashboardEditorTabs, anyDashboardEditing) {
-        if (selectedTab !in visibleTabs && !(anyDashboardEditing && selectedTab in dashboardEditorTabs)) {
+        if (selectedTab !in visibleTabs && selectedTab.dashboardPageIdOrNull() != state.dashboardEditingPageId) {
             selectedTab = if (state.runtimeNavigationEnabled) AbkTab.RuntimeHome else AbkTab.Status
         }
         if (pagePickerCandidateTab !in dashboardEditorTabs) {
