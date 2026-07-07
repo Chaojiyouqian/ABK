@@ -4259,75 +4259,22 @@ class MainViewModel @JvmOverloads constructor(
 
     fun prepareDashboardEditorPagePicker(sourcePageId: DashboardPageId) {
         _uiState.update { state ->
-            val referenceLayout = when (sourcePageId) {
-                DashboardPageId.STATUS -> state.statusDashboardDraftLayout ?: state.statusDashboardLayout
-                DashboardPageId.BUILD -> state.dashboardDraftLayouts[DashboardPageId.BUILD]
-                    ?: state.dashboardLayouts[DashboardPageId.BUILD]
-                    ?: BuildDashboardWidgets.defaultLayout()
-                DashboardPageId.RUNTIME_HOME -> state.runtimeDashboardDraftLayout ?: state.runtimeDashboardLayout
-                else -> state.dashboardLayouts[sourcePageId] ?: DashboardLayout(pageId = sourcePageId)
-            }
-            when (sourcePageId) {
-                DashboardPageId.STATUS -> {
-                    val runtimeBase = state.runtimeDashboardDraftLayout ?: state.runtimeDashboardLayout
-                    val remappedRuntimeDraft = if (runtimeBase.layoutMode != referenceLayout.layoutMode) {
-                        remapRuntimeDashboardLayoutMode(runtimeBase, referenceLayout.layoutMode)
+            val referenceLayout = state.dashboardDraftLayouts[sourcePageId]
+                ?: state.dashboardLayouts[sourcePageId]
+                ?: dashboardDefaultLayoutFor(sourcePageId)
+            DashboardPageId.entries
+                .filter { it != sourcePageId }
+                .fold(state) { acc, pageId ->
+                    val baseLayout = acc.dashboardDraftLayouts[pageId]
+                        ?: acc.dashboardLayouts[pageId]
+                        ?: dashboardDefaultLayoutFor(pageId)
+                    val remappedLayout = if (baseLayout.layoutMode != referenceLayout.layoutMode) {
+                        remapDashboardLayoutModeFor(pageId, baseLayout, referenceLayout.layoutMode)
                     } else {
-                        runtimeBase
+                        baseLayout
                     }
-                    val buildBase = state.dashboardDraftLayouts[DashboardPageId.BUILD]
-                        ?: state.dashboardLayouts[DashboardPageId.BUILD]
-                        ?: BuildDashboardWidgets.defaultLayout()
-                    val remappedBuildDraft = if (buildBase.layoutMode != referenceLayout.layoutMode) {
-                        remapBuildDashboardLayoutMode(buildBase, referenceLayout.layoutMode)
-                    } else {
-                        buildBase
-                    }
-                    state
-                        .withDashboardDraftEntry(DashboardPageId.RUNTIME_HOME, remappedRuntimeDraft)
-                        .withDashboardDraftEntry(DashboardPageId.BUILD, remappedBuildDraft)
+                    acc.withDashboardDraftEntry(pageId, remappedLayout)
                 }
-
-                DashboardPageId.BUILD -> {
-                    val statusBase = state.statusDashboardDraftLayout ?: state.statusDashboardLayout
-                    val remappedStatusDraft = if (statusBase.layoutMode != referenceLayout.layoutMode) {
-                        remapStatusDashboardLayoutMode(statusBase, referenceLayout.layoutMode)
-                    } else {
-                        statusBase
-                    }
-                    val runtimeBase = state.runtimeDashboardDraftLayout ?: state.runtimeDashboardLayout
-                    val remappedRuntimeDraft = if (runtimeBase.layoutMode != referenceLayout.layoutMode) {
-                        remapRuntimeDashboardLayoutMode(runtimeBase, referenceLayout.layoutMode)
-                    } else {
-                        runtimeBase
-                    }
-                    state
-                        .withDashboardDraftEntry(DashboardPageId.STATUS, remappedStatusDraft)
-                        .withDashboardDraftEntry(DashboardPageId.RUNTIME_HOME, remappedRuntimeDraft)
-                }
-
-                DashboardPageId.RUNTIME_HOME -> {
-                    val statusBase = state.statusDashboardDraftLayout ?: state.statusDashboardLayout
-                    val remappedStatusDraft = if (statusBase.layoutMode != referenceLayout.layoutMode) {
-                        remapStatusDashboardLayoutMode(statusBase, referenceLayout.layoutMode)
-                    } else {
-                        statusBase
-                    }
-                    val buildBase = state.dashboardDraftLayouts[DashboardPageId.BUILD]
-                        ?: state.dashboardLayouts[DashboardPageId.BUILD]
-                        ?: BuildDashboardWidgets.defaultLayout()
-                    val remappedBuildDraft = if (buildBase.layoutMode != referenceLayout.layoutMode) {
-                        remapBuildDashboardLayoutMode(buildBase, referenceLayout.layoutMode)
-                    } else {
-                        buildBase
-                    }
-                    state
-                        .withDashboardDraftEntry(DashboardPageId.STATUS, remappedStatusDraft)
-                        .withDashboardDraftEntry(DashboardPageId.BUILD, remappedBuildDraft)
-                }
-
-                else -> state
-            }
         }
     }
 

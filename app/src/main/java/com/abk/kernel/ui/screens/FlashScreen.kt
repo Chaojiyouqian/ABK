@@ -10,6 +10,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -142,6 +144,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.motionEventSpy
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -162,6 +167,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import coil.compose.AsyncImage
 import com.abk.kernel.R
+import com.abk.kernel.dashboard.DashboardLayoutMode
+import com.abk.kernel.dashboard.DashboardPageId
+import com.abk.kernel.dashboard.FlashDashboardWidgets
 import com.abk.kernel.data.model.ActiveDownloadTask
 import com.abk.kernel.data.model.ArtifactCategory
 import com.abk.kernel.data.model.ArtifactType
@@ -209,6 +217,10 @@ import com.abk.kernel.ui.components.ExpressiveHeroCard
 import com.abk.kernel.ui.components.ExpressiveSectionCard
 import com.abk.kernel.ui.components.ExpressiveStatusChip
 import com.abk.kernel.ui.components.ExpressiveTopBar
+import com.abk.kernel.ui.dashboard.DashboardFreeform
+import com.abk.kernel.ui.dashboard.DashboardFreeformMetrics
+import com.abk.kernel.ui.dashboard.DashboardGrid
+import com.abk.kernel.ui.dashboard.DashboardGridMetrics
 import com.abk.kernel.ui.theme.uiSurfaceColor
 import com.abk.kernel.utils.DownloadUtils
 import com.abk.kernel.utils.RootUtils
@@ -224,11 +236,87 @@ import kotlinx.coroutines.withContext
 fun FlashScreen(
     vm: MainViewModel,
     outerPadding: PaddingValues = PaddingValues(0.dp),
-    onDetailPageVisibleChange: (Boolean) -> Unit = {}
+    onDetailPageVisibleChange: (Boolean) -> Unit = {},
+    readOnlyPreview: Boolean = false,
+    pagePickerActive: Boolean = false,
+    onRequestPagePicker: () -> Unit = {}
 ) {
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val scrollState = rememberScrollState()
+    val editorActive = state.dashboardEditingPageId == DashboardPageId.FLASH && !readOnlyPreview
+    val pageLayout = if (readOnlyPreview) {
+        state.dashboardDraftLayouts[DashboardPageId.FLASH]
+            ?: state.dashboardLayouts[DashboardPageId.FLASH]
+            ?: FlashDashboardWidgets.defaultLayout()
+    } else if (editorActive) {
+        state.dashboardDraftLayouts[DashboardPageId.FLASH]
+            ?: state.dashboardLayouts[DashboardPageId.FLASH]
+            ?: FlashDashboardWidgets.defaultLayout()
+    } else {
+        state.dashboardLayouts[DashboardPageId.FLASH]
+            ?: FlashDashboardWidgets.defaultLayout()
+    }
+    val widgetLabels = mapOf(
+        FlashDashboardWidgets.SUMMARY to stringResource(R.string.flash_title),
+        FlashDashboardWidgets.CONTENT to stringResource(R.string.flash_files_title)
+    )
+    var actionMenuExpanded by remember { mutableStateOf(false) }
+    var widgetsTrayExpanded by remember { mutableStateOf(false) }
+    var selectedWidgetId by remember { mutableStateOf<String?>(null) }
+    var viewportHeightPx by remember { mutableStateOf(0f) }
+    var activeDragPointerY by remember { mutableStateOf<Float?>(null) }
+    var gridMetrics by remember { mutableStateOf<DashboardGridMetrics?>(null) }
+    var freeformMetrics by remember { mutableStateOf<DashboardFreeformMetrics?>(null) }
+    var trayTopY by remember { mutableStateOf(Float.MAX_VALUE) }
+    var hiddenWidgetDrag by remember { mutableStateOf<DashboardHiddenWidgetDragState?>(null) }
+    val actionMenuRotation by animateFloatAsState(
+        targetValue = if (actionMenuExpanded) 45f else 0f,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "flash-layout-fab-rotation"
+    )
+    val trayWidgetIds = remember(pageLayout.items, hiddenWidgetDrag) {
+        buildList {
+            val hiddenIds = pageLayout.items.filter { !it.visible }.map { it.widgetId }
+            addAll(hiddenIds)
+            val draggingWidgetId = hiddenWidgetDrag?.widgetId
+            if (draggingWidgetId != null && draggingWidgetId !in this) add(draggingWidgetId)
+        }
+    }
+    val pinchObserver = rememberEditorPinchObserver(onRequestPagePicker)
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                val payload = readLayoutTextFromUri(context, uri)
+                vm.importDashboardLayoutJson(DashboardPageId.FLASH, payload)
+            }.onSuccess { result ->
+                val messageRes = if (result.error == null) {
+                    R.string.status_layout_import_success
+                } else {
+                    R.string.status_layout_import_failed_reset
+                }
+                val message = if (result.error == null) {
+                    context.getString(messageRes, result.importedItemCount, result.ignoredItemCount)
+                } else {
+                    context.getString(messageRes)
+                }
+                vm.showSnackbar(message, longDuration = result.error != null)
+            }.onFailure { error ->
+                vm.showSnackbar(
+                    context.getString(
+                        R.string.status_layout_import_failed,
+                        error.message ?: error::class.java.simpleName
+                    ),
+                    longDuration = true
+                )
+            }
+        }
+    }
     var activeContentTab by rememberSaveable { mutableStateOf(FlashContentTab.Workflows) }
     val navController = rememberNavController()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
@@ -272,6 +360,43 @@ fun FlashScreen(
     val selectedAnyKernelSlotTarget = runCatching {
         RootUtils.Ak3SlotTarget.valueOf(selectedAnyKernelSlotTargetName)
     }.getOrDefault(RootUtils.Ak3SlotTarget.CURRENT)
+    LaunchedEffect(editorActive) {
+        if (!editorActive) {
+            actionMenuExpanded = false
+            widgetsTrayExpanded = false
+            selectedWidgetId = null
+            hiddenWidgetDrag = null
+            activeDragPointerY = null
+        }
+    }
+    LaunchedEffect(pagePickerActive) {
+        if (pagePickerActive) actionMenuExpanded = false
+    }
+    LaunchedEffect(activeDragPointerY, viewportHeightPx) {
+        val triggerY = activeDragPointerY ?: return@LaunchedEffect
+        if (viewportHeightPx <= 0f) return@LaunchedEffect
+        val thresholdPx = with(density) { 88.dp.toPx() }
+        while (activeDragPointerY != null) {
+            val currentY = activeDragPointerY ?: break
+            val topDistance = currentY
+            val bottomDistance = viewportHeightPx - currentY
+            val delta = when {
+                topDistance < thresholdPx -> {
+                    val ratio = 1f - (topDistance / thresholdPx).coerceIn(0f, 1f)
+                    -((4f) + ratio * 28f)
+                }
+                bottomDistance < thresholdPx -> {
+                    val ratio = 1f - (bottomDistance / thresholdPx).coerceIn(0f, 1f)
+                    (4f) + ratio * 28f
+                }
+                else -> 0f
+            }
+            if (delta != 0f) {
+                scrollState.scrollTo((scrollState.value + delta.roundToInt()).coerceIn(0, scrollState.maxValue))
+            }
+            delay(16)
+        }
+    }
     val flashAnyKernelCurrentSlotLabel = stringResource(R.string.root_patch_ak3_slot_current)
     val flashAnyKernelInactiveSlotLabel = stringResource(R.string.root_patch_ak3_slot_inactive)
     val workflowActiveDownloads = remember(
@@ -1357,6 +1482,230 @@ fun FlashScreen(
                 }
             }
         }
+    }
+
+    @Composable
+    fun FlashSummaryContent() {
+        ExpressiveSectionCard(
+            title = if (rootGranted) stringResource(R.string.flash_title) else stringResource(R.string.flash_files_title),
+            subtitle = stringResource(R.string.flash_refresh_artifacts),
+            icon = Icons.Default.FlashOn
+        ) {
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ExpressiveStatusChip(
+                    label = remoteArtifacts.size.toString(),
+                    icon = Icons.Default.CloudDownload,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                ExpressiveStatusChip(
+                    label = workflowDownloadedArtifacts.size.toString(),
+                    icon = Icons.Default.Download,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
+        }
+    }
+
+    if (editorActive || readOnlyPreview) {
+        val editorDockHeight = 92.dp
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() }
+                .then(
+                    if (editorActive && !pagePickerActive) {
+                        Modifier.motionEventSpy(pinchObserver)
+                    } else {
+                        Modifier
+                    }
+                )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = AbkScreenHorizontalPadding)
+                    .padding(
+                        bottom = if (editorActive) {
+                            editorDockHeight + 28.dp
+                        } else {
+                            80.dp + outerPadding.calculateBottomPadding()
+                        }
+                    ),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                when (pageLayout.layoutMode) {
+                    DashboardLayoutMode.GRID -> DashboardGrid(
+                        layout = pageLayout,
+                        widgetLabels = widgetLabels,
+                        editable = editorActive,
+                        canMoveItem = { widgetId, targetX, targetY ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                                layout = pageLayout,
+                                widgetId = widgetId,
+                                targetX = targetX,
+                                targetY = targetY,
+                                definitions = FlashDashboardWidgets.definitions
+                            )
+                        },
+                        canResizeItem = { widgetId, targetW, targetH ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                                layout = pageLayout,
+                                widgetId = widgetId,
+                                targetW = targetW,
+                                targetH = targetH,
+                                definitions = FlashDashboardWidgets.definitions
+                            )
+                        },
+                        canHideWidget = { widgetId -> FlashDashboardWidgets.definitionMap[widgetId]?.canHide == true },
+                        canMinimizeWidget = { widgetId -> FlashDashboardWidgets.definitionMap[widgetId]?.canResize == true },
+                        canMaximizeWidget = { widgetId -> FlashDashboardWidgets.definitionMap[widgetId]?.canResize == true },
+                        canResizeWidget = { widgetId -> FlashDashboardWidgets.definitionMap[widgetId]?.canResize == true },
+                        onMoveItem = { widgetId, x, y -> vm.moveDashboardWidget(DashboardPageId.FLASH, widgetId, x, y) },
+                        onResizeItem = { widgetId, w, h -> vm.resizeDashboardWidget(DashboardPageId.FLASH, widgetId, w, h) },
+                        onSetItemSpanMode = { widgetId, spanMode -> vm.setDashboardWidgetSpanMode(DashboardPageId.FLASH, widgetId, spanMode) },
+                        onHideItem = { widgetId -> vm.setDashboardWidgetVisible(DashboardPageId.FLASH, widgetId, false) },
+                        selectedWidgetId = selectedWidgetId,
+                        onSelectWidget = { selectedWidgetId = it },
+                        onGridMetricsChanged = { metrics -> gridMetrics = metrics },
+                        onDragPointerYChanged = { activeDragPointerY = it }
+                    ) { widgetId, _ ->
+                        when (widgetId) {
+                            FlashDashboardWidgets.SUMMARY -> FlashSummaryContent()
+                            FlashDashboardWidgets.CONTENT -> FlashListContent(flashListScrollState)
+                        }
+                    }
+                    DashboardLayoutMode.FREEFORM -> DashboardFreeform(
+                        layout = pageLayout,
+                        widgetLabels = widgetLabels,
+                        editable = editorActive,
+                        canMoveItem = { widgetId, targetX, targetY ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                                layout = pageLayout,
+                                widgetId = widgetId,
+                                targetX = targetX,
+                                targetY = targetY,
+                                definitions = FlashDashboardWidgets.definitions
+                            )
+                        },
+                        canResizeItem = { widgetId, targetW, targetH ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                                layout = pageLayout,
+                                widgetId = widgetId,
+                                targetW = targetW,
+                                targetH = targetH,
+                                definitions = FlashDashboardWidgets.definitions
+                            )
+                        },
+                        canHideWidget = { widgetId -> FlashDashboardWidgets.definitionMap[widgetId]?.canHide == true },
+                        canMinimizeWidget = { widgetId -> FlashDashboardWidgets.definitionMap[widgetId]?.canResize == true },
+                        canMaximizeWidget = { widgetId -> FlashDashboardWidgets.definitionMap[widgetId]?.canResize == true },
+                        canResizeWidget = { widgetId -> FlashDashboardWidgets.definitionMap[widgetId]?.canResize == true },
+                        onMoveItem = { widgetId, x, y -> vm.moveDashboardWidget(DashboardPageId.FLASH, widgetId, x, y) },
+                        onResizeItem = { widgetId, w, h -> vm.resizeDashboardWidget(DashboardPageId.FLASH, widgetId, w, h) },
+                        onSetItemSpanMode = { widgetId, spanMode -> vm.setDashboardWidgetSpanMode(DashboardPageId.FLASH, widgetId, spanMode) },
+                        onHideItem = { widgetId -> vm.setDashboardWidgetVisible(DashboardPageId.FLASH, widgetId, false) },
+                        selectedWidgetId = selectedWidgetId,
+                        onSelectWidget = { selectedWidgetId = it },
+                        onCanvasMetricsChanged = { metrics -> freeformMetrics = metrics },
+                        onDragPointerYChanged = { activeDragPointerY = it }
+                    ) { widgetId, _ ->
+                        when (widgetId) {
+                            FlashDashboardWidgets.SUMMARY -> FlashSummaryContent()
+                            FlashDashboardWidgets.CONTENT -> FlashListContent(flashListScrollState)
+                        }
+                    }
+                }
+            }
+
+            if (editorActive) {
+                DashboardEditorWidgetsTray(
+                    visible = widgetsTrayExpanded,
+                    hiddenItems = trayWidgetIds,
+                    widgetLabels = widgetLabels,
+                    dashboardLayout = pageLayout,
+                    onHiddenWidgetDrag = { dragState ->
+                        hiddenWidgetDrag = dragState
+                        activeDragPointerY = dragState?.pointerY
+                    },
+                    onHiddenWidgetDrop = { dragState ->
+                        activeDragPointerY = null
+                        hiddenWidgetDrag = null
+                        if (!dragState.leftTray || dragState.pointerY >= trayTopY) return@DashboardEditorWidgetsTray
+                        val item = pageLayout.items.firstOrNull { it.widgetId == dragState.widgetId } ?: return@DashboardEditorWidgetsTray
+                        val target = when (pageLayout.layoutMode) {
+                            DashboardLayoutMode.GRID -> {
+                                val metrics = gridMetrics ?: return@DashboardEditorWidgetsTray
+                                computeHiddenWidgetDropTarget(metrics, item, dragState.pointerX, dragState.pointerY)
+                            }
+                            DashboardLayoutMode.FREEFORM -> {
+                                val metrics = freeformMetrics ?: return@DashboardEditorWidgetsTray
+                                computeHiddenWidgetFreeformDropTarget(metrics, item, dragState.pointerX, dragState.pointerY, density)
+                            }
+                        }
+                        vm.placeDashboardHiddenWidget(DashboardPageId.FLASH, dragState.widgetId, target.first, target.second)
+                        selectedWidgetId = dragState.widgetId
+                    },
+                    activeDragWidgetId = hiddenWidgetDrag?.widgetId,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .onGloballyPositioned { trayTopY = it.positionInRoot().y }
+                ) { widgetId ->
+                    when (widgetId) {
+                        FlashDashboardWidgets.SUMMARY -> FlashSummaryContent()
+                        FlashDashboardWidgets.CONTENT -> FlashListContent(flashListScrollState)
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = !pagePickerActive,
+                    enter = fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
+                    exit = fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 24.dp, bottom = 28.dp)
+                ) {
+                    DashboardEditorFabMenu(
+                        expanded = actionMenuExpanded,
+                        rotation = actionMenuRotation,
+                        onToggle = { actionMenuExpanded = !actionMenuExpanded },
+                        onImport = { actionMenuExpanded = false; importLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
+                        onShare = {
+                            actionMenuExpanded = false
+                            shareDashboardLayout(
+                                context = context,
+                                payload = vm.exportDashboardLayoutJson(DashboardPageId.FLASH),
+                                title = context.getString(R.string.flash_title)
+                            )
+                        },
+                        onSaveAndExit = {
+                            actionMenuExpanded = false
+                            vm.saveDashboardLayoutDraft(DashboardPageId.FLASH)
+                        },
+                        onToggleWidgets = {
+                            widgetsTrayExpanded = !widgetsTrayExpanded
+                            actionMenuExpanded = false
+                        }
+                    )
+                }
+
+                DashboardHiddenWidgetFloatingPreview(
+                    dragState = hiddenWidgetDrag,
+                    trayTopY = trayTopY,
+                    layoutMode = pageLayout.layoutMode,
+                    gridMetrics = gridMetrics,
+                    freeformMetrics = freeformMetrics,
+                    layout = pageLayout,
+                    definitions = FlashDashboardWidgets.definitions
+                )
+            }
+        }
+        return
     }
 
     val motionScheme = MaterialTheme.motionScheme

@@ -41,6 +41,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.motionEventSpy
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -90,11 +93,19 @@ import com.abk.kernel.data.model.normalizeAppUpdateLine
 import com.abk.kernel.data.model.normalizeAppUpdateStability
 import com.abk.kernel.dashboard.DashboardDensityPreset
 import com.abk.kernel.dashboard.DashboardLayoutMode
+import com.abk.kernel.dashboard.DashboardPageId
+import com.abk.kernel.dashboard.SettingsDashboardWidgets
+import com.abk.kernel.ui.dashboard.DashboardFreeform
+import com.abk.kernel.ui.dashboard.DashboardFreeformMetrics
+import com.abk.kernel.ui.dashboard.DashboardGrid
+import com.abk.kernel.ui.dashboard.DashboardGridMetrics
 import com.abk.kernel.viewmodel.MainUiState
 import com.abk.kernel.viewmodel.MainViewModel
 import com.abk.kernel.viewmodel.exportDiagnosticBundle
 import java.io.File
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SettingsScreen(
@@ -102,11 +113,44 @@ fun SettingsScreen(
     outerPadding: PaddingValues = PaddingValues(0.dp),
     onChildPageVisibleChange: (Boolean) -> Unit = {},
     onOpenInstalledModules: () -> Unit = {},
-    onOpenStatusLayoutEditor: () -> Unit = {}
+    onOpenStatusLayoutEditor: () -> Unit = {},
+    readOnlyPreview: Boolean = false,
+    pagePickerActive: Boolean = false,
+    onRequestPagePicker: () -> Unit = {}
 ) {
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val scrollState = rememberScrollState()
+    val editorActive = state.dashboardEditingPageId == DashboardPageId.SETTINGS && !readOnlyPreview
+    val pageLayout = if (readOnlyPreview) {
+        state.dashboardDraftLayouts[DashboardPageId.SETTINGS]
+            ?: state.dashboardLayouts[DashboardPageId.SETTINGS]
+            ?: SettingsDashboardWidgets.defaultLayout()
+    } else if (editorActive) {
+        state.dashboardDraftLayouts[DashboardPageId.SETTINGS]
+            ?: state.dashboardLayouts[DashboardPageId.SETTINGS]
+            ?: SettingsDashboardWidgets.defaultLayout()
+    } else {
+        state.dashboardLayouts[DashboardPageId.SETTINGS]
+            ?: SettingsDashboardWidgets.defaultLayout()
+    }
+    val widgetLabels = mapOf(
+        SettingsDashboardWidgets.CONTENT to stringResource(R.string.settings_title)
+    )
+    var actionMenuExpanded by remember { mutableStateOf(false) }
+    var selectedWidgetId by remember { mutableStateOf<String?>(null) }
+    var viewportHeightPx by remember { mutableStateOf(0f) }
+    var activeDragPointerY by remember { mutableStateOf<Float?>(null) }
+    var gridMetrics by remember { mutableStateOf<DashboardGridMetrics?>(null) }
+    var freeformMetrics by remember { mutableStateOf<DashboardFreeformMetrics?>(null) }
+    val actionMenuRotation by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (actionMenuExpanded) 45f else 0f,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "settings-layout-fab-rotation"
+    )
+    val pinchObserver = rememberEditorPinchObserver(onRequestPagePicker)
     var showLogoutDialog by remember { mutableStateOf(false) }
     var exportingDiagnostics by remember { mutableStateOf(false) }
     var showThemeSettings by rememberSaveable { mutableStateOf(false) }
@@ -123,6 +167,76 @@ fun SettingsScreen(
         label = "settings-child-page"
     )
     val motionScheme = MaterialTheme.motionScheme
+
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                val payload = readLayoutTextFromUri(context, uri)
+                vm.importDashboardLayoutJson(DashboardPageId.SETTINGS, payload)
+            }.onSuccess { result ->
+                val messageRes = if (result.error == null) {
+                    R.string.status_layout_import_success
+                } else {
+                    R.string.status_layout_import_failed_reset
+                }
+                val message = if (result.error == null) {
+                    context.getString(messageRes, result.importedItemCount, result.ignoredItemCount)
+                } else {
+                    context.getString(messageRes)
+                }
+                vm.showSnackbar(message, longDuration = result.error != null)
+            }.onFailure { error ->
+                vm.showSnackbar(
+                    context.getString(
+                        R.string.status_layout_import_failed,
+                        error.message ?: error::class.java.simpleName
+                    ),
+                    longDuration = true
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(editorActive) {
+        if (!editorActive) {
+            actionMenuExpanded = false
+            selectedWidgetId = null
+            activeDragPointerY = null
+        }
+    }
+
+    LaunchedEffect(pagePickerActive) {
+        if (pagePickerActive) actionMenuExpanded = false
+    }
+
+    LaunchedEffect(activeDragPointerY, viewportHeightPx) {
+        val triggerY = activeDragPointerY ?: return@LaunchedEffect
+        if (viewportHeightPx <= 0f) return@LaunchedEffect
+        val thresholdPx = with(density) { 88.dp.toPx() }
+        while (activeDragPointerY != null) {
+            val currentY = activeDragPointerY ?: break
+            val topDistance = currentY
+            val bottomDistance = viewportHeightPx - currentY
+            val delta = when {
+                topDistance < thresholdPx -> {
+                    val ratio = 1f - (topDistance / thresholdPx).coerceIn(0f, 1f)
+                    -((4f) + ratio * 28f)
+                }
+                bottomDistance < thresholdPx -> {
+                    val ratio = 1f - (bottomDistance / thresholdPx).coerceIn(0f, 1f)
+                    (4f) + ratio * 28f
+                }
+                else -> 0f
+            }
+            if (delta != 0f) {
+                scrollState.scrollTo((scrollState.value + delta.roundToInt()).coerceIn(0, scrollState.maxValue))
+            }
+            delay(16)
+        }
+    }
 
     LaunchedEffect(Unit) {
         vm.refreshManagerSettings(force = true)
@@ -291,24 +405,201 @@ fun SettingsScreen(
                     scrollBehavior = scrollBehavior
                 )
             }
-        ) {
-            SettingsMainContent(
-                padding = it,
-                outerPadding = outerPadding,
-                state = state,
-                vm = vm,
-                scrollBehavior = scrollBehavior,
-                onLogout = { showLogoutDialog = true },
-                onOpenThemeSettings = ::openThemeSettings,
-                onOpenAppProfileTemplates = ::openAppProfileTemplates,
-                onOpenManagerTools = ::openManagerTools,
-                onOpenInstalledModules = onOpenInstalledModules,
-                onAbout = ::openAboutPage,
-                onOpenSourceLicenses = ::openOpenSourceLicenses,
-                onOpenExtensionManager = ::openExtensionManagerPage,
-                exportingDiagnostics = exportingDiagnostics,
-                onExportDiagnostics = ::exportDiagnostics
-            )
+        ) { padding ->
+            if (editorActive) {
+                val editorDockHeight = 92.dp
+                Box(
+                    modifier = Modifier
+                        .padding(padding)
+                        .fillMaxSize()
+                        .nestedScroll(scrollBehavior.nestedScrollConnection)
+                        .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() }
+                        .then(
+                            if (!pagePickerActive) {
+                                Modifier.motionEventSpy(pinchObserver)
+                            } else {
+                                Modifier
+                            }
+                        )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(scrollState)
+                            .padding(horizontal = AbkScreenHorizontalPadding)
+                            .padding(bottom = editorDockHeight + 28.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        when (pageLayout.layoutMode) {
+                            DashboardLayoutMode.GRID -> DashboardGrid(
+                                layout = pageLayout,
+                                widgetLabels = widgetLabels,
+                                editable = true,
+                                canMoveItem = { widgetId, targetX, targetY ->
+                                    com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                                        layout = pageLayout,
+                                        widgetId = widgetId,
+                                        targetX = targetX,
+                                        targetY = targetY,
+                                        definitions = SettingsDashboardWidgets.definitions
+                                    )
+                                },
+                                canResizeItem = { widgetId, targetW, targetH ->
+                                    com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                                        layout = pageLayout,
+                                        widgetId = widgetId,
+                                        targetW = targetW,
+                                        targetH = targetH,
+                                        definitions = SettingsDashboardWidgets.definitions
+                                    )
+                                },
+                                canHideWidget = { false },
+                                canMinimizeWidget = { widgetId ->
+                                    SettingsDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                                },
+                                canMaximizeWidget = { widgetId ->
+                                    SettingsDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                                },
+                                canResizeWidget = { widgetId ->
+                                    SettingsDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                                },
+                                onMoveItem = { widgetId, x, y -> vm.moveDashboardWidget(DashboardPageId.SETTINGS, widgetId, x, y) },
+                                onResizeItem = { widgetId, w, h -> vm.resizeDashboardWidget(DashboardPageId.SETTINGS, widgetId, w, h) },
+                                onSetItemSpanMode = { widgetId, spanMode -> vm.setDashboardWidgetSpanMode(DashboardPageId.SETTINGS, widgetId, spanMode) },
+                                onHideItem = { _ -> },
+                                selectedWidgetId = selectedWidgetId,
+                                onSelectWidget = { selectedWidgetId = it },
+                                onGridMetricsChanged = { metrics -> gridMetrics = metrics },
+                                onDragPointerYChanged = { activeDragPointerY = it }
+                            ) { _, _ ->
+                                SettingsMainContent(
+                                    padding = PaddingValues(0.dp),
+                                    outerPadding = PaddingValues(0.dp),
+                                    state = state,
+                                    vm = vm,
+                                    scrollBehavior = scrollBehavior,
+                                    onLogout = {},
+                                    onOpenThemeSettings = {},
+                                    onOpenAppProfileTemplates = {},
+                                    onOpenManagerTools = {},
+                                    onOpenInstalledModules = {},
+                                    onAbout = {},
+                                    onOpenSourceLicenses = {},
+                                    onOpenExtensionManager = {},
+                                    exportingDiagnostics = exportingDiagnostics,
+                                    onExportDiagnostics = {}
+                                )
+                            }
+                            DashboardLayoutMode.FREEFORM -> DashboardFreeform(
+                                layout = pageLayout,
+                                widgetLabels = widgetLabels,
+                                editable = true,
+                                canMoveItem = { widgetId, targetX, targetY ->
+                                    com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                                        layout = pageLayout,
+                                        widgetId = widgetId,
+                                        targetX = targetX,
+                                        targetY = targetY,
+                                        definitions = SettingsDashboardWidgets.definitions
+                                    )
+                                },
+                                canResizeItem = { widgetId, targetW, targetH ->
+                                    com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                                        layout = pageLayout,
+                                        widgetId = widgetId,
+                                        targetW = targetW,
+                                        targetH = targetH,
+                                        definitions = SettingsDashboardWidgets.definitions
+                                    )
+                                },
+                                canHideWidget = { false },
+                                canMinimizeWidget = { widgetId ->
+                                    SettingsDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                                },
+                                canMaximizeWidget = { widgetId ->
+                                    SettingsDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                                },
+                                canResizeWidget = { widgetId ->
+                                    SettingsDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                                },
+                                onMoveItem = { widgetId, x, y -> vm.moveDashboardWidget(DashboardPageId.SETTINGS, widgetId, x, y) },
+                                onResizeItem = { widgetId, w, h -> vm.resizeDashboardWidget(DashboardPageId.SETTINGS, widgetId, w, h) },
+                                onSetItemSpanMode = { widgetId, spanMode -> vm.setDashboardWidgetSpanMode(DashboardPageId.SETTINGS, widgetId, spanMode) },
+                                onHideItem = { _ -> },
+                                selectedWidgetId = selectedWidgetId,
+                                onSelectWidget = { selectedWidgetId = it },
+                                onCanvasMetricsChanged = { metrics -> freeformMetrics = metrics },
+                                onDragPointerYChanged = { activeDragPointerY = it }
+                            ) { _, _ ->
+                                SettingsMainContent(
+                                    padding = PaddingValues(0.dp),
+                                    outerPadding = PaddingValues(0.dp),
+                                    state = state,
+                                    vm = vm,
+                                    scrollBehavior = scrollBehavior,
+                                    onLogout = {},
+                                    onOpenThemeSettings = {},
+                                    onOpenAppProfileTemplates = {},
+                                    onOpenManagerTools = {},
+                                    onOpenInstalledModules = {},
+                                    onAbout = {},
+                                    onOpenSourceLicenses = {},
+                                    onOpenExtensionManager = {},
+                                    exportingDiagnostics = exportingDiagnostics,
+                                    onExportDiagnostics = {}
+                                )
+                            }
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible = !pagePickerActive,
+                        enter = fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
+                        exit = fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 24.dp, bottom = 28.dp)
+                    ) {
+                        DashboardEditorFabMenu(
+                            expanded = actionMenuExpanded,
+                            rotation = actionMenuRotation,
+                            onToggle = { actionMenuExpanded = !actionMenuExpanded },
+                            onImport = { actionMenuExpanded = false; importLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
+                            onShare = {
+                                actionMenuExpanded = false
+                                shareDashboardLayout(
+                                    context = context,
+                                    payload = vm.exportDashboardLayoutJson(DashboardPageId.SETTINGS),
+                                    title = context.getString(R.string.settings_title)
+                                )
+                            },
+                            onSaveAndExit = {
+                                actionMenuExpanded = false
+                                vm.saveDashboardLayoutDraft(DashboardPageId.SETTINGS)
+                            },
+                            onToggleWidgets = { actionMenuExpanded = false }
+                        )
+                    }
+                }
+            } else {
+                SettingsMainContent(
+                    padding = padding,
+                    outerPadding = outerPadding,
+                    state = state,
+                    vm = vm,
+                    scrollBehavior = scrollBehavior,
+                    onLogout = { showLogoutDialog = true },
+                    onOpenThemeSettings = ::openThemeSettings,
+                    onOpenAppProfileTemplates = ::openAppProfileTemplates,
+                    onOpenManagerTools = ::openManagerTools,
+                    onOpenInstalledModules = onOpenInstalledModules,
+                    onAbout = ::openAboutPage,
+                    onOpenSourceLicenses = ::openOpenSourceLicenses,
+                    onOpenExtensionManager = ::openExtensionManagerPage,
+                    exportingDiagnostics = exportingDiagnostics,
+                    onExportDiagnostics = ::exportDiagnostics
+                )
+            }
         }
 
         childPageTransition.AnimatedVisibility(

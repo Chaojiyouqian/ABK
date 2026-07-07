@@ -457,7 +457,7 @@ private fun AbkMainScaffold(
     var lastBackAt by remember { mutableStateOf(0L) }
     val runtimeNativeManagerActive = state.hasNativeManagerPermission
     val dashboardEditorTabs = remember {
-        listOf(AbkTab.Status, AbkTab.Build, AbkTab.RuntimeHome, AbkTab.InstalledModules, AbkTab.RootAuth)
+        listOf(AbkTab.Status, AbkTab.Build, AbkTab.Modules, AbkTab.Flash, AbkTab.RuntimeHome, AbkTab.InstalledModules, AbkTab.RootAuth, AbkTab.Settings)
     }
     val visibleTabs = remember(state.runtimeNavigationEnabled, state.rootGranted, runtimeNativeManagerActive, buildPageStyle) {
         if (state.runtimeNavigationEnabled) {
@@ -838,12 +838,32 @@ private fun AbkMainScaffold(
                                 com.abk.kernel.ui.screens.ModuleRepositoryMode.BUILD_ABK
                             },
                             outerPadding = contentPadding,
-                            onRepositoryPageVisibleChange = { moduleRepositoryPageVisible = it }
+                            onRepositoryPageVisibleChange = { moduleRepositoryPageVisible = it },
+                            pagePickerActive = pagePickerVisible,
+                            onRequestPagePicker = {
+                                vm.prepareDashboardEditorPagePicker(DashboardPageId.MODULES)
+                                pagePickerCandidateTab = if (activeTab in dashboardEditorTabs) {
+                                    activeTab
+                                } else {
+                                    dashboardEditorTabs.first()
+                                }
+                                pagePickerVisible = true
+                            }
                         )
                         AbkTab.Flash -> FlashScreen(
                             vm = vm,
                             outerPadding = contentPadding,
-                            onDetailPageVisibleChange = { flashDetailPageVisible = it }
+                            onDetailPageVisibleChange = { flashDetailPageVisible = it },
+                            pagePickerActive = pagePickerVisible,
+                            onRequestPagePicker = {
+                                vm.prepareDashboardEditorPagePicker(DashboardPageId.FLASH)
+                                pagePickerCandidateTab = if (activeTab in dashboardEditorTabs) {
+                                    activeTab
+                                } else {
+                                    dashboardEditorTabs.first()
+                                }
+                                pagePickerVisible = true
+                            }
                         )
                         AbkTab.RuntimeHome -> RuntimeHomeScreen(
                             vm = vm,
@@ -907,6 +927,16 @@ private fun AbkMainScaffold(
                             onOpenStatusLayoutEditor = {
                                 vm.enterStatusDashboardEditMode()
                                 selectedTab = AbkTab.Status
+                            },
+                            pagePickerActive = pagePickerVisible,
+                            onRequestPagePicker = {
+                                vm.prepareDashboardEditorPagePicker(DashboardPageId.SETTINGS)
+                                pagePickerCandidateTab = if (activeTab in dashboardEditorTabs) {
+                                    activeTab
+                                } else {
+                                    dashboardEditorTabs.first()
+                                }
+                                pagePickerVisible = true
                             }
                         )
                     }
@@ -966,15 +996,18 @@ private fun AbkMainScaffold(
                     val targetTab = pagePickerCandidateTab ?: activeTab
                     if (targetTab in listOf(AbkTab.RuntimeHome, AbkTab.InstalledModules, AbkTab.RootAuth)) {
                         if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
-                    } else if (targetTab in listOf(AbkTab.Status, AbkTab.Build, AbkTab.Flash)) {
+                    } else if (targetTab in listOf(AbkTab.Status, AbkTab.Build, AbkTab.Modules, AbkTab.Flash)) {
                         if (state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(false)
                     }
                     when (targetTab) {
                         AbkTab.Status -> vm.enterStatusDashboardEditMode()
                         AbkTab.Build -> vm.enterBuildDashboardEditMode()
+                        AbkTab.Modules -> vm.enterDashboardEditMode(DashboardPageId.MODULES)
+                        AbkTab.Flash -> vm.enterDashboardEditMode(DashboardPageId.FLASH)
                         AbkTab.RuntimeHome -> vm.enterRuntimeDashboardEditMode()
                         AbkTab.InstalledModules -> vm.enterDashboardEditMode(DashboardPageId.INSTALLED_MODULES)
                         AbkTab.RootAuth -> vm.enterDashboardEditMode(DashboardPageId.ROOT_AUTH)
+                        AbkTab.Settings -> vm.enterDashboardEditMode(DashboardPageId.SETTINGS)
                         else -> Unit
                     }
                     selectedTab = targetTab
@@ -1289,12 +1322,14 @@ private fun DashboardPagePreviewContent(
                 com.abk.kernel.ui.screens.ModuleRepositoryMode.BUILD_ABK
             },
             outerPadding = previewPadding,
-            onRepositoryPageVisibleChange = {}
+            onRepositoryPageVisibleChange = {},
+            readOnlyPreview = true
         )
         AbkTab.Flash -> FlashScreen(
             vm = vm,
             outerPadding = previewPadding,
-            onDetailPageVisibleChange = {}
+            onDetailPageVisibleChange = {},
+            readOnlyPreview = true
         )
         AbkTab.RuntimeHome -> RuntimeHomeScreen(
             vm = vm,
@@ -1321,7 +1356,8 @@ private fun DashboardPagePreviewContent(
             outerPadding = previewPadding,
             onChildPageVisibleChange = {},
             onOpenInstalledModules = {},
-            onOpenStatusLayoutEditor = {}
+            onOpenStatusLayoutEditor = {},
+            readOnlyPreview = true
         )
     }
 }

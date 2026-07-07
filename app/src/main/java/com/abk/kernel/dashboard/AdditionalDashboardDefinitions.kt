@@ -14,7 +14,8 @@ object ModuleRepositoryDashboardWidgets {
             collapsedW = 8,
             collapsedH = 4,
             expandedH = 8,
-            maxH = 10
+            maxH = 10,
+            defaultVisible = false
         ),
         BuiltinWidgetDefinition(
             widgetId = CONTENT,
@@ -68,7 +69,8 @@ object FlashDashboardWidgets {
             collapsedW = 8,
             collapsedH = 6,
             expandedH = 12,
-            maxH = 14
+            maxH = 14,
+            defaultVisible = false
         ),
         BuiltinWidgetDefinition(
             widgetId = CONTENT,
