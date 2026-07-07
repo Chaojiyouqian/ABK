@@ -18,13 +18,17 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -36,7 +40,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -85,6 +88,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.awaitFirstDown
+import androidx.compose.ui.input.pointer.awaitPointerEvent
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -612,6 +618,16 @@ private fun AbkMainScaffold(
         )
     }
     val navProgress = navProgressAnim.value
+    val pagePickerContentAlpha by animateFloatAsState(
+        targetValue = if (pagePickerVisible) 0.56f else 1f,
+        animationSpec = tween(durationMillis = 320),
+        label = "page-picker-content-alpha"
+    )
+    val pagePickerBlur by animateDpAsState(
+        targetValue = if (pagePickerVisible) 10.dp else 0.dp,
+        animationSpec = tween(durationMillis = 320),
+        label = "page-picker-content-blur"
+    )
     val shouldShowSimpleBuildFab = buildPageStyle == BUILD_PAGE_STYLE_SIMPLE &&
         !childPageVisible &&
         !showSimpleBuildFlow &&
@@ -729,9 +745,9 @@ private fun AbkMainScaffold(
                 .fillMaxSize()
                 .zIndex(1f)
                 .graphicsLayer {
-                    alpha = if (pagePickerVisible) 0.58f else 1f
+                    alpha = pagePickerContentAlpha
                 }
-                .blur(if (pagePickerVisible) 8.dp else 0.dp)
+                .blur(pagePickerBlur)
         ) {
             Box(
                 modifier = Modifier
@@ -861,16 +877,23 @@ private fun AbkMainScaffold(
                     .fillMaxSize()
                     .background(Color(0x992A2A2A))
                     .pointerInput(Unit) {
-                        detectHorizontalDragGestures { _, _ -> }
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull() ?: break
+                                change.consume()
+                                if (!change.pressed) break
+                            }
+                        }
                     }
                     .zIndex(6.6f)
             )
             DashboardPagePickerOverlay(
                 vm = vm,
-                currentTab = activeTab,
                 visibleTabs = visibleTabs,
                 candidateTab = requireNotNull(pagePickerCandidateTab),
-                contentPadding = contentPadding,
                 isTabletLayout = isTabletLayout,
                 onCandidateChange = { pagePickerCandidateTab = it },
                 onCancel = { pagePickerVisible = false },
@@ -950,10 +973,8 @@ private fun AbkMainScaffold(
 @Composable
 private fun DashboardPagePickerOverlay(
     vm: MainViewModel,
-    currentTab: AbkTab,
     visibleTabs: List<AbkTab>,
     candidateTab: AbkTab,
-    contentPadding: PaddingValues,
     isTabletLayout: Boolean,
     onCandidateChange: (AbkTab) -> Unit,
     onCancel: () -> Unit,
@@ -964,20 +985,40 @@ private fun DashboardPagePickerOverlay(
     val previewBottomBarHeight = if (isTabletLayout) 0.dp else 72.dp
     val motionScheme = MaterialTheme.motionScheme
     val candidateIndex = visibleTabs.indexOf(candidateTab).coerceAtLeast(0)
+    var introStarted by remember { mutableStateOf(false) }
+    val previewScale by animateFloatAsState(
+        targetValue = if (introStarted) 0.82f else 1f,
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f),
+        label = "page-picker-preview-scale"
+    )
+    val previewLift by animateFloatAsState(
+        targetValue = if (introStarted) 0f else 36f,
+        animationSpec = spring(dampingRatio = 0.86f, stiffness = 380f),
+        label = "page-picker-preview-lift"
+    )
+    val chromeAlpha by animateFloatAsState(
+        targetValue = if (introStarted) 1f else 0f,
+        animationSpec = tween(durationMillis = 220, delayMillis = 60),
+        label = "page-picker-chrome-alpha"
+    )
+
+    LaunchedEffect(Unit) {
+        introStarted = true
+    }
 
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 20.dp, vertical = 24.dp)
     ) {
-        val previewScale = 0.78f
-        val previewWidth = maxWidth * previewScale
-        val previewHeight = maxHeight * previewScale
-
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.TopCenter),
+                .align(Alignment.TopCenter)
+                .graphicsLayer {
+                    alpha = chromeAlpha
+                    translationY = -24f * (1f - chromeAlpha)
+                },
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -992,22 +1033,12 @@ private fun DashboardPagePickerOverlay(
         Surface(
             modifier = Modifier
                 .align(Alignment.Center)
-                .size(previewWidth, previewHeight)
-                .pointerInput(visibleTabs, candidateTab) {
-                    var accumulatedDx = 0f
-                    detectHorizontalDragGestures(
-                        onDragEnd = { accumulatedDx = 0f },
-                        onDragCancel = { accumulatedDx = 0f }
-                    ) { change, dragAmount ->
-                        accumulatedDx += dragAmount
-                        if (accumulatedDx > 96f && candidateIndex > 0) {
-                            onCandidateChange(visibleTabs[candidateIndex - 1])
-                            accumulatedDx = 0f
-                        } else if (accumulatedDx < -96f && candidateIndex < visibleTabs.lastIndex) {
-                            onCandidateChange(visibleTabs[candidateIndex + 1])
-                            accumulatedDx = 0f
-                        }
-                    }
+                .fillMaxSize()
+                .padding(top = 54.dp, bottom = 42.dp)
+                .graphicsLayer {
+                    scaleX = previewScale
+                    scaleY = previewScale
+                    translationY = previewLift
                 },
             shape = MaterialTheme.shapes.extraLarge,
             color = Color.Transparent,
@@ -1105,7 +1136,8 @@ private fun DashboardPagePickerOverlay(
                                 visibleTabs.forEach { previewTab ->
                                     NavigationBarItem(
                                         selected = previewTab == tab,
-                                        onClick = { onCandidateChange(previewTab) },
+                                        onClick = {},
+                                        enabled = false,
                                         alwaysShowLabel = false,
                                         icon = {
                                             Icon(
@@ -1124,6 +1156,35 @@ private fun DashboardPagePickerOverlay(
                                 }
                             }
                         }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pointerInput(visibleTabs, candidateTab) {
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                        val pointerId = down.id
+                                        var totalDx = 0f
+                                        down.consume()
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            val change = event.changes.firstOrNull { it.id == pointerId }
+                                                ?: event.changes.firstOrNull()
+                                                ?: break
+                                            totalDx += change.positionChange().x
+                                            change.consume()
+                                            if (!change.pressed) break
+                                            if (totalDx > 96f && candidateIndex > 0) {
+                                                onCandidateChange(visibleTabs[candidateIndex - 1])
+                                                break
+                                            }
+                                            if (totalDx < -96f && candidateIndex < visibleTabs.lastIndex) {
+                                                onCandidateChange(visibleTabs[candidateIndex + 1])
+                                                break
+                                            }
+                                        }
+                                    }
+                                }
+                        )
                     }
                 }
             }
@@ -1133,7 +1194,11 @@ private fun DashboardPagePickerOverlay(
             text = candidateTab.displayLabel(state.rootGranted),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 8.dp),
+                .padding(bottom = 8.dp)
+                .graphicsLayer {
+                    alpha = chromeAlpha
+                    translationY = 20f * (1f - chromeAlpha)
+                },
             style = MaterialTheme.typography.titleMedium,
             color = Color.White
         )

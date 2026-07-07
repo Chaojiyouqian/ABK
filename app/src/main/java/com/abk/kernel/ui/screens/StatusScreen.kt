@@ -179,6 +179,11 @@ fun StatusScreen(
             activeDragPointerY = null
         }
     }
+    LaunchedEffect(pagePickerActive) {
+        if (pagePickerActive) {
+            actionMenuExpanded = false
+        }
+    }
     LaunchedEffect(activeDragPointerY, viewportHeightPx) {
         val triggerY = activeDragPointerY ?: return@LaunchedEffect
         if (viewportHeightPx <= 0f) return@LaunchedEffect
@@ -425,30 +430,36 @@ fun StatusScreen(
                             .padding(horizontal = 16.dp, vertical = 12.dp)
                     )
                 }
-                StatusEditorFabMenu(
-                    expanded = actionMenuExpanded,
-                    rotation = actionMenuRotation,
-                    onToggle = { actionMenuExpanded = !actionMenuExpanded },
-                    onImport = {
-                        actionMenuExpanded = false
-                        importLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
-                    },
-                    onShare = {
-                        actionMenuExpanded = false
-                        shareStatusLayout(context, vm.exportStatusDashboardLayoutJson())
-                    },
-                    onSaveAndExit = {
-                        actionMenuExpanded = false
-                        vm.saveStatusDashboardLayoutDraft()
-                    },
-                    onToggleWidgets = {
-                        widgetsTrayExpanded = !widgetsTrayExpanded
-                        actionMenuExpanded = false
-                    },
+                AnimatedVisibility(
+                    visible = !pagePickerActive,
+                    enter = fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
+                    exit = fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(end = 24.dp, bottom = 28.dp)
-                )
+                ) {
+                    StatusEditorFabMenu(
+                        expanded = actionMenuExpanded,
+                        rotation = actionMenuRotation,
+                        onToggle = { actionMenuExpanded = !actionMenuExpanded },
+                        onImport = {
+                            actionMenuExpanded = false
+                            importLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                        },
+                        onShare = {
+                            actionMenuExpanded = false
+                            shareStatusLayout(context, vm.exportStatusDashboardLayoutJson())
+                        },
+                        onSaveAndExit = {
+                            actionMenuExpanded = false
+                            vm.saveStatusDashboardLayoutDraft()
+                        },
+                        onToggleWidgets = {
+                            widgetsTrayExpanded = !widgetsTrayExpanded
+                            actionMenuExpanded = false
+                        }
+                    )
+                }
                 HiddenWidgetFloatingPreview(
                     dragState = hiddenWidgetDrag,
                     trayTopY = trayTopY,
