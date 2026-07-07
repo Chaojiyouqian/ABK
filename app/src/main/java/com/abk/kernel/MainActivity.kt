@@ -28,6 +28,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -73,6 +74,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -441,6 +443,9 @@ private fun AbkMainScaffold(
     var pagePickerCandidateTab by rememberSaveable { mutableStateOf<AbkTab?>(null) }
     var lastBackAt by remember { mutableStateOf(0L) }
     val runtimeNativeManagerActive = state.hasNativeManagerPermission
+    val dashboardEditorTabs = remember {
+        listOf(AbkTab.Status, AbkTab.RuntimeHome)
+    }
     val visibleTabs = remember(state.runtimeNavigationEnabled, state.rootGranted, runtimeNativeManagerActive, buildPageStyle) {
         if (state.runtimeNavigationEnabled) {
             buildList {
@@ -578,12 +583,12 @@ private fun AbkMainScaffold(
         }
     }
 
-    LaunchedEffect(visibleTabs, selectedTab, state.runtimeNavigationEnabled) {
+    LaunchedEffect(visibleTabs, selectedTab, state.runtimeNavigationEnabled, dashboardEditorTabs) {
         if (selectedTab !in visibleTabs) {
             selectedTab = if (state.runtimeNavigationEnabled) AbkTab.RuntimeHome else AbkTab.Status
         }
-        if (pagePickerCandidateTab !in visibleTabs) {
-            pagePickerCandidateTab = visibleTabs.firstOrNull()
+        if (pagePickerCandidateTab !in dashboardEditorTabs) {
+            pagePickerCandidateTab = dashboardEditorTabs.firstOrNull()
         }
     }
 
@@ -780,7 +785,11 @@ private fun AbkMainScaffold(
                             onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) },
                             pagePickerActive = pagePickerVisible,
                             onRequestPagePicker = {
-                                pagePickerCandidateTab = activeTab
+                                pagePickerCandidateTab = if (activeTab in dashboardEditorTabs) {
+                                    activeTab
+                                } else {
+                                    dashboardEditorTabs.first()
+                                }
                                 pagePickerVisible = true
                             }
                         )
@@ -888,15 +897,19 @@ private fun AbkMainScaffold(
             )
             DashboardPagePickerOverlay(
                 vm = vm,
-                visibleTabs = visibleTabs,
+                visibleTabs = dashboardEditorTabs,
                 candidateTab = requireNotNull(pagePickerCandidateTab),
-                isTabletLayout = isTabletLayout,
                 onCandidateChange = { pagePickerCandidateTab = it },
                 onCancel = { pagePickerVisible = false },
                 onConfirm = {
                     val targetTab = pagePickerCandidateTab ?: activeTab
                     if (state.statusDashboardEditMode && activeTab == AbkTab.Status && targetTab != AbkTab.Status) {
                         vm.saveStatusDashboardLayoutDraft()
+                    }
+                    if (targetTab == AbkTab.RuntimeHome && !state.runtimeNavigationEnabled) {
+                        vm.setRuntimeNavigationEnabled(true)
+                    } else if (targetTab == AbkTab.Status && state.runtimeNavigationEnabled) {
+                        vm.setRuntimeNavigationEnabled(false)
                     }
                     selectedTab = targetTab
                     pagePickerVisible = false
@@ -971,16 +984,15 @@ private fun DashboardPagePickerOverlay(
     vm: MainViewModel,
     visibleTabs: List<AbkTab>,
     candidateTab: AbkTab,
-    isTabletLayout: Boolean,
     onCandidateChange: (AbkTab) -> Unit,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val state by vm.uiState.collectAsState()
-    val previewBottomBarHeight = if (isTabletLayout) 0.dp else 72.dp
     val motionScheme = MaterialTheme.motionScheme
     val candidateIndex = visibleTabs.indexOf(candidateTab).coerceAtLeast(0)
+    val previewBlockerInteraction = remember { MutableInteractionSource() }
     var introStarted by remember { mutableStateOf(false) }
     val previewScale by animateFloatAsState(
         targetValue = if (introStarted) 0.82f else 1f,
@@ -1064,7 +1076,7 @@ private fun DashboardPagePickerOverlay(
                     label = "dashboard-page-picker"
                 ) { tab ->
                     Box(Modifier.fillMaxSize()) {
-                        val previewPadding = PaddingValues(bottom = previewBottomBarHeight)
+                        val previewPadding = PaddingValues(0.dp)
                         when (tab) {
                             AbkTab.Status -> StatusScreen(
                                 vm = vm,
@@ -1072,7 +1084,8 @@ private fun DashboardPagePickerOverlay(
                                 runtimeNavigationEnabled = false,
                                 onToggleRuntimeNavigation = {},
                                 pagePickerActive = true,
-                                onRequestPagePicker = {}
+                                onRequestPagePicker = {},
+                                readOnlyPreview = true
                             )
                             AbkTab.Build -> BuildScreen(
                                 vm = vm,
@@ -1099,7 +1112,8 @@ private fun DashboardPagePickerOverlay(
                                 vm = vm,
                                 outerPadding = previewPadding,
                                 onSwitchToClassic = {},
-                                onManagerPatchPageVisibleChange = {}
+                                onManagerPatchPageVisibleChange = {},
+                                readOnlyPreview = true
                             )
                             AbkTab.InstalledModules -> InstalledModulesScreen(
                                 vm = vm,
@@ -1121,40 +1135,14 @@ private fun DashboardPagePickerOverlay(
                             )
                         }
 
-                        if (!isTabletLayout) {
-                            NavigationBar(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .fillMaxWidth(),
-                                containerColor = uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainer),
-                                tonalElevation = 0.dp
-                            ) {
-                                visibleTabs.forEach { previewTab ->
-                                    NavigationBarItem(
-                                        selected = previewTab == tab,
-                                        onClick = {},
-                                        enabled = false,
-                                        alwaysShowLabel = false,
-                                        icon = {
-                                            Icon(
-                                                imageVector = previewTab.icon(rootGranted = state.rootGranted),
-                                                contentDescription = previewTab.displayLabel(state.rootGranted)
-                                            )
-                                        },
-                                        label = {
-                                            Text(
-                                                text = previewTab.displayLabel(state.rootGranted),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                    )
-                                }
-                            }
-                        }
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .clickable(
+                                    interactionSource = previewBlockerInteraction,
+                                    indication = null,
+                                    onClick = {}
+                                )
                                 .pointerInput(Unit) {
                                     detectTapGestures(onTap = {})
                                 }

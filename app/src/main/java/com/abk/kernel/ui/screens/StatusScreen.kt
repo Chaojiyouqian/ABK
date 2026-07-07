@@ -14,7 +14,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -44,7 +43,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.abk.kernel.BuildConfig
 import com.abk.kernel.R
@@ -71,6 +69,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 private data class HiddenWidgetDragState(
@@ -88,7 +87,8 @@ fun StatusScreen(
     runtimeNavigationEnabled: Boolean = false,
     onToggleRuntimeNavigation: () -> Unit = {},
     pagePickerActive: Boolean = false,
-    onRequestPagePicker: () -> Unit = {}
+    onRequestPagePicker: () -> Unit = {},
+    readOnlyPreview: Boolean = false
 ) {
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
@@ -103,7 +103,8 @@ fun StatusScreen(
         StatusDashboardWidgets.DEVICE_REPOSITORY to stringResource(R.string.status_widget_device_repository),
         StatusDashboardWidgets.RECENT_RUNS to stringResource(R.string.status_widget_recent_runs)
     )
-    val dashboardLayout = if (state.statusDashboardEditMode) {
+    val editorActive = state.statusDashboardEditMode && !readOnlyPreview
+    val dashboardLayout = if (editorActive) {
         state.statusDashboardDraftLayout ?: state.statusDashboardLayout
     } else {
         state.statusDashboardLayout
@@ -170,8 +171,8 @@ fun StatusScreen(
             }
         }
     }
-    LaunchedEffect(state.statusDashboardEditMode) {
-        if (!state.statusDashboardEditMode) {
+    LaunchedEffect(editorActive) {
+        if (!editorActive) {
             actionMenuExpanded = false
             widgetsTrayExpanded = false
             selectedWidgetId = null
@@ -219,7 +220,7 @@ fun StatusScreen(
         containerColor = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
         topBar = {
             ExpressiveTopBar(
-                title = if (state.statusDashboardEditMode) {
+                title = if (editorActive) {
                     stringResource(R.string.status_layout_editor_title)
                 } else {
                     stringResource(R.string.app_name)
@@ -227,7 +228,7 @@ fun StatusScreen(
                 compactTitle = true,
                 scrollBehavior = scrollBehavior,
                 actions = {
-                    if (!state.statusDashboardEditMode) {
+                    if (!editorActive) {
                         IconButton(onClick = onToggleRuntimeNavigation) {
                             Icon(
                                 imageVector = if (runtimeNavigationEnabled) Icons.Default.SwapHoriz else Icons.Default.Home,
@@ -250,6 +251,37 @@ fun StatusScreen(
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() }
+                .pointerInput(editorActive, pagePickerActive) {
+                    if (!editorActive || pagePickerActive) return@pointerInput
+                    awaitPointerEventScope {
+                        var baselineDistance: Float? = null
+                        var openedForGesture = false
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val pressedPointers = event.changes.filter { it.pressed }
+                            if (pressedPointers.size < 2) {
+                                baselineDistance = null
+                                openedForGesture = false
+                                continue
+                            }
+                            val first = pressedPointers[0].position
+                            val second = pressedPointers[1].position
+                            val distance = hypot(
+                                (second.x - first.x).toDouble(),
+                                (second.y - first.y).toDouble()
+                            ).toFloat()
+                            val baseline = baselineDistance
+                            if (baseline == null || baseline <= 0f) {
+                                baselineDistance = distance
+                                continue
+                            }
+                            if (!openedForGesture && distance / baseline < 0.92f) {
+                                openedForGesture = true
+                                onRequestPagePicker()
+                            }
+                        }
+                    }
+                }
         ) {
             val ksuVersion = remember(state.rootGranted) {
                 if (state.rootGranted) RootUtils.getKsuVersion() else "N/A"
@@ -263,7 +295,7 @@ fun StatusScreen(
                     .verticalScroll(scrollState)
                     .padding(horizontal = AbkScreenHorizontalPadding)
                     .padding(
-                        bottom = if (state.statusDashboardEditMode) {
+                        bottom = if (editorActive) {
                             editorDockHeight + 28.dp
                         } else {
                             80.dp + outerPadding.calculateBottomPadding()
@@ -275,7 +307,7 @@ fun StatusScreen(
                     DashboardLayoutMode.GRID -> DashboardGrid(
                         layout = dashboardLayout,
                         widgetLabels = widgetLabels,
-                        editable = state.statusDashboardEditMode,
+                        editable = editorActive,
                         canMoveItem = { widgetId, targetX, targetY ->
                             com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
                                 layout = dashboardLayout,
@@ -328,7 +360,7 @@ fun StatusScreen(
                     DashboardLayoutMode.FREEFORM -> DashboardFreeform(
                         layout = dashboardLayout,
                         widgetLabels = widgetLabels,
-                        editable = state.statusDashboardEditMode,
+                        editable = editorActive,
                         canMoveItem = { widgetId, targetX, targetY ->
                             com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
                                 layout = dashboardLayout,
@@ -381,7 +413,7 @@ fun StatusScreen(
                 }
             }
 
-            if (state.statusDashboardEditMode) {
+            if (editorActive) {
                 StatusEditorWidgetsTray(
                     visible = widgetsTrayExpanded,
                     hiddenItems = trayWidgetIds,
@@ -467,22 +499,6 @@ fun StatusScreen(
                     gridMetrics = gridMetrics,
                     freeformMetrics = freeformMetrics,
                     layout = dashboardLayout
-                )
-            }
-            if (state.statusDashboardEditMode && !pagePickerActive) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .zIndex(5f)
-                        .pointerInput(state.statusDashboardEditMode, pagePickerActive) {
-                            var opened = false
-                            detectTransformGestures { _, _, zoom, _ ->
-                                if (!opened && zoom < 0.92f) {
-                                    opened = true
-                                    onRequestPagePicker()
-                                }
-                            }
-                        }
                 )
             }
         }

@@ -92,7 +92,8 @@ fun RuntimeHomeScreen(
     vm: MainViewModel,
     outerPadding: PaddingValues = PaddingValues(0.dp),
     onSwitchToClassic: () -> Unit,
-    onManagerPatchPageVisibleChange: (Boolean) -> Unit = {}
+    onManagerPatchPageVisibleChange: (Boolean) -> Unit = {},
+    readOnlyPreview: Boolean = false
 ) {
     val state by vm.uiState.collectAsState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
@@ -149,11 +150,13 @@ fun RuntimeHomeScreen(
                     compactTitle = true,
                     scrollBehavior = scrollBehavior,
                     actions = {
-                        IconButton(onClick = { vm.refreshAbkRuntimeStatus() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.runtime_refresh))
-                        }
-                        IconButton(onClick = onSwitchToClassic) {
-                            Icon(Icons.Default.SwapHoriz, contentDescription = stringResource(R.string.nav_status))
+                        if (!readOnlyPreview) {
+                            IconButton(onClick = { vm.refreshAbkRuntimeStatus() }) {
+                                Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.runtime_refresh))
+                            }
+                            IconButton(onClick = onSwitchToClassic) {
+                                Icon(Icons.Default.SwapHoriz, contentDescription = stringResource(R.string.nav_status))
+                            }
                         }
                     }
                 )
