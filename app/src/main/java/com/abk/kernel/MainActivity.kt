@@ -84,7 +84,6 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
@@ -862,7 +861,7 @@ private fun AbkMainScaffold(
                     .fillMaxSize()
                     .background(Color(0x992A2A2A))
                     .pointerInput(Unit) {
-                        detectHorizontalDragGestures { change, _ -> change.consume() }
+                        detectHorizontalDragGestures { _, _ -> }
                     }
                     .zIndex(6.6f)
             )
@@ -1000,7 +999,6 @@ private fun DashboardPagePickerOverlay(
                         onDragEnd = { accumulatedDx = 0f },
                         onDragCancel = { accumulatedDx = 0f }
                     ) { change, dragAmount ->
-                        change.consume()
                         accumulatedDx += dragAmount
                         if (accumulatedDx > 96f && candidateIndex > 0) {
                             onCandidateChange(visibleTabs[candidateIndex - 1])
