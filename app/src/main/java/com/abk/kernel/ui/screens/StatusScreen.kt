@@ -14,6 +14,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -84,7 +85,9 @@ fun StatusScreen(
     vm: MainViewModel,
     outerPadding: PaddingValues = PaddingValues(0.dp),
     runtimeNavigationEnabled: Boolean = false,
-    onToggleRuntimeNavigation: () -> Unit = {}
+    onToggleRuntimeNavigation: () -> Unit = {},
+    pagePickerActive: Boolean = false,
+    onRequestPagePicker: () -> Unit = {}
 ) {
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
@@ -241,6 +244,16 @@ fun StatusScreen(
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() }
+                .pointerInput(state.statusDashboardEditMode, pagePickerActive) {
+                    if (!state.statusDashboardEditMode || pagePickerActive) return@pointerInput
+                    var opened = false
+                    detectTransformGestures { _, _, zoom, _ ->
+                        if (!opened && zoom < 0.92f) {
+                            opened = true
+                            onRequestPagePicker()
+                        }
+                    }
+                }
         ) {
             val ksuVersion = remember(state.rootGranted) {
                 if (state.rootGranted) RootUtils.getKsuVersion() else "N/A"

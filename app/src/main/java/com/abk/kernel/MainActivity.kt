@@ -24,8 +24,10 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -76,8 +78,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -404,6 +408,7 @@ private val AbkTabletRailWidth = 92.dp
 @Composable
 private fun AbkMainScaffold(
     vm: MainViewModel,
+    modifier: Modifier = Modifier,
     pendingModuleInstallUri: String? = null,
     onModuleInstallUriConsumed: () -> Unit = {}
 ) {
@@ -423,6 +428,8 @@ private fun AbkMainScaffold(
     var moduleRepositoryPageVisible by rememberSaveable { mutableStateOf(false) }
     var rootAuthDetailPageVisible by rememberSaveable { mutableStateOf(false) }
     var managerPatchPageVisible by rememberSaveable { mutableStateOf(false) }
+    var pagePickerVisible by rememberSaveable { mutableStateOf(false) }
+    var pagePickerCandidateTab by rememberSaveable { mutableStateOf<AbkTab?>(null) }
     var lastBackAt by remember { mutableStateOf(0L) }
     val runtimeNativeManagerActive = state.hasNativeManagerPermission
     val visibleTabs = remember(state.runtimeNavigationEnabled, state.rootGranted, runtimeNativeManagerActive, buildPageStyle) {
@@ -566,6 +573,9 @@ private fun AbkMainScaffold(
         if (selectedTab !in visibleTabs) {
             selectedTab = if (state.runtimeNavigationEnabled) AbkTab.RuntimeHome else AbkTab.Status
         }
+        if (pagePickerCandidateTab !in visibleTabs) {
+            pagePickerCandidateTab = visibleTabs.firstOrNull()
+        }
     }
 
     LaunchedEffect(buildPageStyle) {
@@ -584,8 +594,11 @@ private fun AbkMainScaffold(
         }
     }
 
-    if (!childPageVisible) {
+    if (!childPageVisible && !pagePickerVisible) {
         BackHandler(onBack = ::handleTopLevelBack)
+    }
+    if (pagePickerVisible) {
+        BackHandler { pagePickerVisible = false }
     }
 
     val navProgressAnim = remember { Animatable(1f) }
@@ -604,7 +617,7 @@ private fun AbkMainScaffold(
         activeTab == AbkTab.Status
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .background(appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)))
     ) {
@@ -712,6 +725,10 @@ private fun AbkMainScaffold(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(1f)
+                .graphicsLayer {
+                    alpha = if (pagePickerVisible) 0.58f else 1f
+                }
+                .blur(if (pagePickerVisible) 8.dp else 0.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -741,7 +758,12 @@ private fun AbkMainScaffold(
                             vm = vm,
                             outerPadding = contentPadding,
                             runtimeNavigationEnabled = state.runtimeNavigationEnabled,
-                            onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) }
+                            onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) },
+                            pagePickerActive = pagePickerVisible,
+                            onRequestPagePicker = {
+                                pagePickerCandidateTab = activeTab
+                                pagePickerVisible = true
+                            }
                         )
                         AbkTab.Build -> BuildScreen(
                             vm = vm,
@@ -822,6 +844,44 @@ private fun AbkMainScaffold(
                 Icon(Icons.Default.Add, contentDescription = stringResource(R.string.build_open_simple_flow))
             }
         }
+        if (pagePickerVisible && pagePickerCandidateTab != null) {
+            AppPageBackground(
+                backgroundUri = state.customBackgroundUri,
+                backgroundImageEnabled = state.backgroundImageEnabled,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(28.dp)
+                    .zIndex(6.5f)
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0x992A2A2A))
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures { change, _ -> change.consume() }
+                    }
+                    .zIndex(6.6f)
+            )
+            DashboardPagePickerOverlay(
+                vm = vm,
+                currentTab = activeTab,
+                visibleTabs = visibleTabs,
+                candidateTab = requireNotNull(pagePickerCandidateTab),
+                contentPadding = contentPadding,
+                isTabletLayout = isTabletLayout,
+                onCandidateChange = { pagePickerCandidateTab = it },
+                onCancel = { pagePickerVisible = false },
+                onConfirm = {
+                    val targetTab = pagePickerCandidateTab ?: activeTab
+                    if (state.statusDashboardEditMode && activeTab == AbkTab.Status && targetTab != AbkTab.Status) {
+                        vm.saveStatusDashboardLayoutDraft()
+                    }
+                    selectedTab = targetTab
+                    pagePickerVisible = false
+                },
+                modifier = Modifier.zIndex(6.7f)
+            )
+        }
         AbkSnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
@@ -830,7 +890,7 @@ private fun AbkMainScaffold(
                     start = contentStartPadding,
                     bottom = with(density) { (bottomBarHeightPx * navProgress).toDp() } + 10.dp
                 )
-                .zIndex(4f)
+                .zIndex(7f)
         )
         simpleBuildPageTransition.AnimatedVisibility(
             visible = { it },
@@ -880,6 +940,201 @@ private fun AbkMainScaffold(
         ) {
             BuildPageStyleSelectionDialog(onSelect = vm::setBuildPageStyle)
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun DashboardPagePickerOverlay(
+    vm: MainViewModel,
+    currentTab: AbkTab,
+    visibleTabs: List<AbkTab>,
+    candidateTab: AbkTab,
+    contentPadding: PaddingValues,
+    isTabletLayout: Boolean,
+    onCandidateChange: (AbkTab) -> Unit,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val state by vm.uiState.collectAsState()
+    val previewBottomBarHeight = if (isTabletLayout) 0.dp else 72.dp
+    val motionScheme = MaterialTheme.motionScheme
+    val candidateIndex = visibleTabs.indexOf(candidateTab).coerceAtLeast(0)
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp, vertical = 24.dp)
+    ) {
+        val previewScale = 0.78f
+        val previewWidth = maxWidth * previewScale
+        val previewHeight = maxHeight * previewScale
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(onClick = onCancel) {
+                Text(stringResource(R.string.cancel))
+            }
+            Button(onClick = onConfirm) {
+                Text(stringResource(R.string.confirm))
+            }
+        }
+
+        Surface(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(previewWidth, previewHeight)
+                .pointerInput(visibleTabs, candidateTab) {
+                    var accumulatedDx = 0f
+                    detectHorizontalDragGestures(
+                        onDragEnd = { accumulatedDx = 0f },
+                        onDragCancel = { accumulatedDx = 0f }
+                    ) { change, dragAmount ->
+                        change.consume()
+                        accumulatedDx += dragAmount
+                        if (accumulatedDx > 96f && candidateIndex > 0) {
+                            onCandidateChange(visibleTabs[candidateIndex - 1])
+                            accumulatedDx = 0f
+                        } else if (accumulatedDx < -96f && candidateIndex < visibleTabs.lastIndex) {
+                            onCandidateChange(visibleTabs[candidateIndex + 1])
+                            accumulatedDx = 0f
+                        }
+                    }
+                },
+            shape = MaterialTheme.shapes.extraLarge,
+            color = Color.Transparent,
+            shadowElevation = 18.dp
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(MaterialTheme.shapes.extraLarge)
+            ) {
+                AppPageBackground(
+                    backgroundUri = state.customBackgroundUri,
+                    backgroundImageEnabled = state.backgroundImageEnabled
+                )
+                AnimatedContent(
+                    targetState = candidateTab,
+                    transitionSpec = {
+                        val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
+                        (
+                            fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) +
+                                slideInHorizontally(animationSpec = motionScheme.defaultSpatialSpec()) { width -> direction * width / 5 }
+                            ) togetherWith (
+                            fadeOut(animationSpec = motionScheme.fastEffectsSpec()) +
+                                slideOutHorizontally(animationSpec = motionScheme.fastSpatialSpec()) { width -> -direction * width / 6 }
+                            )
+                    },
+                    label = "dashboard-page-picker"
+                ) { tab ->
+                    Box(Modifier.fillMaxSize()) {
+                        val previewPadding = PaddingValues(bottom = previewBottomBarHeight)
+                        when (tab) {
+                            AbkTab.Status -> StatusScreen(
+                                vm = vm,
+                                outerPadding = previewPadding,
+                                runtimeNavigationEnabled = false,
+                                onToggleRuntimeNavigation = {},
+                                pagePickerActive = true,
+                                onRequestPagePicker = {}
+                            )
+                            AbkTab.Build -> BuildScreen(
+                                vm = vm,
+                                outerPadding = previewPadding,
+                                onPlanPageVisibleChange = {},
+                                onNavigateToStatus = {}
+                            )
+                            AbkTab.Modules -> ModuleRepositoryScreen(
+                                vm = vm,
+                                mode = if (state.runtimeNavigationEnabled) {
+                                    com.abk.kernel.ui.screens.ModuleRepositoryMode.RUNTIME_STANDARD
+                                } else {
+                                    com.abk.kernel.ui.screens.ModuleRepositoryMode.BUILD_ABK
+                                },
+                                outerPadding = previewPadding,
+                                onRepositoryPageVisibleChange = {}
+                            )
+                            AbkTab.Flash -> FlashScreen(
+                                vm = vm,
+                                outerPadding = previewPadding,
+                                onDetailPageVisibleChange = {}
+                            )
+                            AbkTab.RuntimeHome -> RuntimeHomeScreen(
+                                vm = vm,
+                                outerPadding = previewPadding,
+                                onSwitchToClassic = {},
+                                onManagerPatchPageVisibleChange = {}
+                            )
+                            AbkTab.InstalledModules -> InstalledModulesScreen(
+                                vm = vm,
+                                outerPadding = previewPadding,
+                                pendingModuleInstallUri = null,
+                                onPendingModuleInstallUriConsumed = {}
+                            )
+                            AbkTab.RootAuth -> RootAuthorizationScreen(
+                                vm = vm,
+                                outerPadding = previewPadding,
+                                onDetailPageVisibleChange = {}
+                            )
+                            AbkTab.Settings -> SettingsScreen(
+                                vm = vm,
+                                outerPadding = previewPadding,
+                                onChildPageVisibleChange = {},
+                                onOpenInstalledModules = {},
+                                onOpenStatusLayoutEditor = {}
+                            )
+                        }
+
+                        if (!isTabletLayout) {
+                            NavigationBar(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth(),
+                                containerColor = uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainer),
+                                tonalElevation = 0.dp
+                            ) {
+                                visibleTabs.forEach { previewTab ->
+                                    NavigationBarItem(
+                                        selected = previewTab == tab,
+                                        onClick = { onCandidateChange(previewTab) },
+                                        alwaysShowLabel = false,
+                                        icon = {
+                                            Icon(
+                                                imageVector = previewTab.icon(rootGranted = state.rootGranted),
+                                                contentDescription = previewTab.displayLabel(state.rootGranted)
+                                            )
+                                        },
+                                        label = {
+                                            Text(
+                                                text = previewTab.displayLabel(state.rootGranted),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Text(
+            text = candidateTab.displayLabel(state.rootGranted),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 8.dp),
+            style = MaterialTheme.typography.titleMedium,
+            color = Color.White
+        )
     }
 }
 
