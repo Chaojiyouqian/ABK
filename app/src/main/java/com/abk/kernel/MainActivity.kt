@@ -28,7 +28,10 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -88,9 +91,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.awaitFirstDown
-import androidx.compose.ui.input.pointer.awaitPointerEvent
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -877,15 +877,11 @@ private fun AbkMainScaffold(
                     .fillMaxSize()
                     .background(Color(0x992A2A2A))
                     .pointerInput(Unit) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            down.consume()
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull() ?: break
-                                change.consume()
-                                if (!change.pressed) break
-                            }
+                        detectTapGestures(onTap = {})
+                    }
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, _ ->
+                            change.consume()
                         }
                     }
                     .zIndex(6.6f)
@@ -1159,28 +1155,28 @@ private fun DashboardPagePickerOverlay(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .pointerInput(Unit) {
+                                    detectTapGestures(onTap = {})
+                                }
+                                .pointerInput(Unit) {
+                                    detectVerticalDragGestures { change, _ ->
+                                        change.consume()
+                                    }
+                                }
                                 .pointerInput(visibleTabs, candidateTab) {
-                                    awaitEachGesture {
-                                        val down = awaitFirstDown(requireUnconsumed = false)
-                                        val pointerId = down.id
-                                        var totalDx = 0f
-                                        down.consume()
-                                        while (true) {
-                                            val event = awaitPointerEvent()
-                                            val change = event.changes.firstOrNull { it.id == pointerId }
-                                                ?: event.changes.firstOrNull()
-                                                ?: break
-                                            totalDx += change.positionChange().x
-                                            change.consume()
-                                            if (!change.pressed) break
-                                            if (totalDx > 96f && candidateIndex > 0) {
-                                                onCandidateChange(visibleTabs[candidateIndex - 1])
-                                                break
-                                            }
-                                            if (totalDx < -96f && candidateIndex < visibleTabs.lastIndex) {
-                                                onCandidateChange(visibleTabs[candidateIndex + 1])
-                                                break
-                                            }
+                                    var accumulatedDx = 0f
+                                    detectHorizontalDragGestures(
+                                        onDragEnd = { accumulatedDx = 0f },
+                                        onDragCancel = { accumulatedDx = 0f }
+                                    ) { change, dragAmount ->
+                                        change.consume()
+                                        accumulatedDx += dragAmount
+                                        if (accumulatedDx > 96f && candidateIndex > 0) {
+                                            onCandidateChange(visibleTabs[candidateIndex - 1])
+                                            accumulatedDx = 0f
+                                        } else if (accumulatedDx < -96f && candidateIndex < visibleTabs.lastIndex) {
+                                            onCandidateChange(visibleTabs[candidateIndex + 1])
+                                            accumulatedDx = 0f
                                         }
                                     }
                                 }
