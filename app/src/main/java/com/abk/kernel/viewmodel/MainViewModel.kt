@@ -30,6 +30,7 @@ import com.abk.kernel.dashboard.DashboardLayoutCodec
 import com.abk.kernel.dashboard.DashboardLayoutEngine
 import com.abk.kernel.dashboard.DashboardLayoutImportResult
 import com.abk.kernel.dashboard.DashboardLayoutMode
+import com.abk.kernel.dashboard.DashboardPageId
 import com.abk.kernel.dashboard.RuntimeDashboardWidgets
 import com.abk.kernel.dashboard.StatusDashboardWidgets
 import com.abk.kernel.utils.BuildMonitorService
@@ -670,8 +671,9 @@ class MainViewModel @JvmOverloads constructor(
                     val restoredLayout = json
                         ?.takeIf { it.isNotBlank() }
                         ?.let {
-                            DashboardLayoutCodec.importStatusLayout(
+                            DashboardLayoutCodec.importLayout(
                                 json = it,
+                                expectedPageId = DashboardPageId.RUNTIME_HOME,
                                 definitions = RuntimeDashboardWidgets.definitions,
                                 defaultLayoutForDensity = RuntimeDashboardWidgets::defaultLayout,
                                 hideMissingWidgets = false

@@ -53,6 +53,20 @@ object DashboardLayoutCodec {
         definitions: Collection<BuiltinWidgetDefinition>,
         defaultLayoutForDensity: (DashboardDensityPreset) -> DashboardLayout,
         hideMissingWidgets: Boolean = true
+    ): DashboardLayoutImportResult = importLayout(
+        json = json,
+        expectedPageId = DashboardPageId.STATUS,
+        definitions = definitions,
+        defaultLayoutForDensity = defaultLayoutForDensity,
+        hideMissingWidgets = hideMissingWidgets
+    )
+
+    fun importLayout(
+        json: String,
+        expectedPageId: DashboardPageId,
+        definitions: Collection<BuiltinWidgetDefinition>,
+        defaultLayoutForDensity: (DashboardDensityPreset) -> DashboardLayout,
+        hideMissingWidgets: Boolean = true
     ): DashboardLayoutImportResult {
         val root = runCatching {
             JsonParser.parseString(json).asJsonObject
@@ -83,13 +97,13 @@ object DashboardLayoutCodec {
         val pageId = DashboardPageId.fromRawValue(
             root.readString("pageId", null)
                 ?: root.readString("statusPageId", null)
-                ?: DashboardPageId.STATUS.rawValue
+                ?: expectedPageId.rawValue
         )
             ?: return failure(
                 error = DashboardLayoutImportError.UNSUPPORTED_PAGE,
                 fallbackLayout = fallbackLayout
             )
-        if (pageId != DashboardPageId.STATUS) {
+        if (pageId != expectedPageId) {
             return failure(
                 error = DashboardLayoutImportError.UNSUPPORTED_PAGE,
                 fallbackLayout = fallbackLayout
