@@ -20,7 +20,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -51,7 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -110,6 +109,7 @@ fun RuntimeHomeScreen(
     } else {
         state.runtimeDashboardLayout
     }
+    val pinchObserver = rememberEditorPinchObserver(onRequestPagePicker)
     var showManagerPatchPage by rememberSaveable { mutableStateOf(false) }
     val managerPatchPageTransition = rememberChildPageOverlayTransition(
         visible = showManagerPatchPage,
@@ -152,16 +152,13 @@ fun RuntimeHomeScreen(
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .pointerInput(editorActive, pagePickerActive) {
-                if (!editorActive || pagePickerActive) return@pointerInput
-                var opened = false
-                detectTransformGestures { _, _, zoom, _ ->
-                    if (!opened && zoom < 0.92f) {
-                        opened = true
-                        onRequestPagePicker()
-                    }
+            .then(
+                if (editorActive && !pagePickerActive) {
+                    Modifier.pointerInteropFilter(onTouchEvent = pinchObserver)
+                } else {
+                    Modifier
                 }
-            }
+            )
     ) {
         val childPageBottomInset = outerPadding.calculateBottomPadding()
         val childPageModifier = Modifier

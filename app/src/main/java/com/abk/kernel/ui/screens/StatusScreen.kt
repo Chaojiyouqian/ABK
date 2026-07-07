@@ -14,7 +14,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -35,6 +34,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -135,6 +135,7 @@ fun StatusScreen(
             }
         }
     }
+    val pinchObserver = rememberEditorPinchObserver(onRequestPagePicker)
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -253,16 +254,13 @@ fun StatusScreen(
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() }
-                .pointerInput(editorActive, pagePickerActive) {
-                    if (!editorActive || pagePickerActive) return@pointerInput
-                    var opened = false
-                    detectTransformGestures { _, _, zoom, _ ->
-                        if (!opened && zoom < 0.92f) {
-                            opened = true
-                            onRequestPagePicker()
-                        }
+                .then(
+                    if (editorActive && !pagePickerActive) {
+                        Modifier.pointerInteropFilter(onTouchEvent = pinchObserver)
+                    } else {
+                        Modifier
                     }
-                }
+                )
         ) {
             val ksuVersion = remember(state.rootGranted) {
                 if (state.rootGranted) RootUtils.getKsuVersion() else "N/A"
