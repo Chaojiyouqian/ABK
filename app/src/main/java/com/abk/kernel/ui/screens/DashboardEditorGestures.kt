@@ -8,7 +8,7 @@ import kotlin.math.hypot
 @Composable
 internal fun rememberEditorPinchObserver(
     onTrigger: () -> Unit
-): (MotionEvent) -> Boolean = remember(onTrigger) {
+): (MotionEvent) -> Unit = remember(onTrigger) {
     var baselineDistance = 0f
     var opened = false
 
@@ -49,7 +49,6 @@ internal fun rememberEditorPinchObserver(
                 }
             }
         }
-        false
     }
 }
 

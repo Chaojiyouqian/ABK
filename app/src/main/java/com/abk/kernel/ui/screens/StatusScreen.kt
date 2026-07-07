@@ -33,8 +33,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.motionEventSpy
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -256,7 +256,7 @@ fun StatusScreen(
                 .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() }
                 .then(
                     if (editorActive && !pagePickerActive) {
-                        Modifier.pointerInteropFilter(onTouchEvent = pinchObserver)
+                        Modifier.motionEventSpy(pinchObserver)
                     } else {
                         Modifier
                     }

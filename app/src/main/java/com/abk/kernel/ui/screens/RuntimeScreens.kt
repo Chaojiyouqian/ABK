@@ -50,7 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.input.pointer.motionEventSpy
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -154,7 +154,7 @@ fun RuntimeHomeScreen(
             .fillMaxSize()
             .then(
                 if (editorActive && !pagePickerActive) {
-                    Modifier.pointerInteropFilter(onTouchEvent = pinchObserver)
+                    Modifier.motionEventSpy(pinchObserver)
                 } else {
                     Modifier
                 }
