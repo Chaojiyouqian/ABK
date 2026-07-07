@@ -102,6 +102,7 @@ import com.abk.kernel.ui.screens.typeOrder
 import com.abk.kernel.ui.navigation3.LocalNavigator
 import com.abk.kernel.ui.navigation3.Route
 import com.abk.kernel.miuix.ui.screens.runtime.ModuleInstallParams
+import com.abk.kernel.miuix.ui.screens.runtime.ModuleActionTerminalParams
 import com.abk.kernel.ui.webui.ModuleWebUiActivity
 import com.abk.kernel.viewmodel.MainViewModel
 import com.abk.kernel.miuix.util.BlurredBar
@@ -346,7 +347,13 @@ fun InstalledModulesScreenMiuix(
                         )
                     },
                     onRequestUninstall = { module -> uninstallTarget = module },
-                    onRunAction = { moduleId -> vm.runRuntimeModuleAction(moduleId) },
+                    onRunAction = { module ->
+                        navigator.push(Route.ModuleActionTerminal(ModuleActionTerminalParams(
+                            moduleId = module.id,
+                            moduleName = module.displayName(),
+                            moduleDir = module.moduleDir.ifBlank { "/data/adb/modules/${module.id}" }
+                        )))
+                    },
                     onSetEnabled = { moduleId, enabled -> vm.setAbkRuntimeModuleEnabled(moduleId, enabled) }
                 )
             }
@@ -387,7 +394,13 @@ fun InstalledModulesScreenMiuix(
                         )
                     },
                     onRequestUninstall = { module -> uninstallTarget = module },
-                    onRunAction = { moduleId -> vm.runRuntimeModuleAction(moduleId) },
+                    onRunAction = { module ->
+                        navigator.push(Route.ModuleActionTerminal(ModuleActionTerminalParams(
+                            moduleId = module.id,
+                            moduleName = module.displayName(),
+                            moduleDir = module.moduleDir.ifBlank { "/data/adb/modules/${module.id}" }
+                        )))
+                    },
                     onSetEnabled = { moduleId, enabled -> vm.setAbkRuntimeModuleEnabled(moduleId, enabled) }
                 )
             }
@@ -599,7 +612,7 @@ private fun ModuleListContent(
     context: android.content.Context,
     onOpenWebUi: (AbkRuntimeModule) -> Unit,
     onRequestUninstall: (AbkRuntimeModule) -> Unit,
-    onRunAction: (String) -> Unit,
+    onRunAction: (AbkRuntimeModule) -> Unit,
     onSetEnabled: (String, Boolean) -> Unit
 ) {
 
@@ -735,7 +748,7 @@ private fun ModuleListContent(
                         actionInFlight = abkRuntimeModuleActionId == module.id,
                         onSetEnabled = { enabled -> onSetEnabled(module.id, enabled) },
                         onRequestUninstall = { onRequestUninstall(module) },
-                        onRunAction = { onRunAction(module.id) },
+                        onRunAction = { onRunAction(module) },
                         onOpenWebUi = { onOpenWebUi(module) }
                     )
                 }

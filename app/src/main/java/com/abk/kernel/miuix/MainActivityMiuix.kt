@@ -105,6 +105,7 @@ import com.abk.kernel.miuix.ui.screens.ThemeSettingsScreenMiuix
 import com.abk.kernel.miuix.ui.screens.flash.FlashPrebuiltDetailScreenMiuix
 import com.abk.kernel.miuix.ui.screens.flash.FlashTerminalLogScreenMiuix
 import com.abk.kernel.miuix.ui.screens.flash.FlashWorkflowDetailScreenMiuix
+import com.abk.kernel.miuix.ui.screens.runtime.ModuleActionTerminalScreenMiuix
 import com.abk.kernel.miuix.ui.screens.runtime.ModuleInstallLogScreenMiuix
 import com.abk.kernel.miuix.util.BlurredBar
 import com.abk.kernel.miuix.util.rememberBlurBackdrop
@@ -661,6 +662,13 @@ private fun AbkMiuixMainScaffold(
                                             onBack = popBack,
                                         )
                                     }
+                                    entry<Route.ModuleActionTerminal> { route ->
+                                        ModuleActionTerminalScreenMiuix(
+                                            params = route.params,
+                                            vm = vm,
+                                            onBack = popBack,
+                                        )
+                                    }
                                 },
                             )
 
@@ -1000,6 +1008,13 @@ private fun AbkMiuixMainScaffold(
                                 }
                                 entry<Route.ModuleInstallLog> { route ->
                                     ModuleInstallLogScreenMiuix(
+                                        params = route.params,
+                                        vm = vm,
+                                        onBack = popBack,
+                                    )
+                                }
+                                entry<Route.ModuleActionTerminal> { route ->
+                                    ModuleActionTerminalScreenMiuix(
                                         params = route.params,
                                         vm = vm,
                                         onBack = popBack,
