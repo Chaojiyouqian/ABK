@@ -11,12 +11,14 @@ import com.abk.kernel.data.model.normalizeBuildPageStyle
 import com.abk.kernel.data.model.normalizeAppUpdateLine
 import com.abk.kernel.data.model.normalizeAppUpdateStability
 import com.abk.kernel.dashboard.DashboardDensityPreset
+import com.abk.kernel.dashboard.DashboardPageId
 import com.abk.kernel.utils.DownloadDirectoryUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "abk_prefs")
 
@@ -65,6 +67,7 @@ class PreferencesRepository(private val context: Context) {
         val KEY_APP_UPDATE_LINE = stringPreferencesKey("app_update_line")
         val KEY_PREDICTIVE_BACK_ENABLED = booleanPreferencesKey("predictive_back_enabled")
         val KEY_BUILD_PAGE_STYLE = stringPreferencesKey("build_page_style")
+        val KEY_DASHBOARD_LAYOUTS_JSON = stringPreferencesKey("dashboard_layouts_json")
         val KEY_STATUS_PAGE_LAYOUT_JSON = stringPreferencesKey("status_page_layout_json")
         val KEY_STATUS_PAGE_GRID_DENSITY_PRESET = stringPreferencesKey("status_page_grid_density_preset")
         val KEY_RUNTIME_HOME_LAYOUT_JSON = stringPreferencesKey("runtime_home_layout_json")
@@ -135,6 +138,7 @@ class PreferencesRepository(private val context: Context) {
     val buildPageStyle: Flow<String?> = context.dataStore.data.map {
         normalizeBuildPageStyle(it[KEY_BUILD_PAGE_STYLE])
     }
+    val dashboardLayoutsJson: Flow<String?> = context.dataStore.data.map { it[KEY_DASHBOARD_LAYOUTS_JSON] }
     val statusPageLayoutJson: Flow<String?> = context.dataStore.data.map { it[KEY_STATUS_PAGE_LAYOUT_JSON] }
     val statusPageGridDensityPreset: Flow<DashboardDensityPreset> = context.dataStore.data.map {
         DashboardDensityPreset.fromRawValue(it[KEY_STATUS_PAGE_GRID_DENSITY_PRESET])
@@ -300,6 +304,14 @@ class PreferencesRepository(private val context: Context) {
     suspend fun saveStatusPageLayoutState(json: String, preset: DashboardDensityPreset) = context.dataStore.edit {
         it[KEY_STATUS_PAGE_LAYOUT_JSON] = json
         it[KEY_STATUS_PAGE_GRID_DENSITY_PRESET] = preset.rawValue
+    }
+    suspend fun saveDashboardLayoutEntry(pageId: DashboardPageId, json: String) = context.dataStore.edit { preferences ->
+        val root = preferences[KEY_DASHBOARD_LAYOUTS_JSON]
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::JSONObject)
+            ?: JSONObject()
+        root.put(pageId.rawValue, json)
+        preferences[KEY_DASHBOARD_LAYOUTS_JSON] = root.toString()
     }
     suspend fun saveRuntimeHomeLayoutJson(json: String) = context.dataStore.edit {
         it[KEY_RUNTIME_HOME_LAYOUT_JSON] = json

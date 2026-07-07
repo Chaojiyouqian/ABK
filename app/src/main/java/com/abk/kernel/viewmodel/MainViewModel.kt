@@ -69,6 +69,7 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 import java.util.UUID
+import org.json.JSONObject
 
 // ── UI State ─────────────────────────────────────────────────────────────────
 
@@ -328,6 +329,17 @@ private fun MainUiState.withDashboardEditingPage(
         dashboardEditingPageId = pageId
     )
 }
+
+private fun dashboardLayoutJsonForPage(
+    rawJson: String?,
+    pageId: DashboardPageId
+): String? = runCatching {
+    rawJson
+        ?.takeIf { it.isNotBlank() }
+        ?.let(::JSONObject)
+        ?.optString(pageId.rawValue)
+        ?.takeIf { it.isNotBlank() }
+}.getOrNull()
 
 class MainViewModel @JvmOverloads constructor(
     application: Application,
@@ -690,11 +702,13 @@ class MainViewModel @JvmOverloads constructor(
         }
         viewModelScope.launch {
             combine(
+                prefs.dashboardLayoutsJson,
                 prefs.statusPageLayoutJson,
                 prefs.statusPageGridDensityPreset
-            ) { json, densityPreset ->
-                json to densityPreset
-            }.collect { (json, densityPreset) ->
+            ) { layoutsJson, legacyJson, densityPreset ->
+                Triple(layoutsJson, legacyJson, densityPreset)
+            }.collect { (layoutsJson, legacyJson, densityPreset) ->
+                val json = dashboardLayoutJsonForPage(layoutsJson, DashboardPageId.STATUS) ?: legacyJson
                 val defaultLayout = StatusDashboardWidgets.defaultLayout(densityPreset)
                 val normalizedLayout = runCatching {
                     val restoredLayout = json
@@ -744,11 +758,13 @@ class MainViewModel @JvmOverloads constructor(
         }
         viewModelScope.launch {
             combine(
+                prefs.dashboardLayoutsJson,
                 prefs.runtimeHomeLayoutJson,
                 prefs.runtimeHomeGridDensityPreset
-            ) { json, densityPreset ->
-                json to densityPreset
-            }.collect { (json, densityPreset) ->
+            ) { layoutsJson, legacyJson, densityPreset ->
+                Triple(layoutsJson, legacyJson, densityPreset)
+            }.collect { (layoutsJson, legacyJson, densityPreset) ->
+                val json = dashboardLayoutJsonForPage(layoutsJson, DashboardPageId.RUNTIME_HOME) ?: legacyJson
                 val defaultLayout = RuntimeDashboardWidgets.defaultLayout(densityPreset)
                 val normalizedLayout = runCatching {
                     val restoredLayout = json
@@ -4683,18 +4699,22 @@ class MainViewModel @JvmOverloads constructor(
 
     private suspend fun persistStatusDashboardLayout(layout: DashboardLayout) {
         val normalized = normalizeStatusDashboardLayout(layout)
+        val json = DashboardLayoutCodec.export(normalized)
         prefs.saveStatusPageLayoutState(
-            json = DashboardLayoutCodec.export(normalized),
+            json = json,
             preset = normalized.densityPreset
         )
+        prefs.saveDashboardLayoutEntry(DashboardPageId.STATUS, json)
     }
 
     private suspend fun persistRuntimeDashboardLayout(layout: DashboardLayout) {
         val normalized = normalizeRuntimeDashboardLayout(layout)
+        val json = DashboardLayoutCodec.export(normalized)
         prefs.saveRuntimeHomeLayoutState(
-            json = DashboardLayoutCodec.export(normalized),
+            json = json,
             preset = normalized.densityPreset
         )
+        prefs.saveDashboardLayoutEntry(DashboardPageId.RUNTIME_HOME, json)
     }
 
     private suspend fun persistStatusDashboardLayoutSafely(layout: DashboardLayout): Boolean =
