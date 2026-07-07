@@ -1014,6 +1014,7 @@ private fun DashboardPagePickerOverlay(
     val candidateIndex = visibleTabs.indexOf(candidateTab).coerceAtLeast(0)
     val previewBlockerInteraction = remember { MutableInteractionSource() }
     var introStarted by remember { mutableStateOf(false) }
+    val motionScheme = MaterialTheme.motionScheme
     val previewScale by animateFloatAsState(
         targetValue = if (introStarted) 0.82f else 1f,
         animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f),
@@ -1040,10 +1041,11 @@ private fun DashboardPagePickerOverlay(
             .padding(horizontal = 20.dp, vertical = 24.dp)
     ) {
         val density = LocalDensity.current
-        val previewWidth = maxWidth * 0.78f
-        val previewHeight = maxHeight * 0.72f
-        val previewStep = previewWidth * 0.86f
-        val previewStepPx = with(density) { previewStep.toPx() }
+        val stageTopPadding = 54.dp
+        val stageBottomPadding = 42.dp
+        val previewWidth = maxWidth
+        val previewHeight = (maxHeight - stageTopPadding - stageBottomPadding).coerceAtLeast(0.dp)
+        val previewStepPx = with(density) { (previewWidth * 0.68f).toPx() }
 
         Row(
             modifier = Modifier
@@ -1068,7 +1070,7 @@ private fun DashboardPagePickerOverlay(
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxSize()
-                .padding(top = 54.dp, bottom = 42.dp)
+                .padding(top = stageTopPadding, bottom = stageBottomPadding)
                 .graphicsLayer {
                     scaleX = previewScale
                     scaleY = previewScale
@@ -1095,30 +1097,50 @@ private fun DashboardPagePickerOverlay(
             visibleTabs.forEachIndexed { index, tab ->
                 val distance = index - candidateIndex
                 val selected = distance == 0
-                val cardScale = when (kotlin.math.abs(distance)) {
+                val targetCardScale = when (kotlin.math.abs(distance)) {
                     0 -> 1f
-                    1 -> 0.92f
-                    else -> 0.86f
+                    1 -> 0.9f
+                    else -> 0.82f
                 }
-                val cardAlpha = when (kotlin.math.abs(distance)) {
+                val targetCardAlpha = when (kotlin.math.abs(distance)) {
                     0 -> 1f
-                    1 -> 0.72f
-                    else -> 0.38f
+                    1 -> 0.76f
+                    else -> 0.44f
                 }
+                val animatedTranslationX by animateFloatAsState(
+                    targetValue = previewStepPx * distance,
+                    animationSpec = spring(dampingRatio = 0.88f, stiffness = 320f),
+                    label = "page-picker-card-x-$index"
+                )
+                val animatedCardScale by animateFloatAsState(
+                    targetValue = targetCardScale,
+                    animationSpec = spring(dampingRatio = 0.86f, stiffness = 340f),
+                    label = "page-picker-card-scale-$index"
+                )
+                val animatedCardAlpha by animateFloatAsState(
+                    targetValue = targetCardAlpha,
+                    animationSpec = tween(durationMillis = 220),
+                    label = "page-picker-card-alpha-$index"
+                )
+                val animatedShadow by animateDpAsState(
+                    targetValue = if (selected) 18.dp else 8.dp,
+                    animationSpec = tween(durationMillis = 220),
+                    label = "page-picker-card-shadow-$index"
+                )
                 Surface(
                     modifier = Modifier
                         .align(Alignment.Center)
                         .size(previewWidth, previewHeight)
                         .graphicsLayer {
-                            translationX = previewStepPx * distance
-                            scaleX = cardScale
-                            scaleY = cardScale
-                            alpha = cardAlpha
+                            translationX = animatedTranslationX
+                            scaleX = animatedCardScale
+                            scaleY = animatedCardScale
+                            alpha = animatedCardAlpha
                         }
                         .zIndex(if (selected) 3f else 1f),
                     shape = MaterialTheme.shapes.extraLarge,
                     color = Color.Transparent,
-                    shadowElevation = if (selected) 18.dp else 8.dp
+                    shadowElevation = animatedShadow
                 ) {
                     Box(
                         modifier = Modifier
@@ -1156,8 +1178,22 @@ private fun DashboardPagePickerOverlay(
             }
         }
 
-        Text(
-            text = candidateTab.displayLabel(state.rootGranted),
+        AnimatedContent(
+            targetState = candidateTab,
+            transitionSpec = {
+                val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
+                (
+                    fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) +
+                        slideInHorizontally(animationSpec = motionScheme.defaultSpatialSpec()) { width ->
+                            direction * width / 3
+                        }
+                    ) togetherWith (
+                    fadeOut(animationSpec = motionScheme.fastEffectsSpec()) +
+                        slideOutHorizontally(animationSpec = motionScheme.fastSpatialSpec()) { width ->
+                            -direction * width / 4
+                        }
+                    )
+            },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 8.dp)
@@ -1165,9 +1201,14 @@ private fun DashboardPagePickerOverlay(
                     alpha = chromeAlpha
                     translationY = 20f * (1f - chromeAlpha)
                 },
-            style = MaterialTheme.typography.titleMedium,
-            color = Color.White
-        )
+            label = "page-picker-title"
+        ) { tab ->
+            Text(
+                text = tab.displayLabel(state.rootGranted),
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White
+            )
+        }
     }
 }
 
