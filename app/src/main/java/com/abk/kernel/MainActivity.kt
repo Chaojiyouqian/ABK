@@ -130,6 +130,7 @@ import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
 import com.abk.kernel.data.model.BUILD_PAGE_STYLE_CLASSIC
 import com.abk.kernel.data.model.BUILD_PAGE_STYLE_SIMPLE
+import com.abk.kernel.dashboard.DashboardPageId
 import com.abk.kernel.viewmodel.MainViewModel
 
 class MainActivity : ComponentActivity() {
@@ -795,6 +796,7 @@ private fun AbkMainScaffold(
                             onToggleRuntimeNavigation = { vm.setRuntimeNavigationEnabled(true) },
                             pagePickerActive = pagePickerVisible,
                             onRequestPagePicker = {
+                                vm.prepareDashboardEditorPagePicker(DashboardPageId.STATUS)
                                 pagePickerCandidateTab = if (activeTab in dashboardEditorTabs) {
                                     activeTab
                                 } else {
@@ -831,6 +833,7 @@ private fun AbkMainScaffold(
                             onManagerPatchPageVisibleChange = { managerPatchPageVisible = it },
                             pagePickerActive = pagePickerVisible,
                             onRequestPagePicker = {
+                                vm.prepareDashboardEditorPagePicker(DashboardPageId.RUNTIME_HOME)
                                 pagePickerCandidateTab = if (activeTab in dashboardEditorTabs) {
                                     activeTab
                                 } else {

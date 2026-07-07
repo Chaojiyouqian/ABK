@@ -4033,6 +4033,36 @@ class MainViewModel @JvmOverloads constructor(
         }
     }
 
+    fun prepareDashboardEditorPagePicker(sourcePageId: DashboardPageId) {
+        _uiState.update { state ->
+            val referenceLayout = when (sourcePageId) {
+                DashboardPageId.STATUS -> state.statusDashboardDraftLayout ?: state.statusDashboardLayout
+                DashboardPageId.RUNTIME_HOME -> state.runtimeDashboardDraftLayout ?: state.runtimeDashboardLayout
+            }
+            when (sourcePageId) {
+                DashboardPageId.STATUS -> {
+                    val runtimeBase = state.runtimeDashboardDraftLayout ?: state.runtimeDashboardLayout
+                    val remappedRuntimeDraft = if (runtimeBase.layoutMode != referenceLayout.layoutMode) {
+                        remapRuntimeDashboardLayoutMode(runtimeBase, referenceLayout.layoutMode)
+                    } else {
+                        runtimeBase
+                    }
+                    state.copy(runtimeDashboardDraftLayout = remappedRuntimeDraft)
+                }
+
+                DashboardPageId.RUNTIME_HOME -> {
+                    val statusBase = state.statusDashboardDraftLayout ?: state.statusDashboardLayout
+                    val remappedStatusDraft = if (statusBase.layoutMode != referenceLayout.layoutMode) {
+                        remapStatusDashboardLayoutMode(statusBase, referenceLayout.layoutMode)
+                    } else {
+                        statusBase
+                    }
+                    state.copy(statusDashboardDraftLayout = remappedStatusDraft)
+                }
+            }
+        }
+    }
+
     fun discardStatusDashboardLayoutDraft() {
         _uiState.update {
             it.copy(
@@ -4522,10 +4552,42 @@ class MainViewModel @JvmOverloads constructor(
         )
     }
 
+    private fun remapStatusDashboardLayoutMode(
+        layout: DashboardLayout,
+        mode: DashboardLayoutMode
+    ): DashboardLayout {
+        val defaultLayout = when (mode) {
+            DashboardLayoutMode.FREEFORM -> StatusDashboardWidgets.defaultFreeformLayout(layout.densityPreset)
+            DashboardLayoutMode.GRID -> StatusDashboardWidgets.defaultLayout(layout.densityPreset)
+        }
+        return DashboardLayoutEngine.changeMode(
+            layout = layout,
+            targetMode = mode,
+            definitions = StatusDashboardWidgets.definitions,
+            defaultLayout = defaultLayout
+        )
+    }
+
     private fun normalizeRuntimeDashboardLayout(layout: DashboardLayout): DashboardLayout {
         val defaultLayout = RuntimeDashboardWidgets.defaultLayout(layout.densityPreset)
         return DashboardLayoutEngine.sanitize(
             layout = layout,
+            definitions = RuntimeDashboardWidgets.definitions,
+            defaultLayout = defaultLayout
+        )
+    }
+
+    private fun remapRuntimeDashboardLayoutMode(
+        layout: DashboardLayout,
+        mode: DashboardLayoutMode
+    ): DashboardLayout {
+        val defaultLayout = when (mode) {
+            DashboardLayoutMode.FREEFORM -> RuntimeDashboardWidgets.defaultFreeformLayout(layout.densityPreset)
+            DashboardLayoutMode.GRID -> RuntimeDashboardWidgets.defaultLayout(layout.densityPreset)
+        }
+        return DashboardLayoutEngine.changeMode(
+            layout = layout,
+            targetMode = mode,
             definitions = RuntimeDashboardWidgets.definitions,
             defaultLayout = defaultLayout
         )
