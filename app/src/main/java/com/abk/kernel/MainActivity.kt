@@ -457,7 +457,7 @@ private fun AbkMainScaffold(
     var lastBackAt by remember { mutableStateOf(0L) }
     val runtimeNativeManagerActive = state.hasNativeManagerPermission
     val dashboardEditorTabs = remember {
-        listOf(AbkTab.Status, AbkTab.Build, AbkTab.RuntimeHome)
+        listOf(AbkTab.Status, AbkTab.Build, AbkTab.RuntimeHome, AbkTab.InstalledModules, AbkTab.RootAuth)
     }
     val visibleTabs = remember(state.runtimeNavigationEnabled, state.rootGranted, runtimeNativeManagerActive, buildPageStyle) {
         if (state.runtimeNavigationEnabled) {
@@ -865,12 +865,32 @@ private fun AbkMainScaffold(
                             vm = vm,
                             outerPadding = contentPadding,
                             pendingModuleInstallUri = pendingModuleInstallUri,
-                            onPendingModuleInstallUriConsumed = onModuleInstallUriConsumed
+                            onPendingModuleInstallUriConsumed = onModuleInstallUriConsumed,
+                            pagePickerActive = pagePickerVisible,
+                            onRequestPagePicker = {
+                                vm.prepareDashboardEditorPagePicker(DashboardPageId.INSTALLED_MODULES)
+                                pagePickerCandidateTab = if (activeTab in dashboardEditorTabs) {
+                                    activeTab
+                                } else {
+                                    dashboardEditorTabs.first()
+                                }
+                                pagePickerVisible = true
+                            }
                         )
                         AbkTab.RootAuth -> RootAuthorizationScreen(
                             vm = vm,
                             outerPadding = contentPadding,
-                            onDetailPageVisibleChange = { rootAuthDetailPageVisible = it }
+                            onDetailPageVisibleChange = { rootAuthDetailPageVisible = it },
+                            pagePickerActive = pagePickerVisible,
+                            onRequestPagePicker = {
+                                vm.prepareDashboardEditorPagePicker(DashboardPageId.ROOT_AUTH)
+                                pagePickerCandidateTab = if (activeTab in dashboardEditorTabs) {
+                                    activeTab
+                                } else {
+                                    dashboardEditorTabs.first()
+                                }
+                                pagePickerVisible = true
+                            }
                         )
                         AbkTab.Settings -> SettingsScreen(
                             vm = vm,
@@ -944,15 +964,17 @@ private fun AbkMainScaffold(
                 onCancel = { pagePickerVisible = false },
                 onConfirm = {
                     val targetTab = pagePickerCandidateTab ?: activeTab
-                    if (targetTab == AbkTab.RuntimeHome && !state.runtimeNavigationEnabled) {
-                        vm.setRuntimeNavigationEnabled(true)
-                    } else if (targetTab == AbkTab.Status && state.runtimeNavigationEnabled) {
-                        vm.setRuntimeNavigationEnabled(false)
+                    if (targetTab in listOf(AbkTab.RuntimeHome, AbkTab.InstalledModules, AbkTab.RootAuth)) {
+                        if (!state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(true)
+                    } else if (targetTab in listOf(AbkTab.Status, AbkTab.Build, AbkTab.Flash)) {
+                        if (state.runtimeNavigationEnabled) vm.setRuntimeNavigationEnabled(false)
                     }
                     when (targetTab) {
                         AbkTab.Status -> vm.enterStatusDashboardEditMode()
                         AbkTab.Build -> vm.enterBuildDashboardEditMode()
                         AbkTab.RuntimeHome -> vm.enterRuntimeDashboardEditMode()
+                        AbkTab.InstalledModules -> vm.enterDashboardEditMode(DashboardPageId.INSTALLED_MODULES)
+                        AbkTab.RootAuth -> vm.enterDashboardEditMode(DashboardPageId.ROOT_AUTH)
                         else -> Unit
                     }
                     selectedTab = targetTab
@@ -1285,12 +1307,14 @@ private fun DashboardPagePreviewContent(
             vm = vm,
             outerPadding = previewPadding,
             pendingModuleInstallUri = null,
-            onPendingModuleInstallUriConsumed = {}
+            onPendingModuleInstallUriConsumed = {},
+            readOnlyPreview = true
         )
         AbkTab.RootAuth -> RootAuthorizationScreen(
             vm = vm,
             outerPadding = previewPadding,
-            onDetailPageVisibleChange = {}
+            onDetailPageVisibleChange = {},
+            readOnlyPreview = true
         )
         AbkTab.Settings -> SettingsScreen(
             vm = vm,

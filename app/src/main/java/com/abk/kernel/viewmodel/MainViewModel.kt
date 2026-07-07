@@ -32,7 +32,12 @@ import com.abk.kernel.dashboard.DashboardLayoutImportResult
 import com.abk.kernel.dashboard.DashboardLayoutMode
 import com.abk.kernel.dashboard.DashboardPageId
 import com.abk.kernel.dashboard.BuildDashboardWidgets
+import com.abk.kernel.dashboard.FlashDashboardWidgets
+import com.abk.kernel.dashboard.InstalledModulesDashboardWidgets
+import com.abk.kernel.dashboard.ModuleRepositoryDashboardWidgets
+import com.abk.kernel.dashboard.RootAuthDashboardWidgets
 import com.abk.kernel.dashboard.RuntimeDashboardWidgets
+import com.abk.kernel.dashboard.SettingsDashboardWidgets
 import com.abk.kernel.dashboard.StatusDashboardWidgets
 import com.abk.kernel.utils.BuildMonitorService
 import com.abk.kernel.utils.BuildProgressUtils
@@ -258,12 +263,12 @@ data class MainUiState(
 private fun defaultDashboardLayouts(): Map<DashboardPageId, DashboardLayout> = buildMap {
     put(DashboardPageId.STATUS, StatusDashboardWidgets.defaultLayout())
     put(DashboardPageId.BUILD, BuildDashboardWidgets.defaultLayout())
-    put(DashboardPageId.MODULES, DashboardLayout(pageId = DashboardPageId.MODULES))
-    put(DashboardPageId.FLASH, DashboardLayout(pageId = DashboardPageId.FLASH))
+    put(DashboardPageId.MODULES, ModuleRepositoryDashboardWidgets.defaultLayout())
+    put(DashboardPageId.FLASH, FlashDashboardWidgets.defaultLayout())
     put(DashboardPageId.RUNTIME_HOME, RuntimeDashboardWidgets.defaultLayout())
-    put(DashboardPageId.INSTALLED_MODULES, DashboardLayout(pageId = DashboardPageId.INSTALLED_MODULES))
-    put(DashboardPageId.ROOT_AUTH, DashboardLayout(pageId = DashboardPageId.ROOT_AUTH))
-    put(DashboardPageId.SETTINGS, DashboardLayout(pageId = DashboardPageId.SETTINGS))
+    put(DashboardPageId.INSTALLED_MODULES, InstalledModulesDashboardWidgets.defaultLayout())
+    put(DashboardPageId.ROOT_AUTH, RootAuthDashboardWidgets.defaultLayout())
+    put(DashboardPageId.SETTINGS, SettingsDashboardWidgets.defaultLayout())
 }
 
 private fun MainUiState.withDashboardLayoutEntry(
@@ -341,6 +346,45 @@ private fun dashboardLayoutJsonForPage(
         ?.optString(pageId.rawValue)
         ?.takeIf { it.isNotBlank() }
 }.getOrNull()
+
+private fun dashboardDefinitionsFor(pageId: DashboardPageId) = when (pageId) {
+    DashboardPageId.STATUS -> StatusDashboardWidgets.definitions
+    DashboardPageId.BUILD -> BuildDashboardWidgets.definitions
+    DashboardPageId.MODULES -> ModuleRepositoryDashboardWidgets.definitions
+    DashboardPageId.FLASH -> FlashDashboardWidgets.definitions
+    DashboardPageId.RUNTIME_HOME -> RuntimeDashboardWidgets.definitions
+    DashboardPageId.INSTALLED_MODULES -> InstalledModulesDashboardWidgets.definitions
+    DashboardPageId.ROOT_AUTH -> RootAuthDashboardWidgets.definitions
+    DashboardPageId.SETTINGS -> SettingsDashboardWidgets.definitions
+}
+
+private fun dashboardDefaultLayoutFor(
+    pageId: DashboardPageId,
+    densityPreset: DashboardDensityPreset = DashboardDensityPreset.STANDARD
+): DashboardLayout = when (pageId) {
+    DashboardPageId.STATUS -> StatusDashboardWidgets.defaultLayout(densityPreset)
+    DashboardPageId.BUILD -> BuildDashboardWidgets.defaultLayout(densityPreset)
+    DashboardPageId.MODULES -> ModuleRepositoryDashboardWidgets.defaultLayout(densityPreset)
+    DashboardPageId.FLASH -> FlashDashboardWidgets.defaultLayout(densityPreset)
+    DashboardPageId.RUNTIME_HOME -> RuntimeDashboardWidgets.defaultLayout(densityPreset)
+    DashboardPageId.INSTALLED_MODULES -> InstalledModulesDashboardWidgets.defaultLayout(densityPreset)
+    DashboardPageId.ROOT_AUTH -> RootAuthDashboardWidgets.defaultLayout(densityPreset)
+    DashboardPageId.SETTINGS -> SettingsDashboardWidgets.defaultLayout(densityPreset)
+}
+
+private fun dashboardDefaultFreeformLayoutFor(
+    pageId: DashboardPageId,
+    densityPreset: DashboardDensityPreset = DashboardDensityPreset.STANDARD
+): DashboardLayout = when (pageId) {
+    DashboardPageId.STATUS -> StatusDashboardWidgets.defaultFreeformLayout(densityPreset)
+    DashboardPageId.BUILD -> BuildDashboardWidgets.defaultFreeformLayout(densityPreset)
+    DashboardPageId.MODULES -> ModuleRepositoryDashboardWidgets.defaultFreeformLayout(densityPreset)
+    DashboardPageId.FLASH -> FlashDashboardWidgets.defaultFreeformLayout(densityPreset)
+    DashboardPageId.RUNTIME_HOME -> RuntimeDashboardWidgets.defaultFreeformLayout(densityPreset)
+    DashboardPageId.INSTALLED_MODULES -> InstalledModulesDashboardWidgets.defaultFreeformLayout(densityPreset)
+    DashboardPageId.ROOT_AUTH -> RootAuthDashboardWidgets.defaultFreeformLayout(densityPreset)
+    DashboardPageId.SETTINGS -> SettingsDashboardWidgets.defaultFreeformLayout(densityPreset)
+}
 
 class MainViewModel @JvmOverloads constructor(
     application: Application,
@@ -816,52 +860,62 @@ class MainViewModel @JvmOverloads constructor(
         }
         viewModelScope.launch {
             prefs.dashboardLayoutsJson.collect { layoutsJson ->
-                val json = dashboardLayoutJsonForPage(layoutsJson, DashboardPageId.BUILD)
-                val defaultLayout = BuildDashboardWidgets.defaultLayout()
-                val normalizedLayout = runCatching {
-                    val restoredLayout = json
-                        ?.takeIf { it.isNotBlank() }
-                        ?.let {
-                            DashboardLayoutCodec.importLayout(
-                                json = it,
-                                expectedPageId = DashboardPageId.BUILD,
-                                definitions = BuildDashboardWidgets.definitions,
-                                defaultLayoutForDensity = BuildDashboardWidgets::defaultLayout,
-                                hideMissingWidgets = false
-                            ).layout
-                        }
-                    if (restoredLayout != null) {
-                        DashboardLayoutEngine.sanitize(
-                            layout = restoredLayout,
-                            definitions = BuildDashboardWidgets.definitions,
-                            defaultLayout = when (restoredLayout.layoutMode) {
-                                DashboardLayoutMode.FREEFORM ->
-                                    BuildDashboardWidgets.defaultFreeformLayout(restoredLayout.densityPreset)
-                                DashboardLayoutMode.GRID ->
-                                    BuildDashboardWidgets.defaultLayout(restoredLayout.densityPreset)
-                            }
-                        )
-                    } else {
-                        DashboardLayoutEngine.sanitize(
-                            layout = defaultLayout,
-                            definitions = BuildDashboardWidgets.definitions,
-                            defaultLayout = defaultLayout
-                        )
-                    }
-                }.getOrElse {
-                    defaultLayout
-                }
+                val genericPages = listOf(
+                    DashboardPageId.BUILD,
+                    DashboardPageId.MODULES,
+                    DashboardPageId.FLASH,
+                    DashboardPageId.INSTALLED_MODULES,
+                    DashboardPageId.ROOT_AUTH,
+                    DashboardPageId.SETTINGS
+                )
                 _uiState.update { state ->
-                    state
-                        .withDashboardLayoutEntry(DashboardPageId.BUILD, normalizedLayout)
-                        .withDashboardDraftEntry(
-                            DashboardPageId.BUILD,
-                            if (state.dashboardEditingPageId == DashboardPageId.BUILD) {
-                                state.dashboardDraftLayouts[DashboardPageId.BUILD] ?: normalizedLayout
+                    genericPages.fold(state) { acc, pageId ->
+                        val json = dashboardLayoutJsonForPage(layoutsJson, pageId)
+                        val defaultLayout = dashboardDefaultLayoutFor(pageId)
+                        val normalizedLayout = runCatching {
+                            val restoredLayout = json
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let {
+                                    DashboardLayoutCodec.importLayout(
+                                        json = it,
+                                        expectedPageId = pageId,
+                                        definitions = dashboardDefinitionsFor(pageId),
+                                        defaultLayoutForDensity = { preset -> dashboardDefaultLayoutFor(pageId, preset) },
+                                        hideMissingWidgets = false
+                                    ).layout
+                                }
+                            if (restoredLayout != null) {
+                                DashboardLayoutEngine.sanitize(
+                                    layout = restoredLayout,
+                                    definitions = dashboardDefinitionsFor(pageId),
+                                    defaultLayout = when (restoredLayout.layoutMode) {
+                                        DashboardLayoutMode.FREEFORM ->
+                                            dashboardDefaultFreeformLayoutFor(pageId, restoredLayout.densityPreset)
+                                        DashboardLayoutMode.GRID ->
+                                            dashboardDefaultLayoutFor(pageId, restoredLayout.densityPreset)
+                                    }
+                                )
                             } else {
-                                state.dashboardDraftLayouts[DashboardPageId.BUILD]
+                                DashboardLayoutEngine.sanitize(
+                                    layout = defaultLayout,
+                                    definitions = dashboardDefinitionsFor(pageId),
+                                    defaultLayout = defaultLayout
+                                )
                             }
-                        )
+                        }.getOrElse {
+                            defaultLayout
+                        }
+                        acc
+                            .withDashboardLayoutEntry(pageId, normalizedLayout)
+                            .withDashboardDraftEntry(
+                                pageId,
+                                if (acc.dashboardEditingPageId == pageId) {
+                                    acc.dashboardDraftLayouts[pageId] ?: normalizedLayout
+                                } else {
+                                    acc.dashboardDraftLayouts[pageId]
+                                }
+                            )
+                    }
                 }
             }
         }
@@ -4164,6 +4218,10 @@ class MainViewModel @JvmOverloads constructor(
         activateDashboardEditorPage(DashboardPageId.STATUS)
     }
 
+    fun enterDashboardEditMode(pageId: DashboardPageId) {
+        activateDashboardEditorPage(pageId)
+    }
+
     fun enterBuildDashboardEditMode() {
         activateDashboardEditorPage(DashboardPageId.BUILD)
     }
@@ -4295,6 +4353,161 @@ class MainViewModel @JvmOverloads constructor(
                 .withDashboardDraftEntry(DashboardPageId.RUNTIME_HOME, null)
                 .withDashboardEditingPage(null)
         }
+    }
+
+    fun discardDashboardLayoutDraft(pageId: DashboardPageId) {
+        _uiState.update {
+            it
+                .withDashboardDraftEntry(pageId, null)
+                .withDashboardEditingPage(null)
+        }
+    }
+
+    fun moveDashboardWidget(pageId: DashboardPageId, widgetId: String, targetX: Int, targetY: Int) {
+        val draft = _uiState.value.dashboardDraftLayouts[pageId] ?: return
+        val updated = DashboardLayoutEngine.moveItemExact(
+            layout = draft,
+            widgetId = widgetId,
+            targetX = targetX,
+            targetY = targetY,
+            definitions = dashboardDefinitionsFor(pageId)
+        )
+        if (updated != draft) {
+            _uiState.update { it.withDashboardDraftEntry(pageId, updated) }
+        }
+    }
+
+    fun resizeDashboardWidget(pageId: DashboardPageId, widgetId: String, targetW: Int, targetH: Int) {
+        val draft = _uiState.value.dashboardDraftLayouts[pageId] ?: return
+        val updated = DashboardLayoutEngine.resizeItemExact(
+            layout = draft,
+            widgetId = widgetId,
+            targetW = targetW,
+            targetH = targetH,
+            definitions = dashboardDefinitionsFor(pageId)
+        )
+        if (updated != draft) {
+            _uiState.update { it.withDashboardDraftEntry(pageId, updated) }
+        }
+    }
+
+    fun setDashboardWidgetSpanMode(pageId: DashboardPageId, widgetId: String, spanMode: DashboardItemSpanMode) {
+        val draft = _uiState.value.dashboardDraftLayouts[pageId] ?: return
+        val updated = DashboardLayoutEngine.setItemSpanMode(
+            layout = draft,
+            widgetId = widgetId,
+            spanMode = spanMode,
+            definitions = dashboardDefinitionsFor(pageId)
+        )
+        if (updated != draft) {
+            _uiState.update { it.withDashboardDraftEntry(pageId, updated) }
+        }
+    }
+
+    fun setDashboardWidgetVisible(pageId: DashboardPageId, widgetId: String, visible: Boolean) {
+        val baseLayout = _uiState.value.dashboardDraftLayouts[pageId]
+            ?: _uiState.value.dashboardLayouts[pageId]
+            ?: dashboardDefaultLayoutFor(pageId)
+        val updated = DashboardLayoutEngine.setItemVisibility(
+            layout = baseLayout,
+            widgetId = widgetId,
+            visible = visible,
+            definitions = dashboardDefinitionsFor(pageId)
+        )
+        _uiState.update { state ->
+            if (state.dashboardEditingPageId == pageId) {
+                state.withDashboardDraftEntry(pageId, updated)
+            } else {
+                state.withDashboardLayoutEntry(pageId, updated)
+            }
+        }
+        if (_uiState.value.dashboardEditingPageId != pageId) {
+            viewModelScope.launch {
+                persistDashboardLayoutSafely(pageId, updated)
+            }
+        }
+    }
+
+    fun placeDashboardHiddenWidget(pageId: DashboardPageId, widgetId: String, targetX: Int, targetY: Int) {
+        val draft = _uiState.value.dashboardDraftLayouts[pageId] ?: return
+        val definitions = dashboardDefinitionsFor(pageId)
+        val visibleLayout = DashboardLayoutEngine.setItemVisibility(
+            layout = draft,
+            widgetId = widgetId,
+            visible = true,
+            definitions = definitions
+        )
+        val defaultSizedLayout = DashboardLayoutEngine.setItemSpanMode(
+            layout = visibleLayout,
+            widgetId = widgetId,
+            spanMode = DashboardItemSpanMode.DEFAULT,
+            definitions = definitions
+        )
+        val placedLayout = if (
+            DashboardLayoutEngine.canMoveItem(
+                layout = defaultSizedLayout,
+                widgetId = widgetId,
+                targetX = targetX,
+                targetY = targetY,
+                definitions = definitions
+            )
+        ) {
+            DashboardLayoutEngine.moveItemExact(
+                layout = defaultSizedLayout,
+                widgetId = widgetId,
+                targetX = targetX,
+                targetY = targetY,
+                definitions = definitions
+            )
+        } else {
+            defaultSizedLayout
+        }
+        _uiState.update { it.withDashboardDraftEntry(pageId, placedLayout) }
+    }
+
+    fun saveDashboardLayoutDraft(pageId: DashboardPageId) {
+        val draft = _uiState.value.dashboardDraftLayouts[pageId] ?: return
+        val normalized = normalizeDashboardLayoutFor(pageId, draft)
+        viewModelScope.launch {
+            val persisted = persistDashboardLayoutSafely(pageId, normalized)
+            if (persisted) {
+                _uiState.update {
+                    it
+                        .withDashboardLayoutEntry(pageId, normalized)
+                        .withDashboardDraftEntry(pageId, null)
+                        .withDashboardEditingPage(null)
+                }
+                showSnackbar(text(R.string.status_layout_saved))
+            }
+        }
+    }
+
+    fun exportDashboardLayoutJson(pageId: DashboardPageId, useDraft: Boolean = true): String {
+        val sourceLayout = if (useDraft) {
+            _uiState.value.dashboardDraftLayouts[pageId]
+                ?: _uiState.value.dashboardLayouts[pageId]
+                ?: dashboardDefaultLayoutFor(pageId)
+        } else {
+            _uiState.value.dashboardLayouts[pageId]
+                ?: dashboardDefaultLayoutFor(pageId)
+        }
+        return DashboardLayoutCodec.export(normalizeDashboardLayoutFor(pageId, sourceLayout))
+    }
+
+    fun importDashboardLayoutJson(pageId: DashboardPageId, json: String): DashboardLayoutImportResult {
+        val result = DashboardLayoutCodec.importLayout(
+            json = json,
+            expectedPageId = pageId,
+            definitions = dashboardDefinitionsFor(pageId),
+            defaultLayoutForDensity = { preset -> dashboardDefaultLayoutFor(pageId, preset) },
+            hideMissingWidgets = false
+        )
+        _uiState.update { state ->
+            state
+                .withDashboardDraftEntry(pageId, result.layout)
+                .withDashboardEditingPage(pageId)
+        }
+        return result
     }
 
     fun moveBuildDashboardWidget(widgetId: String, targetX: Int, targetY: Int) {
@@ -4914,6 +5127,20 @@ class MainViewModel @JvmOverloads constructor(
         )
     }
 
+    private fun normalizeDashboardLayoutFor(
+        pageId: DashboardPageId,
+        layout: DashboardLayout
+    ): DashboardLayout = when (pageId) {
+        DashboardPageId.STATUS -> normalizeStatusDashboardLayout(layout)
+        DashboardPageId.BUILD -> normalizeBuildDashboardLayout(layout)
+        DashboardPageId.RUNTIME_HOME -> normalizeRuntimeDashboardLayout(layout)
+        else -> DashboardLayoutEngine.sanitize(
+            layout = layout,
+            definitions = dashboardDefinitionsFor(pageId),
+            defaultLayout = dashboardDefaultLayoutFor(pageId, layout.densityPreset)
+        )
+    }
+
     private fun normalizeBuildDashboardLayout(layout: DashboardLayout): DashboardLayout {
         val defaultLayout = BuildDashboardWidgets.defaultLayout(layout.densityPreset)
         return DashboardLayoutEngine.sanitize(
@@ -4936,6 +5163,25 @@ class MainViewModel @JvmOverloads constructor(
             targetMode = mode,
             definitions = StatusDashboardWidgets.definitions,
             defaultLayout = defaultLayout
+        )
+    }
+
+    private fun remapDashboardLayoutModeFor(
+        pageId: DashboardPageId,
+        layout: DashboardLayout,
+        mode: DashboardLayoutMode
+    ): DashboardLayout = when (pageId) {
+        DashboardPageId.STATUS -> remapStatusDashboardLayoutMode(layout, mode)
+        DashboardPageId.BUILD -> remapBuildDashboardLayoutMode(layout, mode)
+        DashboardPageId.RUNTIME_HOME -> remapRuntimeDashboardLayoutMode(layout, mode)
+        else -> DashboardLayoutEngine.changeMode(
+            layout = layout,
+            targetMode = mode,
+            definitions = dashboardDefinitionsFor(pageId),
+            defaultLayout = when (mode) {
+                DashboardLayoutMode.FREEFORM -> dashboardDefaultFreeformLayoutFor(pageId, layout.densityPreset)
+                DashboardLayoutMode.GRID -> dashboardDefaultLayoutFor(pageId, layout.densityPreset)
+            }
         )
     }
 
@@ -4990,6 +5236,18 @@ class MainViewModel @JvmOverloads constructor(
         prefs.saveDashboardLayoutEntry(DashboardPageId.STATUS, json)
     }
 
+    private suspend fun persistDashboardLayoutFor(pageId: DashboardPageId, layout: DashboardLayout) {
+        when (pageId) {
+            DashboardPageId.STATUS -> persistStatusDashboardLayout(layout)
+            DashboardPageId.BUILD -> persistBuildDashboardLayout(layout)
+            DashboardPageId.RUNTIME_HOME -> persistRuntimeDashboardLayout(layout)
+            else -> {
+                val normalized = normalizeDashboardLayoutFor(pageId, layout)
+                prefs.saveDashboardLayoutEntry(pageId, DashboardLayoutCodec.export(normalized))
+            }
+        }
+    }
+
     private suspend fun persistBuildDashboardLayout(layout: DashboardLayout) {
         val normalized = normalizeBuildDashboardLayout(layout)
         prefs.saveDashboardLayoutEntry(
@@ -5020,6 +5278,21 @@ class MainViewModel @JvmOverloads constructor(
                 longDuration = true
             )
         }.isSuccess
+
+    private suspend fun persistDashboardLayoutSafely(
+        pageId: DashboardPageId,
+        layout: DashboardLayout
+    ): Boolean = runCatching {
+        persistDashboardLayoutFor(pageId, layout)
+    }.onFailure { error ->
+        showSnackbar(
+            text(
+                R.string.status_layout_save_failed,
+                error.message ?: error::class.java.simpleName
+            ),
+            longDuration = true
+        )
+    }.isSuccess
 
     private suspend fun persistBuildDashboardLayoutSafely(layout: DashboardLayout): Boolean =
         runCatching {

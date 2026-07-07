@@ -66,6 +66,8 @@ import com.abk.kernel.data.model.AbkRuntimeBuildInfo
 import com.abk.kernel.data.model.AbkRuntimeModule
 import com.abk.kernel.data.model.AbkRuntimeStatus
 import com.abk.kernel.dashboard.DashboardLayoutMode
+import com.abk.kernel.dashboard.DashboardPageId
+import com.abk.kernel.dashboard.InstalledModulesDashboardWidgets
 import com.abk.kernel.dashboard.RuntimeDashboardWidgets
 import com.abk.kernel.ui.components.AbkScreenHorizontalPadding
 import com.abk.kernel.ui.components.ObserveChildPageVisibility
@@ -576,11 +578,52 @@ fun InstalledModulesScreen(
     vm: MainViewModel,
     outerPadding: PaddingValues = PaddingValues(0.dp),
     pendingModuleInstallUri: String? = null,
-    onPendingModuleInstallUriConsumed: () -> Unit = {}
+    onPendingModuleInstallUriConsumed: () -> Unit = {},
+    readOnlyPreview: Boolean = false,
+    pagePickerActive: Boolean = false,
+    onRequestPagePicker: () -> Unit = {}
 ) {
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val scrollState = rememberScrollState()
+    val editorActive = state.dashboardEditingPageId == DashboardPageId.INSTALLED_MODULES && !readOnlyPreview
+    val pageLayout = if (readOnlyPreview) {
+        state.dashboardDraftLayouts[DashboardPageId.INSTALLED_MODULES]
+            ?: state.dashboardLayouts[DashboardPageId.INSTALLED_MODULES]
+            ?: InstalledModulesDashboardWidgets.defaultLayout()
+    } else if (editorActive) {
+        state.dashboardDraftLayouts[DashboardPageId.INSTALLED_MODULES]
+            ?: state.dashboardLayouts[DashboardPageId.INSTALLED_MODULES]
+            ?: InstalledModulesDashboardWidgets.defaultLayout()
+    } else {
+        state.dashboardLayouts[DashboardPageId.INSTALLED_MODULES]
+            ?: InstalledModulesDashboardWidgets.defaultLayout()
+    }
+    var actionMenuExpanded by remember { mutableStateOf(false) }
+    var widgetsTrayExpanded by remember { mutableStateOf(false) }
+    var selectedWidgetId by remember { mutableStateOf<String?>(null) }
+    var viewportHeightPx by remember { mutableStateOf(0f) }
+    var activeDragPointerY by remember { mutableStateOf<Float?>(null) }
+    var gridMetrics by remember { mutableStateOf<DashboardGridMetrics?>(null) }
+    var freeformMetrics by remember { mutableStateOf<DashboardFreeformMetrics?>(null) }
+    var trayTopY by remember { mutableStateOf(Float.MAX_VALUE) }
+    var hiddenWidgetDrag by remember { mutableStateOf<DashboardHiddenWidgetDragState?>(null) }
+    val actionMenuRotation by animateFloatAsState(
+        targetValue = if (actionMenuExpanded) 45f else 0f,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "installed-layout-fab-rotation"
+    )
+    val trayWidgetIds = remember(pageLayout.items, hiddenWidgetDrag) {
+        buildList {
+            val hiddenIds = pageLayout.items.filter { !it.visible }.map { it.widgetId }
+            addAll(hiddenIds)
+            val draggingWidgetId = hiddenWidgetDrag?.widgetId
+            if (draggingWidgetId != null && draggingWidgetId !in this) add(draggingWidgetId)
+        }
+    }
+    val pinchObserver = rememberEditorPinchObserver(onRequestPagePicker)
     var query by rememberSaveable { mutableStateOf("") }
     var pendingInstallUri by remember { mutableStateOf<Uri?>(null) }
     var installDialogVisible by remember { mutableStateOf(false) }
@@ -601,6 +644,41 @@ fun InstalledModulesScreen(
             )
     }
     val groupedModules = remember(modules) { groupRuntimeModulesForDisplay(modules) }
+    val widgetLabels = mapOf(
+        InstalledModulesDashboardWidgets.CONTROLS to stringResource(R.string.runtime_installed_modules_title),
+        InstalledModulesDashboardWidgets.LIST to stringResource(R.string.runtime_module_count, modules.size)
+    )
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                val payload = readLayoutTextFromUri(context, uri)
+                vm.importDashboardLayoutJson(DashboardPageId.INSTALLED_MODULES, payload)
+            }.onSuccess { result ->
+                val messageRes = if (result.error == null) {
+                    R.string.status_layout_import_success
+                } else {
+                    R.string.status_layout_import_failed_reset
+                }
+                val message = if (result.error == null) {
+                    context.getString(messageRes, result.importedItemCount, result.ignoredItemCount)
+                } else {
+                    context.getString(messageRes)
+                }
+                vm.showSnackbar(message, longDuration = result.error != null)
+            }.onFailure { error ->
+                vm.showSnackbar(
+                    context.getString(
+                        R.string.status_layout_import_failed,
+                        error.message ?: error::class.java.simpleName
+                    ),
+                    longDuration = true
+                )
+            }
+        }
+    }
 
     fun appendInstallLog(line: String) {
         scope.launch(Dispatchers.Main.immediate) {
@@ -722,6 +800,137 @@ fun InstalledModulesScreen(
         if (state.runtimeNavigationEnabled) vm.refreshAbkRuntimeStatus()
     }
 
+    LaunchedEffect(editorActive) {
+        if (!editorActive) {
+            actionMenuExpanded = false
+            widgetsTrayExpanded = false
+            selectedWidgetId = null
+            hiddenWidgetDrag = null
+            activeDragPointerY = null
+        }
+    }
+
+    LaunchedEffect(pagePickerActive) {
+        if (pagePickerActive) {
+            actionMenuExpanded = false
+        }
+    }
+
+    LaunchedEffect(activeDragPointerY, viewportHeightPx) {
+        val triggerY = activeDragPointerY ?: return@LaunchedEffect
+        if (viewportHeightPx <= 0f) return@LaunchedEffect
+        val thresholdPx = with(density) { 88.dp.toPx() }
+        while (activeDragPointerY != null) {
+            val currentY = activeDragPointerY ?: break
+            val topDistance = currentY
+            val bottomDistance = viewportHeightPx - currentY
+            val delta = when {
+                topDistance < thresholdPx -> {
+                    val ratio = 1f - (topDistance / thresholdPx).coerceIn(0f, 1f)
+                    -((4f) + ratio * 28f)
+                }
+                bottomDistance < thresholdPx -> {
+                    val ratio = 1f - (bottomDistance / thresholdPx).coerceIn(0f, 1f)
+                    (4f) + ratio * 28f
+                }
+                else -> 0f
+            }
+            if (delta != 0f) {
+                scrollState.scrollTo(
+                    (scrollState.value + delta.roundToInt()).coerceIn(0, scrollState.maxValue)
+                )
+            }
+            delay(16)
+        }
+    }
+
+    @Composable
+    fun InstalledModulesWidget(widgetId: String) {
+        when (widgetId) {
+            InstalledModulesDashboardWidgets.CONTROLS -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                RuntimeModuleSearchField(query, onValueChange = { query = it })
+                if (!editorActive && !readOnlyPreview) {
+                    OutlinedButton(
+                        onClick = { vm.refreshAbkRuntimeStatus() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Refresh, null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.runtime_refresh_installed_modules))
+                    }
+                }
+                if (state.abkRuntimeLoading) {
+                    ShimmerLinearProgress(
+                        progress = { null },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                state.abkRuntimeError?.let {
+                    RuntimeErrorCard(
+                        message = if (state.abkRuntimeStatus == null || !state.hasNativeManagerPermission) {
+                            it
+                        } else {
+                            stringResource(R.string.runtime_operation_incomplete_retry)
+                        },
+                        onRefresh = vm::refreshAbkRuntimeStatus
+                    )
+                }
+            }
+
+            InstalledModulesDashboardWidgets.LIST -> {
+                if (state.abkRuntimeStatus != null && modules.isEmpty()) {
+                    Text(
+                        text = if (query.isBlank()) {
+                            stringResource(R.string.runtime_no_reported_modules)
+                        } else {
+                            stringResource(R.string.runtime_no_matching_modules)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 24.dp)
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        groupedModules.forEach { grouped ->
+                            grouped.groupName?.let { groupName ->
+                                Text(
+                                    text = groupName,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                                grouped.groupDescription?.takeIf { it.isNotBlank() }?.let { description ->
+                                    Text(
+                                        text = description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            grouped.modules.forEach { module ->
+                                InstalledRuntimeModuleCard(
+                                    module = module,
+                                    actionInFlight = state.abkRuntimeModuleActionId == module.id,
+                                    onSetEnabled = { enabled -> vm.setAbkRuntimeModuleEnabled(module.id, enabled) },
+                                    onRequestUninstall = { uninstallTarget = module },
+                                    onRunAction = { vm.runRuntimeModuleAction(module.id) },
+                                    onOpenWebUi = {
+                                        context.startActivity(
+                                            Intent(context, ModuleWebUiActivity::class.java)
+                                                .putExtra(ModuleWebUiActivity.EXTRA_MODULE_ID, module.id)
+                                                .putExtra(ModuleWebUiActivity.EXTRA_MODULE_NAME, module.displayName())
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Scaffold(
         containerColor = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
         topBar = {
@@ -729,13 +938,16 @@ fun InstalledModulesScreen(
                 title = stringResource(R.string.runtime_installed_modules_title),
                 scrollBehavior = scrollBehavior,
                 actions = {
-                    IconButton(onClick = { vm.refreshAbkRuntimeStatus() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.runtime_refresh_installed_modules))
+                    if (!editorActive && !readOnlyPreview) {
+                        IconButton(onClick = { vm.refreshAbkRuntimeStatus() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.runtime_refresh_installed_modules))
+                        }
                     }
                 }
             )
         },
-        floatingActionButton = {
+        floatingActionButton = if (!editorActive && !readOnlyPreview) {
+            {
             SmallFloatingActionButton(
                 onClick = {
                     launchModulePickerWithPermissionCheck()
@@ -747,85 +959,210 @@ fun InstalledModulesScreen(
                 Icon(Icons.Default.UploadFile, contentDescription = stringResource(R.string.runtime_install_module))
             }
         }
+            }
+        } else {
+            {}
+        }
     ) { padding ->
-        Column(
+        val editorDockHeight = 92.dp
+        Box(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = AbkScreenHorizontalPadding),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() }
+                .then(
+                    if (editorActive && !pagePickerActive) {
+                        Modifier.motionEventSpy(pinchObserver)
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
-            RuntimeModuleSearchField(query, onValueChange = { query = it })
-
-            if (state.abkRuntimeLoading) {
-                ShimmerLinearProgress(
-                    progress = { null },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-
-            state.abkRuntimeError?.let {
-                RuntimeErrorCard(
-                    message = if (state.abkRuntimeStatus == null || !state.hasNativeManagerPermission) {
-                        it
-                    } else {
-                        stringResource(R.string.runtime_operation_incomplete_retry)
-                    },
-                    onRefresh = vm::refreshAbkRuntimeStatus
-                )
-            }
-
-            if (state.abkRuntimeStatus != null && modules.isEmpty()) {
-                Text(
-                    text = if (query.isBlank()) {
-                        stringResource(R.string.runtime_no_reported_modules)
-                    } else {
-                        stringResource(R.string.runtime_no_matching_modules)
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 24.dp)
-                )
-            } else {
-                groupedModules.forEach { grouped ->
-                    grouped.groupName?.let { groupName ->
-                        Text(
-                            text = groupName,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                        grouped.groupDescription?.takeIf { it.isNotBlank() }?.let { description ->
-                            Text(
-                                text = description,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = AbkScreenHorizontalPadding)
+                    .padding(
+                        bottom = if (editorActive) {
+                            editorDockHeight + 28.dp
+                        } else {
+                            80.dp + outerPadding.calculateBottomPadding()
                         }
-                    }
-                    grouped.modules.forEach { module ->
-                        InstalledRuntimeModuleCard(
-                            module = module,
-                            actionInFlight = state.abkRuntimeModuleActionId == module.id,
-                            onSetEnabled = { enabled -> vm.setAbkRuntimeModuleEnabled(module.id, enabled) },
-                            onRequestUninstall = { uninstallTarget = module },
-                            onRunAction = { vm.runRuntimeModuleAction(module.id) },
-                            onOpenWebUi = {
-                                context.startActivity(
-                                    Intent(context, ModuleWebUiActivity::class.java)
-                                        .putExtra(ModuleWebUiActivity.EXTRA_MODULE_ID, module.id)
-                                        .putExtra(ModuleWebUiActivity.EXTRA_MODULE_NAME, module.displayName())
-                                )
-                            }
-                        )
-                    }
+                    ),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                when (pageLayout.layoutMode) {
+                    DashboardLayoutMode.GRID -> DashboardGrid(
+                        layout = pageLayout,
+                        widgetLabels = widgetLabels,
+                        editable = editorActive,
+                        canMoveItem = { widgetId, targetX, targetY ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                                layout = pageLayout,
+                                widgetId = widgetId,
+                                targetX = targetX,
+                                targetY = targetY,
+                                definitions = InstalledModulesDashboardWidgets.definitions
+                            )
+                        },
+                        canResizeItem = { widgetId, targetW, targetH ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                                layout = pageLayout,
+                                widgetId = widgetId,
+                                targetW = targetW,
+                                targetH = targetH,
+                                definitions = InstalledModulesDashboardWidgets.definitions
+                            )
+                        },
+                        canHideWidget = { widgetId ->
+                            InstalledModulesDashboardWidgets.definitionMap[widgetId]?.canHide == true
+                        },
+                        canMinimizeWidget = { widgetId ->
+                            InstalledModulesDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        canMaximizeWidget = { widgetId ->
+                            InstalledModulesDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        canResizeWidget = { widgetId ->
+                            InstalledModulesDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        onMoveItem = { widgetId, x, y -> vm.moveDashboardWidget(DashboardPageId.INSTALLED_MODULES, widgetId, x, y) },
+                        onResizeItem = { widgetId, w, h -> vm.resizeDashboardWidget(DashboardPageId.INSTALLED_MODULES, widgetId, w, h) },
+                        onSetItemSpanMode = { widgetId, spanMode -> vm.setDashboardWidgetSpanMode(DashboardPageId.INSTALLED_MODULES, widgetId, spanMode) },
+                        onHideItem = { widgetId -> vm.setDashboardWidgetVisible(DashboardPageId.INSTALLED_MODULES, widgetId, false) },
+                        selectedWidgetId = selectedWidgetId,
+                        onSelectWidget = { selectedWidgetId = it },
+                        onGridMetricsChanged = { metrics -> gridMetrics = metrics },
+                        onDragPointerYChanged = { activeDragPointerY = it }
+                    ) { widgetId, _ -> InstalledModulesWidget(widgetId) }
+                    DashboardLayoutMode.FREEFORM -> DashboardFreeform(
+                        layout = pageLayout,
+                        widgetLabels = widgetLabels,
+                        editable = editorActive,
+                        canMoveItem = { widgetId, targetX, targetY ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                                layout = pageLayout,
+                                widgetId = widgetId,
+                                targetX = targetX,
+                                targetY = targetY,
+                                definitions = InstalledModulesDashboardWidgets.definitions
+                            )
+                        },
+                        canResizeItem = { widgetId, targetW, targetH ->
+                            com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                                layout = pageLayout,
+                                widgetId = widgetId,
+                                targetW = targetW,
+                                targetH = targetH,
+                                definitions = InstalledModulesDashboardWidgets.definitions
+                            )
+                        },
+                        canHideWidget = { widgetId ->
+                            InstalledModulesDashboardWidgets.definitionMap[widgetId]?.canHide == true
+                        },
+                        canMinimizeWidget = { widgetId ->
+                            InstalledModulesDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        canMaximizeWidget = { widgetId ->
+                            InstalledModulesDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        canResizeWidget = { widgetId ->
+                            InstalledModulesDashboardWidgets.definitionMap[widgetId]?.canResize == true
+                        },
+                        onMoveItem = { widgetId, x, y -> vm.moveDashboardWidget(DashboardPageId.INSTALLED_MODULES, widgetId, x, y) },
+                        onResizeItem = { widgetId, w, h -> vm.resizeDashboardWidget(DashboardPageId.INSTALLED_MODULES, widgetId, w, h) },
+                        onSetItemSpanMode = { widgetId, spanMode -> vm.setDashboardWidgetSpanMode(DashboardPageId.INSTALLED_MODULES, widgetId, spanMode) },
+                        onHideItem = { widgetId -> vm.setDashboardWidgetVisible(DashboardPageId.INSTALLED_MODULES, widgetId, false) },
+                        selectedWidgetId = selectedWidgetId,
+                        onSelectWidget = { selectedWidgetId = it },
+                        onCanvasMetricsChanged = { metrics -> freeformMetrics = metrics },
+                        onDragPointerYChanged = { activeDragPointerY = it }
+                    ) { widgetId, _ -> InstalledModulesWidget(widgetId) }
                 }
             }
 
-            Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
+            if (editorActive) {
+                DashboardEditorWidgetsTray(
+                    visible = widgetsTrayExpanded,
+                    hiddenItems = trayWidgetIds,
+                    widgetLabels = widgetLabels,
+                    dashboardLayout = pageLayout,
+                    onHiddenWidgetDrag = { dragState ->
+                        hiddenWidgetDrag = dragState
+                        activeDragPointerY = dragState?.pointerY
+                    },
+                    onHiddenWidgetDrop = { dragState ->
+                        activeDragPointerY = null
+                        hiddenWidgetDrag = null
+                        if (!dragState.leftTray || dragState.pointerY >= trayTopY) return@DashboardEditorWidgetsTray
+                        val item = pageLayout.items.firstOrNull { it.widgetId == dragState.widgetId } ?: return@DashboardEditorWidgetsTray
+                        val target = when (pageLayout.layoutMode) {
+                            DashboardLayoutMode.GRID -> {
+                                val metrics = gridMetrics ?: return@DashboardEditorWidgetsTray
+                                computeHiddenWidgetDropTarget(metrics, item, dragState.pointerX, dragState.pointerY)
+                            }
+                            DashboardLayoutMode.FREEFORM -> {
+                                val metrics = freeformMetrics ?: return@DashboardEditorWidgetsTray
+                                computeHiddenWidgetFreeformDropTarget(metrics, item, dragState.pointerX, dragState.pointerY, density)
+                            }
+                        }
+                        vm.placeDashboardHiddenWidget(DashboardPageId.INSTALLED_MODULES, dragState.widgetId, target.first, target.second)
+                        selectedWidgetId = dragState.widgetId
+                    },
+                    activeDragWidgetId = hiddenWidgetDrag?.widgetId,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .onGloballyPositioned { trayTopY = it.positionInRoot().y }
+                ) { widgetId -> InstalledModulesWidget(widgetId) }
+
+                AnimatedVisibility(
+                    visible = !pagePickerActive,
+                    enter = fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
+                    exit = fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 24.dp, bottom = 28.dp)
+                ) {
+                    DashboardEditorFabMenu(
+                        expanded = actionMenuExpanded,
+                        rotation = actionMenuRotation,
+                        onToggle = { actionMenuExpanded = !actionMenuExpanded },
+                        onImport = {
+                            actionMenuExpanded = false
+                            importLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                        },
+                        onShare = {
+                            actionMenuExpanded = false
+                            shareDashboardLayout(
+                                context = context,
+                                payload = vm.exportDashboardLayoutJson(DashboardPageId.INSTALLED_MODULES),
+                                title = context.getString(R.string.runtime_installed_modules_title)
+                            )
+                        },
+                        onSaveAndExit = {
+                            actionMenuExpanded = false
+                            vm.saveDashboardLayoutDraft(DashboardPageId.INSTALLED_MODULES)
+                        },
+                        onToggleWidgets = {
+                            widgetsTrayExpanded = !widgetsTrayExpanded
+                            actionMenuExpanded = false
+                        }
+                    )
+                }
+
+                DashboardHiddenWidgetFloatingPreview(
+                    dragState = hiddenWidgetDrag,
+                    trayTopY = trayTopY,
+                    layoutMode = pageLayout.layoutMode,
+                    gridMetrics = gridMetrics,
+                    freeformMetrics = freeformMetrics,
+                    layout = pageLayout,
+                    definitions = InstalledModulesDashboardWidgets.definitions
+                )
+            }
         }
     }
 

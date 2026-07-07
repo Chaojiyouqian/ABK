@@ -6,7 +6,10 @@
 package com.abk.kernel.ui.screens
 
 import android.graphics.drawable.Drawable
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -50,6 +53,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -65,6 +69,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -74,6 +79,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.motionEventSpy
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -84,6 +92,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.abk.kernel.R
+import com.abk.kernel.dashboard.DashboardLayoutMode
+import com.abk.kernel.dashboard.DashboardPageId
+import com.abk.kernel.dashboard.RootAuthDashboardWidgets
 import com.abk.kernel.data.model.RootGrantApp
 import com.abk.kernel.data.model.RootGrantProfile
 import com.abk.kernel.ui.components.AbkCenteredLoadingTransition
@@ -100,19 +111,72 @@ import com.abk.kernel.ui.components.ExpressiveSectionCard
 import com.abk.kernel.ui.components.ExpressiveStatusChip
 import com.abk.kernel.ui.components.ExpressiveSwitch
 import com.abk.kernel.ui.components.ExpressiveTopBar
+import com.abk.kernel.ui.dashboard.DashboardFreeform
+import com.abk.kernel.ui.dashboard.DashboardFreeformMetrics
+import com.abk.kernel.ui.dashboard.DashboardGrid
+import com.abk.kernel.ui.dashboard.DashboardGridMetrics
 import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
 import com.abk.kernel.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 @Composable
 fun RootAuthorizationScreen(
     vm: MainViewModel,
     outerPadding: PaddingValues = PaddingValues(0.dp),
-    onDetailPageVisibleChange: (Boolean) -> Unit = {}
+    onDetailPageVisibleChange: (Boolean) -> Unit = {},
+    readOnlyPreview: Boolean = false,
+    pagePickerActive: Boolean = false,
+    onRequestPagePicker: () -> Unit = {}
 ) {
     val state by vm.uiState.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val scrollState = rememberScrollState()
+    val editorActive = state.dashboardEditingPageId == DashboardPageId.ROOT_AUTH && !readOnlyPreview
+    val pageLayout = if (readOnlyPreview) {
+        state.dashboardDraftLayouts[DashboardPageId.ROOT_AUTH]
+            ?: state.dashboardLayouts[DashboardPageId.ROOT_AUTH]
+            ?: RootAuthDashboardWidgets.defaultLayout()
+    } else if (editorActive) {
+        state.dashboardDraftLayouts[DashboardPageId.ROOT_AUTH]
+            ?: state.dashboardLayouts[DashboardPageId.ROOT_AUTH]
+            ?: RootAuthDashboardWidgets.defaultLayout()
+    } else {
+        state.dashboardLayouts[DashboardPageId.ROOT_AUTH]
+            ?: RootAuthDashboardWidgets.defaultLayout()
+    }
+    val widgetLabels = mapOf(
+        RootAuthDashboardWidgets.CONTROLS to stringResource(R.string.root_auth_title),
+        RootAuthDashboardWidgets.LIST to stringResource(R.string.root_auth_title)
+    )
+    var actionMenuExpanded by remember { mutableStateOf(false) }
+    var widgetsTrayExpanded by remember { mutableStateOf(false) }
+    var selectedWidgetId by remember { mutableStateOf<String?>(null) }
+    var viewportHeightPx by remember { mutableStateOf(0f) }
+    var activeDragPointerY by remember { mutableStateOf<Float?>(null) }
+    var gridMetrics by remember { mutableStateOf<DashboardGridMetrics?>(null) }
+    var freeformMetrics by remember { mutableStateOf<DashboardFreeformMetrics?>(null) }
+    var trayTopY by remember { mutableStateOf(Float.MAX_VALUE) }
+    var hiddenWidgetDrag by remember { mutableStateOf<DashboardHiddenWidgetDragState?>(null) }
+    val actionMenuRotation by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (actionMenuExpanded) 45f else 0f,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "rootauth-layout-fab-rotation"
+    )
+    val trayWidgetIds = remember(pageLayout.items, hiddenWidgetDrag) {
+        buildList {
+            val hiddenIds = pageLayout.items.filter { !it.visible }.map { it.widgetId }
+            addAll(hiddenIds)
+            val draggingWidgetId = hiddenWidgetDrag?.widgetId
+            if (draggingWidgetId != null && draggingWidgetId !in this) add(draggingWidgetId)
+        }
+    }
+    val pinchObserver = rememberEditorPinchObserver(onRequestPagePicker)
     var query by rememberSaveable { mutableStateOf("") }
     var showSystemApps by rememberSaveable { mutableStateOf(false) }
     var selectedPackage by remember { mutableStateOf<String?>(null) }
@@ -144,9 +208,139 @@ fun RootAuthorizationScreen(
     val canLeaveDetail = state.rootGrantSavingPackage == null && !state.rootGrantDetailLoading
     val showInitialLoading = state.rootGrantLoading && state.rootGrantApps.isEmpty()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                val payload = readLayoutTextFromUri(context, uri)
+                vm.importDashboardLayoutJson(DashboardPageId.ROOT_AUTH, payload)
+            }.onSuccess { result ->
+                val messageRes = if (result.error == null) {
+                    R.string.status_layout_import_success
+                } else {
+                    R.string.status_layout_import_failed_reset
+                }
+                val message = if (result.error == null) {
+                    context.getString(messageRes, result.importedItemCount, result.ignoredItemCount)
+                } else {
+                    context.getString(messageRes)
+                }
+                vm.showSnackbar(message, longDuration = result.error != null)
+            }.onFailure { error ->
+                vm.showSnackbar(
+                    context.getString(
+                        R.string.status_layout_import_failed,
+                        error.message ?: error::class.java.simpleName
+                    ),
+                    longDuration = true
+                )
+            }
+        }
+    }
 
     LaunchedEffect(state.runtimeNavigationEnabled, state.abkRuntimeStatus?.runtimeBackend?.backend) {
         if (state.runtimeNavigationEnabled) vm.refreshRootGrantApps()
+    }
+
+    LaunchedEffect(editorActive) {
+        if (!editorActive) {
+            actionMenuExpanded = false
+            widgetsTrayExpanded = false
+            selectedWidgetId = null
+            hiddenWidgetDrag = null
+            activeDragPointerY = null
+        }
+    }
+
+    LaunchedEffect(pagePickerActive) {
+        if (pagePickerActive) actionMenuExpanded = false
+    }
+
+    LaunchedEffect(activeDragPointerY, viewportHeightPx) {
+        val triggerY = activeDragPointerY ?: return@LaunchedEffect
+        if (viewportHeightPx <= 0f) return@LaunchedEffect
+        val thresholdPx = with(density) { 88.dp.toPx() }
+        while (activeDragPointerY != null) {
+            val currentY = activeDragPointerY ?: break
+            val topDistance = currentY
+            val bottomDistance = viewportHeightPx - currentY
+            val delta = when {
+                topDistance < thresholdPx -> {
+                    val ratio = 1f - (topDistance / thresholdPx).coerceIn(0f, 1f)
+                    -((4f) + ratio * 28f)
+                }
+                bottomDistance < thresholdPx -> {
+                    val ratio = 1f - (bottomDistance / thresholdPx).coerceIn(0f, 1f)
+                    (4f) + ratio * 28f
+                }
+                else -> 0f
+            }
+            if (delta != 0f) {
+                scrollState.scrollTo((scrollState.value + delta.roundToInt()).coerceIn(0, scrollState.maxValue))
+            }
+            delay(16)
+        }
+    }
+
+    @Composable
+    fun RootAuthWidget(widgetId: String) {
+        when (widgetId) {
+            RootAuthDashboardWidgets.CONTROLS -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                RootGrantSearchField(query = query, onQueryChange = { query = it })
+                RootGrantControlsCard(
+                    showSystemApps = showSystemApps,
+                    onShowSystemAppsChange = { showSystemApps = it }
+                )
+                if (!editorActive && !readOnlyPreview) {
+                    OutlinedButton(
+                        onClick = { vm.refreshRootGrantApps(force = true) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Refresh, null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.root_auth_refresh_list))
+                    }
+                }
+                if (state.rootGrantLoading && state.rootGrantApps.isNotEmpty()) {
+                    RootGrantRefreshingRow()
+                }
+                state.rootGrantError?.let {
+                    RootGrantMessageCard(it) { vm.refreshRootGrantApps(force = true) }
+                }
+            }
+            RootAuthDashboardWidgets.LIST -> {
+                if (!state.rootGrantLoading && apps.isEmpty()) {
+                    Text(
+                        text = if (query.isBlank()) {
+                            stringResource(R.string.root_auth_no_apps)
+                        } else {
+                            stringResource(R.string.root_auth_no_matching_apps)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 24.dp)
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        apps.forEach { app ->
+                            RootGrantAppCard(
+                                app = app,
+                                saving = state.rootGrantSavingPackage == app.packageName,
+                                anySaving = state.rootGrantSavingPackage != null,
+                                onToggle = { allowed -> vm.setRootGrantAllowed(app.packageName, allowed) },
+                                onOpen = {
+                                    childPageBack.resetProgress()
+                                    selectedPackage = app.packageName
+                                    vm.openRootGrantProfile(app.packageName)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fun closeDetailPage() {
@@ -187,14 +381,16 @@ fun RootAuthorizationScreen(
                     title = stringResource(R.string.root_auth_title),
                     scrollBehavior = scrollBehavior,
                     actions = {
-                        IconButton(
-                            onClick = { vm.refreshRootGrantApps(force = true) },
-                            enabled = !state.rootGrantLoading
-                        ) {
-                            if (state.rootGrantLoading) {
-                                LoadingIndicator(Modifier.size(22.dp))
-                            } else {
-                                Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.root_auth_refresh_list))
+                        if (!editorActive && !readOnlyPreview) {
+                            IconButton(
+                                onClick = { vm.refreshRootGrantApps(force = true) },
+                                enabled = !state.rootGrantLoading
+                            ) {
+                                if (state.rootGrantLoading) {
+                                    LoadingIndicator(Modifier.size(22.dp))
+                                } else {
+                                    Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.root_auth_refresh_list))
+                                }
                             }
                         }
                     }
@@ -214,73 +410,182 @@ fun RootAuthorizationScreen(
                 return@Scaffold
             }
 
-            LazyColumn(
+            val editorDockHeight = 92.dp
+            Box(
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection),
-                contentPadding = PaddingValues(
-                    start = AbkScreenHorizontalPadding,
-                    end = AbkScreenHorizontalPadding,
-                    bottom = 80.dp + outerPadding.calculateBottomPadding()
-                ),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .onGloballyPositioned { viewportHeightPx = it.size.height.toFloat() }
+                    .then(
+                        if (editorActive && !pagePickerActive) {
+                            Modifier.motionEventSpy(pinchObserver)
+                        } else {
+                            Modifier
+                        }
+                    )
             ) {
-                item(key = "search") {
-                    RootGrantSearchField(
-                        query = query,
-                        onQueryChange = { query = it }
-                    )
-                }
-
-                item(key = "controls") {
-                    RootGrantControlsCard(
-                        showSystemApps = showSystemApps,
-                        onShowSystemAppsChange = { showSystemApps = it }
-                    )
-                }
-
-                if (state.rootGrantLoading && state.rootGrantApps.isNotEmpty()) {
-                    item(key = "refreshing") {
-                        RootGrantRefreshingRow()
-                    }
-                }
-
-                state.rootGrantError?.let {
-                    item(key = "error") {
-                        RootGrantMessageCard(it) { vm.refreshRootGrantApps(force = true) }
-                    }
-                }
-
-                if (!state.rootGrantLoading && apps.isEmpty()) {
-                    item(key = "empty") {
-                        Text(
-                            text = if (query.isBlank()) {
-                                stringResource(R.string.root_auth_no_apps)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState)
+                        .padding(horizontal = AbkScreenHorizontalPadding)
+                        .padding(
+                            bottom = if (editorActive) {
+                                editorDockHeight + 28.dp
                             } else {
-                                stringResource(R.string.root_auth_no_matching_apps)
+                                80.dp + outerPadding.calculateBottomPadding()
+                            }
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    when (pageLayout.layoutMode) {
+                        DashboardLayoutMode.GRID -> DashboardGrid(
+                            layout = pageLayout,
+                            widgetLabels = widgetLabels,
+                            editable = editorActive,
+                            canMoveItem = { widgetId, targetX, targetY ->
+                                com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                                    layout = pageLayout,
+                                    widgetId = widgetId,
+                                    targetX = targetX,
+                                    targetY = targetY,
+                                    definitions = RootAuthDashboardWidgets.definitions
+                                )
                             },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 24.dp)
+                            canResizeItem = { widgetId, targetW, targetH ->
+                                com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                                    layout = pageLayout,
+                                    widgetId = widgetId,
+                                    targetW = targetW,
+                                    targetH = targetH,
+                                    definitions = RootAuthDashboardWidgets.definitions
+                                )
+                            },
+                            canHideWidget = { widgetId -> RootAuthDashboardWidgets.definitionMap[widgetId]?.canHide == true },
+                            canMinimizeWidget = { widgetId -> RootAuthDashboardWidgets.definitionMap[widgetId]?.canResize == true },
+                            canMaximizeWidget = { widgetId -> RootAuthDashboardWidgets.definitionMap[widgetId]?.canResize == true },
+                            canResizeWidget = { widgetId -> RootAuthDashboardWidgets.definitionMap[widgetId]?.canResize == true },
+                            onMoveItem = { widgetId, x, y -> vm.moveDashboardWidget(DashboardPageId.ROOT_AUTH, widgetId, x, y) },
+                            onResizeItem = { widgetId, w, h -> vm.resizeDashboardWidget(DashboardPageId.ROOT_AUTH, widgetId, w, h) },
+                            onSetItemSpanMode = { widgetId, spanMode -> vm.setDashboardWidgetSpanMode(DashboardPageId.ROOT_AUTH, widgetId, spanMode) },
+                            onHideItem = { widgetId -> vm.setDashboardWidgetVisible(DashboardPageId.ROOT_AUTH, widgetId, false) },
+                            selectedWidgetId = selectedWidgetId,
+                            onSelectWidget = { selectedWidgetId = it },
+                            onGridMetricsChanged = { metrics -> gridMetrics = metrics },
+                            onDragPointerYChanged = { activeDragPointerY = it }
+                        ) { widgetId, _ -> RootAuthWidget(widgetId) }
+                        DashboardLayoutMode.FREEFORM -> DashboardFreeform(
+                            layout = pageLayout,
+                            widgetLabels = widgetLabels,
+                            editable = editorActive,
+                            canMoveItem = { widgetId, targetX, targetY ->
+                                com.abk.kernel.dashboard.DashboardLayoutEngine.canMoveItem(
+                                    layout = pageLayout,
+                                    widgetId = widgetId,
+                                    targetX = targetX,
+                                    targetY = targetY,
+                                    definitions = RootAuthDashboardWidgets.definitions
+                                )
+                            },
+                            canResizeItem = { widgetId, targetW, targetH ->
+                                com.abk.kernel.dashboard.DashboardLayoutEngine.canResizeItem(
+                                    layout = pageLayout,
+                                    widgetId = widgetId,
+                                    targetW = targetW,
+                                    targetH = targetH,
+                                    definitions = RootAuthDashboardWidgets.definitions
+                                )
+                            },
+                            canHideWidget = { widgetId -> RootAuthDashboardWidgets.definitionMap[widgetId]?.canHide == true },
+                            canMinimizeWidget = { widgetId -> RootAuthDashboardWidgets.definitionMap[widgetId]?.canResize == true },
+                            canMaximizeWidget = { widgetId -> RootAuthDashboardWidgets.definitionMap[widgetId]?.canResize == true },
+                            canResizeWidget = { widgetId -> RootAuthDashboardWidgets.definitionMap[widgetId]?.canResize == true },
+                            onMoveItem = { widgetId, x, y -> vm.moveDashboardWidget(DashboardPageId.ROOT_AUTH, widgetId, x, y) },
+                            onResizeItem = { widgetId, w, h -> vm.resizeDashboardWidget(DashboardPageId.ROOT_AUTH, widgetId, w, h) },
+                            onSetItemSpanMode = { widgetId, spanMode -> vm.setDashboardWidgetSpanMode(DashboardPageId.ROOT_AUTH, widgetId, spanMode) },
+                            onHideItem = { widgetId -> vm.setDashboardWidgetVisible(DashboardPageId.ROOT_AUTH, widgetId, false) },
+                            selectedWidgetId = selectedWidgetId,
+                            onSelectWidget = { selectedWidgetId = it },
+                            onCanvasMetricsChanged = { metrics -> freeformMetrics = metrics },
+                            onDragPointerYChanged = { activeDragPointerY = it }
+                        ) { widgetId, _ -> RootAuthWidget(widgetId) }
+                    }
+                }
+
+                if (editorActive) {
+                    DashboardEditorWidgetsTray(
+                        visible = widgetsTrayExpanded,
+                        hiddenItems = trayWidgetIds,
+                        widgetLabels = widgetLabels,
+                        dashboardLayout = pageLayout,
+                        onHiddenWidgetDrag = { dragState ->
+                            hiddenWidgetDrag = dragState
+                            activeDragPointerY = dragState?.pointerY
+                        },
+                        onHiddenWidgetDrop = { dragState ->
+                            activeDragPointerY = null
+                            hiddenWidgetDrag = null
+                            if (!dragState.leftTray || dragState.pointerY >= trayTopY) return@DashboardEditorWidgetsTray
+                            val item = pageLayout.items.firstOrNull { it.widgetId == dragState.widgetId } ?: return@DashboardEditorWidgetsTray
+                            val target = when (pageLayout.layoutMode) {
+                                DashboardLayoutMode.GRID -> {
+                                    val metrics = gridMetrics ?: return@DashboardEditorWidgetsTray
+                                    computeHiddenWidgetDropTarget(metrics, item, dragState.pointerX, dragState.pointerY)
+                                }
+                                DashboardLayoutMode.FREEFORM -> {
+                                    val metrics = freeformMetrics ?: return@DashboardEditorWidgetsTray
+                                    computeHiddenWidgetFreeformDropTarget(metrics, item, dragState.pointerX, dragState.pointerY, density)
+                                }
+                            }
+                            vm.placeDashboardHiddenWidget(DashboardPageId.ROOT_AUTH, dragState.widgetId, target.first, target.second)
+                            selectedWidgetId = dragState.widgetId
+                        },
+                        activeDragWidgetId = hiddenWidgetDrag?.widgetId,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .onGloballyPositioned { trayTopY = it.positionInRoot().y }
+                    ) { widgetId -> RootAuthWidget(widgetId) }
+                    AnimatedVisibility(
+                        visible = !pagePickerActive,
+                        enter = fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
+                        exit = fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 24.dp, bottom = 28.dp)
+                    ) {
+                        DashboardEditorFabMenu(
+                            expanded = actionMenuExpanded,
+                            rotation = actionMenuRotation,
+                            onToggle = { actionMenuExpanded = !actionMenuExpanded },
+                            onImport = { actionMenuExpanded = false; importLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
+                            onShare = {
+                                actionMenuExpanded = false
+                                shareDashboardLayout(
+                                    context = context,
+                                    payload = vm.exportDashboardLayoutJson(DashboardPageId.ROOT_AUTH),
+                                    title = context.getString(R.string.root_auth_title)
+                                )
+                            },
+                            onSaveAndExit = {
+                                actionMenuExpanded = false
+                                vm.saveDashboardLayoutDraft(DashboardPageId.ROOT_AUTH)
+                            },
+                            onToggleWidgets = {
+                                widgetsTrayExpanded = !widgetsTrayExpanded
+                                actionMenuExpanded = false
+                            }
                         )
                     }
-                }
-
-                items(
-                    items = apps,
-                    key = { app -> "${app.uid}:${app.packageName}" }
-                ) { app ->
-                    RootGrantAppCard(
-                        app = app,
-                        saving = state.rootGrantSavingPackage == app.packageName,
-                        anySaving = state.rootGrantSavingPackage != null,
-                        onToggle = { allowed -> vm.setRootGrantAllowed(app.packageName, allowed) },
-                        onOpen = {
-                            childPageBack.resetProgress()
-                            selectedPackage = app.packageName
-                            vm.openRootGrantProfile(app.packageName)
-                        }
+                    DashboardHiddenWidgetFloatingPreview(
+                        dragState = hiddenWidgetDrag,
+                        trayTopY = trayTopY,
+                        layoutMode = pageLayout.layoutMode,
+                        gridMetrics = gridMetrics,
+                        freeformMetrics = freeformMetrics,
+                        layout = pageLayout,
+                        definitions = RootAuthDashboardWidgets.definitions
                     )
                 }
             }
