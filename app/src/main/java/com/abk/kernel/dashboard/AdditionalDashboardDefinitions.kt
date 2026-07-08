@@ -21,7 +21,7 @@ object ModuleRepositoryDashboardWidgets {
         BuiltinWidgetDefinition(
             widgetId = SEARCH,
             defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 4,
+            defaultH = 3,
             minW = 8,
             minH = 3,
             collapsedW = 8,
@@ -32,13 +32,13 @@ object ModuleRepositoryDashboardWidgets {
         BuiltinWidgetDefinition(
             widgetId = LIST,
             defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 18,
+            defaultH = 16,
             minW = 8,
             minH = 10,
             collapsedW = 8,
             collapsedH = 10,
-            expandedH = 30,
-            maxH = 40
+            expandedH = 24,
+            maxH = 32
         )
     )
 
@@ -53,8 +53,8 @@ object ModuleRepositoryDashboardWidgets {
         densityPreset = densityPreset,
         items = listOf(
             DashboardLayoutItem(SUMMARY, 0, 0, densityPreset.columns, 5, visible = false),
-            DashboardLayoutItem(SEARCH, 0, 0, densityPreset.columns, 4),
-            DashboardLayoutItem(LIST, 0, 4, densityPreset.columns, 18)
+            DashboardLayoutItem(SEARCH, 0, 0, densityPreset.columns, 3),
+            DashboardLayoutItem(LIST, 0, 3, densityPreset.columns, 16)
         )
     )
 
@@ -88,13 +88,13 @@ object FlashDashboardWidgets {
         BuiltinWidgetDefinition(
             widgetId = CONTENT,
             defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 20,
+            defaultH = 16,
             minW = 8,
             minH = 12,
             collapsedW = 8,
             collapsedH = 12,
-            expandedH = 30,
-            maxH = 40
+            expandedH = 24,
+            maxH = 32
         )
     )
 
@@ -109,7 +109,7 @@ object FlashDashboardWidgets {
         densityPreset = densityPreset,
         items = listOf(
             DashboardLayoutItem(SUMMARY, 0, 0, densityPreset.columns, 8, visible = false),
-            DashboardLayoutItem(CONTENT, 0, 0, densityPreset.columns, 20)
+            DashboardLayoutItem(CONTENT, 0, 0, densityPreset.columns, 16)
         )
     )
 
@@ -131,24 +131,24 @@ object InstalledModulesDashboardWidgets {
         BuiltinWidgetDefinition(
             widgetId = CONTROLS,
             defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 6,
+            defaultH = 5,
             minW = 8,
             minH = 4,
             collapsedW = 8,
             collapsedH = 4,
-            expandedH = 8,
-            maxH = 10
+            expandedH = 6,
+            maxH = 8
         ),
         BuiltinWidgetDefinition(
             widgetId = LIST,
             defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 18,
+            defaultH = 14,
             minW = 8,
             minH = 10,
             collapsedW = 8,
             collapsedH = 10,
-            expandedH = 30,
-            maxH = 40
+            expandedH = 22,
+            maxH = 30
         )
     )
 
@@ -162,8 +162,8 @@ object InstalledModulesDashboardWidgets {
         layoutMode = DashboardLayoutMode.GRID,
         densityPreset = densityPreset,
         items = listOf(
-            DashboardLayoutItem(CONTROLS, 0, 0, densityPreset.columns, 6),
-            DashboardLayoutItem(LIST, 0, 6, densityPreset.columns, 18)
+            DashboardLayoutItem(CONTROLS, 0, 0, densityPreset.columns, 5),
+            DashboardLayoutItem(LIST, 0, 5, densityPreset.columns, 14)
         )
     )
 
@@ -185,24 +185,24 @@ object RootAuthDashboardWidgets {
         BuiltinWidgetDefinition(
             widgetId = CONTROLS,
             defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 6,
+            defaultH = 5,
             minW = 8,
             minH = 4,
             collapsedW = 8,
             collapsedH = 4,
-            expandedH = 8,
-            maxH = 10
+            expandedH = 6,
+            maxH = 8
         ),
         BuiltinWidgetDefinition(
             widgetId = LIST,
             defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 18,
+            defaultH = 14,
             minW = 8,
             minH = 10,
             collapsedW = 8,
             collapsedH = 10,
-            expandedH = 30,
-            maxH = 40
+            expandedH = 22,
+            maxH = 30
         )
     )
 
@@ -216,8 +216,8 @@ object RootAuthDashboardWidgets {
         layoutMode = DashboardLayoutMode.GRID,
         densityPreset = densityPreset,
         items = listOf(
-            DashboardLayoutItem(CONTROLS, 0, 0, densityPreset.columns, 6),
-            DashboardLayoutItem(LIST, 0, 6, densityPreset.columns, 18)
+            DashboardLayoutItem(CONTROLS, 0, 0, densityPreset.columns, 5),
+            DashboardLayoutItem(LIST, 0, 5, densityPreset.columns, 14)
         )
     )
 
