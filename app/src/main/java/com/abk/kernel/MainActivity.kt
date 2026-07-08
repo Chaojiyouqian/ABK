@@ -798,7 +798,10 @@ private fun AbkMainScaffold(
         }
         if (shouldShowSimpleBuildFab) {
             FloatingActionButton(
-                onClick = { showSimpleBuildFlow = true },
+                onClick = {
+                    simpleBuildBack.resetProgress()
+                    showSimpleBuildFlow = true
+                },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(
