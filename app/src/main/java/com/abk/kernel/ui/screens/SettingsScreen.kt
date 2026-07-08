@@ -107,6 +107,20 @@ import java.io.File
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+
+private enum class SettingsDashboardSection {
+    ACCOUNT,
+    BUILD,
+    APP_UPDATE,
+    MANAGER,
+    NOTIFICATION,
+    NAVIGATION,
+    LANGUAGE,
+    THEME,
+    EXTENSIONS,
+    ABOUT
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SettingsScreen(
@@ -138,7 +152,16 @@ fun SettingsScreen(
             ?: SettingsDashboardWidgets.defaultLayout()
     }
     val widgetLabels = mapOf(
-        SettingsDashboardWidgets.CONTENT to stringResource(R.string.settings_title)
+        SettingsDashboardWidgets.ACCOUNT to stringResource(R.string.settings_account),
+        SettingsDashboardWidgets.BUILD to stringResource(R.string.settings_build),
+        SettingsDashboardWidgets.APP_UPDATE to stringResource(R.string.settings_app_update),
+        SettingsDashboardWidgets.MANAGER to stringResource(R.string.settings_manager_settings),
+        SettingsDashboardWidgets.NOTIFICATION to stringResource(R.string.settings_notification),
+        SettingsDashboardWidgets.NAVIGATION to stringResource(R.string.settings_navigation),
+        SettingsDashboardWidgets.LANGUAGE to stringResource(R.string.settings_language),
+        SettingsDashboardWidgets.THEME to stringResource(R.string.settings_theme),
+        SettingsDashboardWidgets.EXTENSIONS to stringResource(R.string.settings_extensions_title),
+        SettingsDashboardWidgets.ABOUT to stringResource(R.string.settings_about)
     )
     var actionMenuExpanded by remember { mutableStateOf(false) }
     var selectedWidgetId by remember { mutableStateOf<String?>(null) }
@@ -373,6 +396,44 @@ fun SettingsScreen(
         }
     }
 
+    @Composable
+    fun SettingsDashboardWidgetContent(widgetId: String) {
+        val visibleSections = when (widgetId) {
+            SettingsDashboardWidgets.ACCOUNT -> setOf(SettingsDashboardSection.ACCOUNT)
+            SettingsDashboardWidgets.BUILD -> setOf(SettingsDashboardSection.BUILD)
+            SettingsDashboardWidgets.APP_UPDATE -> setOf(SettingsDashboardSection.APP_UPDATE)
+            SettingsDashboardWidgets.MANAGER -> setOf(SettingsDashboardSection.MANAGER)
+            SettingsDashboardWidgets.NOTIFICATION -> setOf(SettingsDashboardSection.NOTIFICATION)
+            SettingsDashboardWidgets.NAVIGATION -> setOf(SettingsDashboardSection.NAVIGATION)
+            SettingsDashboardWidgets.LANGUAGE -> setOf(SettingsDashboardSection.LANGUAGE)
+            SettingsDashboardWidgets.THEME -> setOf(SettingsDashboardSection.THEME)
+            SettingsDashboardWidgets.EXTENSIONS -> setOf(SettingsDashboardSection.EXTENSIONS)
+            SettingsDashboardWidgets.ABOUT -> setOf(SettingsDashboardSection.ABOUT)
+            else -> SettingsDashboardSection.entries.toSet()
+        }
+        SettingsMainContent(
+            padding = PaddingValues(0.dp),
+            outerPadding = PaddingValues(0.dp),
+            state = state,
+            vm = vm,
+            scrollBehavior = scrollBehavior,
+            onLogout = {},
+            onOpenThemeSettings = {},
+            onOpenAppProfileTemplates = {},
+            onOpenManagerTools = {},
+            onOpenInstalledModules = {},
+            onAbout = {},
+            onOpenSourceLicenses = {},
+            onOpenExtensionManager = {},
+            exportingDiagnostics = exportingDiagnostics,
+            onExportDiagnostics = {},
+            contentHorizontalPadding = 0.dp,
+            bottomSpacerHeight = 0.dp,
+            fillViewport = false,
+            visibleSections = visibleSections
+        )
+    }
+
     if (showLogoutDialog) {
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },
@@ -472,27 +533,8 @@ fun SettingsScreen(
                                 onSelectWidget = { selectedWidgetId = it },
                                 onGridMetricsChanged = { metrics -> gridMetrics = metrics },
                                 onDragPointerYChanged = { activeDragPointerY = it }
-                            ) { _, _ ->
-                                SettingsMainContent(
-                                    padding = PaddingValues(0.dp),
-                                    outerPadding = PaddingValues(0.dp),
-                                    state = state,
-                                    vm = vm,
-                                    scrollBehavior = scrollBehavior,
-                                    onLogout = {},
-                                    onOpenThemeSettings = {},
-                                    onOpenAppProfileTemplates = {},
-                                    onOpenManagerTools = {},
-                                    onOpenInstalledModules = {},
-                                    onAbout = {},
-                                    onOpenSourceLicenses = {},
-                                    onOpenExtensionManager = {},
-                                    exportingDiagnostics = exportingDiagnostics,
-                                    onExportDiagnostics = {},
-                                    contentHorizontalPadding = 0.dp,
-                                    bottomSpacerHeight = 0.dp,
-                                    fillViewport = false
-                                )
+                            ) { widgetId, _ ->
+                                SettingsDashboardWidgetContent(widgetId)
                             }
                             DashboardLayoutMode.FREEFORM -> DashboardFreeform(
                                 layout = pageLayout,
@@ -534,27 +576,8 @@ fun SettingsScreen(
                                 onSelectWidget = { selectedWidgetId = it },
                                 onCanvasMetricsChanged = { metrics -> freeformMetrics = metrics },
                                 onDragPointerYChanged = { activeDragPointerY = it }
-                            ) { _, _ ->
-                                SettingsMainContent(
-                                    padding = PaddingValues(0.dp),
-                                    outerPadding = PaddingValues(0.dp),
-                                    state = state,
-                                    vm = vm,
-                                    scrollBehavior = scrollBehavior,
-                                    onLogout = {},
-                                    onOpenThemeSettings = {},
-                                    onOpenAppProfileTemplates = {},
-                                    onOpenManagerTools = {},
-                                    onOpenInstalledModules = {},
-                                    onAbout = {},
-                                    onOpenSourceLicenses = {},
-                                    onOpenExtensionManager = {},
-                                    exportingDiagnostics = exportingDiagnostics,
-                                    onExportDiagnostics = {},
-                                    contentHorizontalPadding = 0.dp,
-                                    bottomSpacerHeight = 0.dp,
-                                    fillViewport = false
-                                )
+                            ) { widgetId, _ ->
+                                SettingsDashboardWidgetContent(widgetId)
                             }
                         }
                     }
@@ -902,7 +925,8 @@ private fun SettingsMainContent(
     onExportDiagnostics: () -> Unit,
     contentHorizontalPadding: Dp = AbkScreenHorizontalPadding,
     bottomSpacerHeight: Dp? = null,
-    fillViewport: Boolean = true
+    fillViewport: Boolean = true,
+    visibleSections: Set<SettingsDashboardSection> = SettingsDashboardSection.entries.toSet()
 ) {
     val context = LocalContext.current
     Column(
@@ -914,49 +938,52 @@ private fun SettingsMainContent(
             .padding(horizontal = contentHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        SettingsGroup(title = stringResource(R.string.settings_account)) {
-            state.user?.let { user ->
-                ExpressiveListItem(
-                    title = user.login,
-                    subtitle = user.name ?: user.htmlUrl,
-                    leadingContent = {
-                        AsyncImage(
-                            model = user.avatarUrl,
-                            contentDescription = null,
-                            modifier = Modifier.size(42.dp)
-                                .clip(CircleShape)
-                        )
-                    },
-                    trailingContent = {
-                        IconButton(onClick = onLogout) {
-                            Icon(
-                                Icons.Default.Logout,
-                                contentDescription = stringResource(R.string.settings_logout_desc),
-                                tint = MaterialTheme.colorScheme.error
+        if (SettingsDashboardSection.ACCOUNT in visibleSections) {
+            SettingsGroup(title = stringResource(R.string.settings_account)) {
+                state.user?.let { user ->
+                    ExpressiveListItem(
+                        title = user.login,
+                        subtitle = user.name ?: user.htmlUrl,
+                        leadingContent = {
+                            AsyncImage(
+                                model = user.avatarUrl,
+                                contentDescription = null,
+                                modifier = Modifier.size(42.dp)
+                                    .clip(CircleShape)
                             )
+                        },
+                        trailingContent = {
+                            IconButton(onClick = onLogout) {
+                                Icon(
+                                    Icons.Default.Logout,
+                                    contentDescription = stringResource(R.string.settings_logout_desc),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
                         }
+                    )
+                    val forkUrl = state.forkRepo?.let { repo ->
+                        repo.htmlUrl.takeIf { it.isNotBlank() } ?: "https://github.com/${repo.fullName}"
                     }
+                    val openCtx = LocalContext.current
+                    val onForkClick: (() -> Unit)? = if (forkUrl != null) {
+                        { openUrl(openCtx, forkUrl) }
+                    } else null
+                    ExpressiveListItem(
+                        title = stringResource(R.string.settings_fork_repo),
+                        subtitle = state.forkRepo?.fullName ?: stringResource(R.string.settings_waiting_fork),
+                        leadingIcon = Icons.Default.ForkRight,
+                        onClick = onForkClick
+                    )
+                } ?: ExpressiveListItem(
+                    title = stringResource(R.string.settings_not_logged_in),
+                    leadingIcon = Icons.Default.AccountCircle
                 )
-                val forkUrl = state.forkRepo?.let { repo ->
-                    repo.htmlUrl.takeIf { it.isNotBlank() } ?: "https://github.com/${repo.fullName}"
-                }
-                val openCtx = LocalContext.current
-                val onForkClick: (() -> Unit)? = if (forkUrl != null) {
-                    { openUrl(openCtx, forkUrl) }
-                } else null
-                ExpressiveListItem(
-                    title = stringResource(R.string.settings_fork_repo),
-                    subtitle = state.forkRepo?.fullName ?: stringResource(R.string.settings_waiting_fork),
-                    leadingIcon = Icons.Default.ForkRight,
-                    onClick = onForkClick
-                )
-            } ?: ExpressiveListItem(
-                title = stringResource(R.string.settings_not_logged_in),
-                leadingIcon = Icons.Default.AccountCircle
-            )
+            }
         }
 
-        SettingsGroup(title = stringResource(R.string.settings_build)) {
+        if (SettingsDashboardSection.BUILD in visibleSections) {
+            SettingsGroup(title = stringResource(R.string.settings_build)) {
             BuildPageStylePicker(
                 selected = state.buildPageStyle ?: BUILD_PAGE_STYLE_CLASSIC,
                 onSelect = vm::setBuildPageStyle
@@ -1040,8 +1067,10 @@ private fun SettingsMainContent(
                 )
             }
         }
+        }
 
-        SettingsGroup(title = stringResource(R.string.settings_app_update)) {
+        if (SettingsDashboardSection.APP_UPDATE in visibleSections) {
+            SettingsGroup(title = stringResource(R.string.settings_app_update)) {
             AppUpdateStabilityPicker(
                 selected = state.appUpdateStability,
                 onSelect = vm::setAppUpdateStability
@@ -1106,16 +1135,20 @@ private fun SettingsMainContent(
                 )
             }
         }
+        }
 
-        ManagerInjectedSettingsGroup(
+        if (SettingsDashboardSection.MANAGER in visibleSections) {
+            ManagerInjectedSettingsGroup(
             state = state,
             vm = vm,
             onOpenAppProfileTemplates = onOpenAppProfileTemplates,
             onOpenManagerTools = onOpenManagerTools,
             onOpenInstalledModules = onOpenInstalledModules
         )
+        }
 
-        SettingsGroup(title = stringResource(R.string.settings_notification)) {
+        if (SettingsDashboardSection.NOTIFICATION in visibleSections) {
+            SettingsGroup(title = stringResource(R.string.settings_notification)) {
             SwitchSettingsItem(
                 icon = Icons.Default.Notifications,
                 title = stringResource(R.string.settings_notify_build),
@@ -1124,8 +1157,10 @@ private fun SettingsMainContent(
                 onCheckedChange = { vm.setNotifyBuild(it) }
             )
         }
+        }
 
-        SettingsGroup(title = stringResource(R.string.settings_navigation)) {
+        if (SettingsDashboardSection.NAVIGATION in visibleSections) {
+            SettingsGroup(title = stringResource(R.string.settings_navigation)) {
             SwitchSettingsItem(
                 icon = Icons.Default.ArrowBack,
                 title = stringResource(R.string.settings_predictive_back),
@@ -1134,8 +1169,10 @@ private fun SettingsMainContent(
                 onCheckedChange = { vm.setPredictiveBackEnabled(it) }
             )
         }
+        }
 
-        SettingsGroup(title = stringResource(R.string.settings_language)) {
+        if (SettingsDashboardSection.LANGUAGE in visibleSections) {
+            SettingsGroup(title = stringResource(R.string.settings_language)) {
             val ctx = LocalContext.current
             val currentLang = LocaleHelper.getLanguage(ctx)
             val activity = ctx as? Activity
@@ -1148,8 +1185,10 @@ private fun SettingsMainContent(
                 }
             )
         }
+        }
 
-        SettingsGroup(title = stringResource(R.string.settings_theme)) {
+        if (SettingsDashboardSection.THEME in visibleSections) {
+            SettingsGroup(title = stringResource(R.string.settings_theme)) {
             ExpressiveListItem(
                 title = stringResource(R.string.settings_color_appearance),
                 subtitle = "${themeModeLabel(state.themeMode)} · ${dynamicColorLabel(state.dynamicColorEnabled)}",
@@ -1163,8 +1202,10 @@ private fun SettingsMainContent(
                 onClick = onOpenThemeSettings
             )
         }
+        }
 
-        SettingsGroup(title = stringResource(R.string.settings_extensions_title)) {
+        if (SettingsDashboardSection.EXTENSIONS in visibleSections) {
+            SettingsGroup(title = stringResource(R.string.settings_extensions_title)) {
             ExpressiveListItem(
                 title = stringResource(R.string.settings_extensions_manage),
                 subtitle = stringResource(R.string.settings_extensions_manage_desc),
@@ -1175,8 +1216,10 @@ private fun SettingsMainContent(
                 onClick = onOpenExtensionManager
             )
         }
+        }
 
-        SettingsGroup(title = stringResource(R.string.settings_about)) {
+        if (SettingsDashboardSection.ABOUT in visibleSections) {
+            SettingsGroup(title = stringResource(R.string.settings_about)) {
             ExpressiveListItem(
                 title = stringResource(R.string.app_full_name),
                 subtitle = "AnyBase Kernel v${BuildConfig.VERSION_NAME}",
@@ -1220,6 +1263,7 @@ private fun SettingsMainContent(
                 },
                 onClick = onExportDiagnostics
             )
+        }
         }
 
         Spacer(Modifier.height(bottomSpacerHeight ?: (80.dp + outerPadding.calculateBottomPadding())))

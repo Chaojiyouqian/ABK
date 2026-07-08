@@ -232,20 +232,127 @@ object RootAuthDashboardWidgets {
 }
 
 object SettingsDashboardWidgets {
-    const val CONTENT = "settings.content"
+    const val ACCOUNT = "settings.account"
+    const val BUILD = "settings.build"
+    const val APP_UPDATE = "settings.app_update"
+    const val MANAGER = "settings.manager"
+    const val NOTIFICATION = "settings.notification"
+    const val NAVIGATION = "settings.navigation"
+    const val LANGUAGE = "settings.language"
+    const val THEME = "settings.theme"
+    const val EXTENSIONS = "settings.extensions"
+    const val ABOUT = "settings.about"
 
     val definitions: List<BuiltinWidgetDefinition> = listOf(
         BuiltinWidgetDefinition(
-            widgetId = CONTENT,
+            widgetId = ACCOUNT,
             defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 20,
+            defaultH = 8,
+            minW = 8,
+            minH = 6,
+            collapsedW = 8,
+            collapsedH = 6,
+            expandedH = 10,
+            maxH = 12
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = BUILD,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 24,
             minW = 8,
             minH = 12,
             collapsedW = 8,
             collapsedH = 12,
             expandedH = 30,
-            maxH = 40,
-            canHide = false
+            maxH = 38
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = APP_UPDATE,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 12,
+            minW = 8,
+            minH = 8,
+            collapsedW = 8,
+            collapsedH = 8,
+            expandedH = 16,
+            maxH = 20
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = MANAGER,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 12,
+            minW = 8,
+            minH = 8,
+            collapsedW = 8,
+            collapsedH = 8,
+            expandedH = 18,
+            maxH = 24
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = NOTIFICATION,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 5,
+            minW = 8,
+            minH = 4,
+            collapsedW = 8,
+            collapsedH = 4,
+            expandedH = 6,
+            maxH = 8
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = NAVIGATION,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 5,
+            minW = 8,
+            minH = 4,
+            collapsedW = 8,
+            collapsedH = 4,
+            expandedH = 6,
+            maxH = 8
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = LANGUAGE,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 5,
+            minW = 8,
+            minH = 4,
+            collapsedW = 8,
+            collapsedH = 4,
+            expandedH = 6,
+            maxH = 8
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = THEME,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 6,
+            minW = 8,
+            minH = 4,
+            collapsedW = 8,
+            collapsedH = 4,
+            expandedH = 8,
+            maxH = 10
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = EXTENSIONS,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 5,
+            minW = 8,
+            minH = 4,
+            collapsedW = 8,
+            collapsedH = 4,
+            expandedH = 6,
+            maxH = 8
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = ABOUT,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 12,
+            minW = 8,
+            minH = 8,
+            collapsedW = 8,
+            collapsedH = 8,
+            expandedH = 16,
+            maxH = 20
         )
     )
 
@@ -259,7 +366,16 @@ object SettingsDashboardWidgets {
         layoutMode = DashboardLayoutMode.GRID,
         densityPreset = densityPreset,
         items = listOf(
-            DashboardLayoutItem(CONTENT, 0, 0, densityPreset.columns, 20)
+            DashboardLayoutItem(ACCOUNT, 0, 0, densityPreset.columns, 8),
+            DashboardLayoutItem(BUILD, 0, 8, densityPreset.columns, 24),
+            DashboardLayoutItem(APP_UPDATE, 0, 32, densityPreset.columns, 12),
+            DashboardLayoutItem(MANAGER, 0, 44, densityPreset.columns, 12),
+            DashboardLayoutItem(NOTIFICATION, 0, 56, densityPreset.columns, 5),
+            DashboardLayoutItem(NAVIGATION, 0, 61, densityPreset.columns, 5),
+            DashboardLayoutItem(LANGUAGE, 0, 66, densityPreset.columns, 5),
+            DashboardLayoutItem(THEME, 0, 71, densityPreset.columns, 6),
+            DashboardLayoutItem(EXTENSIONS, 0, 77, densityPreset.columns, 5),
+            DashboardLayoutItem(ABOUT, 0, 82, densityPreset.columns, 12)
         )
     )
 
