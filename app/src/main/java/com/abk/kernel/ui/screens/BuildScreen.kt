@@ -432,6 +432,7 @@ fun BuildScreen(
 
     @Composable
     fun GuidedFinishOverviewSection() {
+        val defaultModuleName = stringResource(R.string.build_external_module_default)
         ExpressiveSectionCard(
             title = stringResource(R.string.build_guided_step_finish),
             subtitle = stringResource(R.string.build_guided_step_finish_desc),
@@ -445,7 +446,7 @@ fun BuildScreen(
             if (!isOnePlusBuild && config.useCustomExternalModules && customModuleGroups.isNotEmpty()) {
                 Text(
                     text = customModuleGroups.joinToString("\n") {
-                        "• ${it.displayName(stringResource(R.string.build_external_module_default))}"
+                        "• ${it.displayName(defaultModuleName)}"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
