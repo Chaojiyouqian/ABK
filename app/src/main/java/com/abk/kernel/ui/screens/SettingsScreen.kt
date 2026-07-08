@@ -487,7 +487,10 @@ fun SettingsScreen(
                                     onOpenSourceLicenses = {},
                                     onOpenExtensionManager = {},
                                     exportingDiagnostics = exportingDiagnostics,
-                                    onExportDiagnostics = {}
+                                    onExportDiagnostics = {},
+                                    contentHorizontalPadding = 0.dp,
+                                    bottomSpacerHeight = 0.dp,
+                                    fillViewport = false
                                 )
                             }
                             DashboardLayoutMode.FREEFORM -> DashboardFreeform(
@@ -546,7 +549,10 @@ fun SettingsScreen(
                                     onOpenSourceLicenses = {},
                                     onOpenExtensionManager = {},
                                     exportingDiagnostics = exportingDiagnostics,
-                                    onExportDiagnostics = {}
+                                    onExportDiagnostics = {},
+                                    contentHorizontalPadding = 0.dp,
+                                    bottomSpacerHeight = 0.dp,
+                                    fillViewport = false
                                 )
                             }
                         }
@@ -892,16 +898,19 @@ private fun SettingsMainContent(
     onOpenSourceLicenses: () -> Unit,
     onOpenExtensionManager: () -> Unit,
     exportingDiagnostics: Boolean,
-    onExportDiagnostics: () -> Unit
+    onExportDiagnostics: () -> Unit,
+    contentHorizontalPadding: Dp = AbkScreenHorizontalPadding,
+    bottomSpacerHeight: Dp? = null,
+    fillViewport: Boolean = true
 ) {
     val context = LocalContext.current
     Column(
         modifier = Modifier
             .padding(padding)
-            .fillMaxSize()
+            .then(if (fillViewport) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
             .nestedScroll(scrollBehavior.nestedScrollConnection)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = AbkScreenHorizontalPadding),
+            .padding(horizontal = contentHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         SettingsGroup(title = stringResource(R.string.settings_account)) {
@@ -1212,7 +1221,7 @@ private fun SettingsMainContent(
             )
         }
 
-        Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
+        Spacer(Modifier.height(bottomSpacerHeight ?: (80.dp + outerPadding.calculateBottomPadding())))
     }
 }
 

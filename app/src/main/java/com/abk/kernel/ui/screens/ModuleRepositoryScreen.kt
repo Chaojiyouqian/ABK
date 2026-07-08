@@ -530,6 +530,7 @@ fun ModuleRepositoryScreen(
                     .onFailure { Toast.makeText(context, context.getString(R.string.module_repo_open_failed), Toast.LENGTH_SHORT).show() }
             },
             includeSearch = false,
+            horizontalContentPadding = 0.dp,
             scrollBehavior = scrollBehavior,
             bottomPadding = 0.dp
         )
@@ -628,6 +629,7 @@ fun ModuleRepositoryScreen(
                 if (!editorActive && !readOnlyPreview) startInstall(module)
             },
             includeSearch = false,
+            horizontalContentPadding = 0.dp,
             scrollBehavior = scrollBehavior,
             bottomPadding = 0.dp
         )
@@ -1491,6 +1493,7 @@ private fun RuntimeModuleRepositoryListContent(
     onOpenModule: (MergedRuntimeCatalogModule) -> Unit,
     onInstallModule: (MergedRuntimeCatalogModule) -> Unit,
     includeSearch: Boolean = true,
+    horizontalContentPadding: Dp = AbkScreenHorizontalPadding,
     scrollBehavior: androidx.compose.material3.TopAppBarScrollBehavior,
     bottomPadding: Dp
 ) {
@@ -1500,7 +1503,7 @@ private fun RuntimeModuleRepositoryListContent(
             .padding(padding)
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection)
-            .padding(horizontal = AbkScreenHorizontalPadding),
+            .padding(horizontal = horizontalContentPadding),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(bottom = bottomPadding + 24.dp)
     ) {
@@ -2294,6 +2297,7 @@ private fun BuildModuleRepositoryListContent(
     onAddModule: (ModuleCatalogItem) -> Unit,
     onOpenModule: (ModuleCatalogItem) -> Unit,
     includeSearch: Boolean = true,
+    horizontalContentPadding: Dp = AbkScreenHorizontalPadding,
     scrollBehavior: androidx.compose.material3.TopAppBarScrollBehavior,
     bottomPadding: Dp
 ) {
@@ -2304,7 +2308,7 @@ private fun BuildModuleRepositoryListContent(
             .padding(padding)
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection)
-            .padding(horizontal = AbkScreenHorizontalPadding),
+            .padding(horizontal = horizontalContentPadding),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(bottom = bottomPadding + 24.dp)
     ) {

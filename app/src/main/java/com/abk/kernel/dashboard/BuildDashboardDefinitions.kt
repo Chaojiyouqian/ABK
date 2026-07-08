@@ -14,79 +14,79 @@ object BuildDashboardWidgets {
         BuiltinWidgetDefinition(
             widgetId = OVERVIEW,
             defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 15,
+            defaultH = 12,
             minW = 8,
             minH = 8,
             collapsedW = 8,
             collapsedH = 8,
-            expandedH = 20,
-            maxH = 24
+            expandedH = 16,
+            maxH = 20
         ),
         BuiltinWidgetDefinition(
             widgetId = TOOLS,
             defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 10,
+            defaultH = 8,
             minW = 8,
             minH = 6,
             collapsedW = 8,
             collapsedH = 6,
-            expandedH = 14,
-            maxH = 16
+            expandedH = 12,
+            maxH = 14
         ),
         BuiltinWidgetDefinition(
             widgetId = KERNEL_VERSION,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 12,
+            minW = 8,
+            minH = 8,
+            collapsedW = 8,
+            collapsedH = 8,
+            expandedH = 16,
+            maxH = 20
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = KERNEL_SU,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 8,
+            minW = 8,
+            minH = 6,
+            collapsedW = 8,
+            collapsedH = 6,
+            expandedH = 12,
+            maxH = 16
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = FEATURES,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 18,
+            minW = 8,
+            minH = 12,
+            collapsedW = 8,
+            collapsedH = 12,
+            expandedH = 28,
+            maxH = 36
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = CUSTOM_MODULES,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 18,
+            minW = 8,
+            minH = 10,
+            collapsedW = 8,
+            collapsedH = 10,
+            expandedH = 30,
+            maxH = 40
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = OPTIONAL_CONFIG,
             defaultW = DashboardDensityPreset.STANDARD.columns,
             defaultH = 16,
             minW = 8,
             minH = 10,
             collapsedW = 8,
             collapsedH = 10,
-            expandedH = 22,
-            maxH = 26
-        ),
-        BuiltinWidgetDefinition(
-            widgetId = KERNEL_SU,
-            defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 10,
-            minW = 8,
-            minH = 8,
-            collapsedW = 8,
-            collapsedH = 8,
-            expandedH = 14,
-            maxH = 18
-        ),
-        BuiltinWidgetDefinition(
-            widgetId = FEATURES,
-            defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 24,
-            minW = 8,
-            minH = 14,
-            collapsedW = 8,
-            collapsedH = 14,
-            expandedH = 36,
-            maxH = 44
-        ),
-        BuiltinWidgetDefinition(
-            widgetId = CUSTOM_MODULES,
-            defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 26,
-            minW = 8,
-            minH = 10,
-            collapsedW = 8,
-            collapsedH = 10,
-            expandedH = 42,
-            maxH = 52
-        ),
-        BuiltinWidgetDefinition(
-            widgetId = OPTIONAL_CONFIG,
-            defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 24,
-            minW = 8,
-            minH = 12,
-            collapsedW = 8,
-            collapsedH = 12,
-            expandedH = 36,
-            maxH = 44
+            expandedH = 24,
+            maxH = 32
         ),
         BuiltinWidgetDefinition(
             widgetId = SUBMIT,
@@ -109,14 +109,14 @@ object BuildDashboardWidgets {
     ): DashboardLayout {
         val columns = densityPreset.columns
         val items = listOf(
-            seed(OVERVIEW, 0, 0, columns, 15),
-            seed(TOOLS, 0, 15, columns, 10),
-            seed(KERNEL_VERSION, 0, 25, columns, 16),
-            seed(KERNEL_SU, 0, 41, columns, 10),
-            seed(FEATURES, 0, 51, columns, 24),
-            seed(CUSTOM_MODULES, 0, 75, columns, 26),
-            seed(OPTIONAL_CONFIG, 0, 101, columns, 24),
-            seed(SUBMIT, 0, 125, columns, 4)
+            seed(OVERVIEW, 0, 0, columns, 12),
+            seed(TOOLS, 0, 12, columns, 8),
+            seed(KERNEL_VERSION, 0, 20, columns, 12),
+            seed(KERNEL_SU, 0, 32, columns, 8),
+            seed(FEATURES, 0, 40, columns, 18),
+            seed(CUSTOM_MODULES, 0, 58, columns, 18),
+            seed(OPTIONAL_CONFIG, 0, 76, columns, 16),
+            seed(SUBMIT, 0, 92, columns, 4)
         )
         return DashboardLayout(
             version = DASHBOARD_LAYOUT_VERSION,

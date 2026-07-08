@@ -1236,7 +1236,11 @@ fun FlashScreen(
     }
 
     @Composable
-    fun FlashListContent(listScrollState: LazyListState) {
+    fun FlashListContent(
+        listScrollState: LazyListState,
+        horizontalContentPadding: Dp = AbkScreenHorizontalPadding,
+        bottomContentPadding: Dp = 96.dp + outerPadding.calculateBottomPadding()
+    ) {
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
@@ -1252,9 +1256,9 @@ fun FlashScreen(
                     .padding(padding)
                     .fillMaxSize()
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
-                    .padding(horizontal = AbkScreenHorizontalPadding),
+                    .padding(horizontal = horizontalContentPadding),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(bottom = 96.dp + outerPadding.calculateBottomPadding())
+                contentPadding = PaddingValues(bottom = bottomContentPadding)
             ) {
                 item {
                     FlashHero(
@@ -1577,7 +1581,11 @@ fun FlashScreen(
                     ) { widgetId, _ ->
                         when (widgetId) {
                             FlashDashboardWidgets.SUMMARY -> FlashSummaryContent()
-                            FlashDashboardWidgets.CONTENT -> FlashListContent(flashListScrollState)
+                            FlashDashboardWidgets.CONTENT -> FlashListContent(
+                                listScrollState = flashListScrollState,
+                                horizontalContentPadding = 0.dp,
+                                bottomContentPadding = 0.dp
+                            )
                         }
                     }
                     DashboardLayoutMode.FREEFORM -> DashboardFreeform(
@@ -1617,7 +1625,11 @@ fun FlashScreen(
                     ) { widgetId, _ ->
                         when (widgetId) {
                             FlashDashboardWidgets.SUMMARY -> FlashSummaryContent()
-                            FlashDashboardWidgets.CONTENT -> FlashListContent(flashListScrollState)
+                            FlashDashboardWidgets.CONTENT -> FlashListContent(
+                                listScrollState = flashListScrollState,
+                                horizontalContentPadding = 0.dp,
+                                bottomContentPadding = 0.dp
+                            )
                         }
                     }
                 }
@@ -1659,7 +1671,11 @@ fun FlashScreen(
                 ) { widgetId ->
                     when (widgetId) {
                         FlashDashboardWidgets.SUMMARY -> FlashSummaryContent()
-                        FlashDashboardWidgets.CONTENT -> FlashListContent(flashListScrollState)
+                        FlashDashboardWidgets.CONTENT -> FlashListContent(
+                            listScrollState = flashListScrollState,
+                            horizontalContentPadding = 0.dp,
+                            bottomContentPadding = 0.dp
+                        )
                     }
                 }
 
