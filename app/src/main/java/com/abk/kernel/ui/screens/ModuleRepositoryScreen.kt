@@ -485,42 +485,6 @@ fun ModuleRepositoryScreen(
         )
     }
 
-    @Composable
-    fun runtimeContentWidget() {
-        RuntimeModuleRepositoryListContent(
-            padding = PaddingValues(0.dp),
-            modules = filteredModules.filterIsInstance<MergedRuntimeCatalogModule>(),
-            totalModules = filteredModules.filterIsInstance<MergedRuntimeCatalogModule>().size,
-            computing = listComputing,
-            repositories = state.runtimeModuleRepositories,
-            refreshing = state.refreshingRuntimeModuleRepositoryIds.isNotEmpty(),
-            searchQuery = searchQuery,
-            onSearchQueryChange = { searchQuery = it },
-            onOpenRepositorySettings = {},
-            onOpenModule = { module ->
-                val url = module.module.preferredOpenUrl()
-                runCatching { uriHandler.openUri(url) }
-                    .onFailure { Toast.makeText(context, context.getString(R.string.module_repo_open_failed), Toast.LENGTH_SHORT).show() }
-            },
-            onInstallModule = { module ->
-                if (!editorActive && !readOnlyPreview) startInstall(module)
-            },
-            scrollBehavior = scrollBehavior,
-            bottomPadding = 0.dp
-        )
-    }
-
-    val summaryWidgetContent: @Composable () -> Unit = if (mode == ModuleRepositoryMode.BUILD_ABK) {
-        { buildSummaryContent() }
-    } else {
-        { runtimeSummaryContent() }
-    }
-    val mainWidgetContent: @Composable () -> Unit = if (mode == ModuleRepositoryMode.BUILD_ABK) {
-        { buildContentWidget() }
-    } else {
-        { runtimeContentWidget() }
-    }
-
     fun startInstall(module: MergedRuntimeCatalogModule) {
         if (installRunning) return
         pendingInstallModule = null
@@ -591,6 +555,42 @@ fun ModuleRepositoryScreen(
             }
             if (result.success) vm.refreshAbkRuntimeStatus()
         }
+    }
+
+    @Composable
+    fun runtimeContentWidget() {
+        RuntimeModuleRepositoryListContent(
+            padding = PaddingValues(0.dp),
+            modules = filteredModules.filterIsInstance<MergedRuntimeCatalogModule>(),
+            totalModules = filteredModules.filterIsInstance<MergedRuntimeCatalogModule>().size,
+            computing = listComputing,
+            repositories = state.runtimeModuleRepositories,
+            refreshing = state.refreshingRuntimeModuleRepositoryIds.isNotEmpty(),
+            searchQuery = searchQuery,
+            onSearchQueryChange = { searchQuery = it },
+            onOpenRepositorySettings = {},
+            onOpenModule = { module ->
+                val url = module.module.preferredOpenUrl()
+                runCatching { uriHandler.openUri(url) }
+                    .onFailure { Toast.makeText(context, context.getString(R.string.module_repo_open_failed), Toast.LENGTH_SHORT).show() }
+            },
+            onInstallModule = { module ->
+                if (!editorActive && !readOnlyPreview) startInstall(module)
+            },
+            scrollBehavior = scrollBehavior,
+            bottomPadding = 0.dp
+        )
+    }
+
+    val summaryWidgetContent: @Composable () -> Unit = if (mode == ModuleRepositoryMode.BUILD_ABK) {
+        { buildSummaryContent() }
+    } else {
+        { runtimeSummaryContent() }
+    }
+    val mainWidgetContent: @Composable () -> Unit = if (mode == ModuleRepositoryMode.BUILD_ABK) {
+        { buildContentWidget() }
+    } else {
+        { runtimeContentWidget() }
     }
 
     DisposableEffect(Unit) {
