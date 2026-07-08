@@ -1,6 +1,6 @@
 package com.abk.kernel.dashboard
 
-const val DASHBOARD_LAYOUT_VERSION = 2
+const val DASHBOARD_LAYOUT_VERSION = 3
 
 enum class DashboardPageId(val rawValue: String) {
     STATUS("status"),

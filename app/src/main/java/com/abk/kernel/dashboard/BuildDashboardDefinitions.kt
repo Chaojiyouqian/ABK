@@ -139,11 +139,21 @@ object BuildDashboardWidgets {
 
     fun defaultFreeformLayout(
         densityPreset: DashboardDensityPreset = DashboardDensityPreset.STANDARD
-    ): DashboardLayout = DashboardLayoutEngine.changeMode(
-        layout = defaultLayout(densityPreset),
-        targetMode = DashboardLayoutMode.FREEFORM,
-        definitions = definitions,
-        defaultLayout = defaultLayout(densityPreset)
+    ): DashboardLayout = DashboardLayout(
+        version = DASHBOARD_LAYOUT_VERSION,
+        pageId = DashboardPageId.BUILD,
+        layoutMode = DashboardLayoutMode.FREEFORM,
+        densityPreset = densityPreset,
+        items = listOf(
+            dashboardFreeformItem(OVERVIEW, densityPreset, y = 0, h = 248),
+            dashboardFreeformItem(TOOLS, densityPreset, y = 260, h = 208),
+            dashboardFreeformItem(KERNEL_VERSION, densityPreset, y = 480, h = 320),
+            dashboardFreeformItem(KERNEL_SU, densityPreset, y = 812, h = 216),
+            dashboardFreeformItem(FEATURES, densityPreset, y = 1040, h = 640),
+            dashboardFreeformItem(CUSTOM_MODULES, densityPreset, y = 1692, h = 420),
+            dashboardFreeformItem(OPTIONAL_CONFIG, densityPreset, y = 2124, h = 420),
+            dashboardFreeformItem(SUBMIT, densityPreset, y = 2556, h = 92)
+        )
     )
 
     private fun seed(widgetId: String, x: Int, y: Int, w: Int, h: Int): DefaultSeed =

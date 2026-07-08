@@ -118,11 +118,18 @@ object StatusDashboardWidgets {
 
     fun defaultFreeformLayout(
         densityPreset: DashboardDensityPreset = DashboardDensityPreset.STANDARD
-    ): DashboardLayout = DashboardLayoutEngine.changeMode(
-        layout = defaultLayout(densityPreset),
-        targetMode = DashboardLayoutMode.FREEFORM,
-        definitions = definitions,
-        defaultLayout = defaultLayout(densityPreset)
+    ): DashboardLayout = DashboardLayout(
+        version = DASHBOARD_LAYOUT_VERSION,
+        pageId = DashboardPageId.STATUS,
+        layoutMode = DashboardLayoutMode.FREEFORM,
+        densityPreset = densityPreset,
+        items = listOf(
+            dashboardFreeformItem(HERO, densityPreset, y = 0, h = 168),
+            dashboardFreeformItem(METRICS, densityPreset, y = 180, h = 176),
+            dashboardFreeformItem(BUILD_ACTIVITY, densityPreset, y = 368, h = 188),
+            dashboardFreeformItem(DEVICE_REPOSITORY, densityPreset, y = 568, h = 188),
+            dashboardFreeformItem(RECENT_RUNS, densityPreset, y = 768, h = 208)
+        )
     )
 
     private fun seed(widgetId: String, x: Int, y: Int, w: Int, h: Int): DefaultSeed =

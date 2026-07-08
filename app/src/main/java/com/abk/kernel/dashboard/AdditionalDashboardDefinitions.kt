@@ -60,11 +60,16 @@ object ModuleRepositoryDashboardWidgets {
 
     fun defaultFreeformLayout(
         densityPreset: DashboardDensityPreset = DashboardDensityPreset.STANDARD
-    ): DashboardLayout = DashboardLayoutEngine.changeMode(
-        layout = defaultLayout(densityPreset),
-        targetMode = DashboardLayoutMode.FREEFORM,
-        definitions = definitions,
-        defaultLayout = defaultLayout(densityPreset)
+    ): DashboardLayout = DashboardLayout(
+        version = DASHBOARD_LAYOUT_VERSION,
+        pageId = DashboardPageId.MODULES,
+        layoutMode = DashboardLayoutMode.FREEFORM,
+        densityPreset = densityPreset,
+        items = listOf(
+            dashboardFreeformItem(SUMMARY, densityPreset, y = 0, h = 164, visible = false),
+            dashboardFreeformItem(SEARCH, densityPreset, y = 0, h = 124),
+            dashboardFreeformItem(LIST, densityPreset, y = 136, h = 920)
+        )
     )
 }
 
@@ -115,11 +120,15 @@ object FlashDashboardWidgets {
 
     fun defaultFreeformLayout(
         densityPreset: DashboardDensityPreset = DashboardDensityPreset.STANDARD
-    ): DashboardLayout = DashboardLayoutEngine.changeMode(
-        layout = defaultLayout(densityPreset),
-        targetMode = DashboardLayoutMode.FREEFORM,
-        definitions = definitions,
-        defaultLayout = defaultLayout(densityPreset)
+    ): DashboardLayout = DashboardLayout(
+        version = DASHBOARD_LAYOUT_VERSION,
+        pageId = DashboardPageId.FLASH,
+        layoutMode = DashboardLayoutMode.FREEFORM,
+        densityPreset = densityPreset,
+        items = listOf(
+            dashboardFreeformItem(SUMMARY, densityPreset, y = 0, h = 220, visible = false),
+            dashboardFreeformItem(CONTENT, densityPreset, y = 0, h = 1040)
+        )
     )
 }
 
@@ -169,11 +178,15 @@ object InstalledModulesDashboardWidgets {
 
     fun defaultFreeformLayout(
         densityPreset: DashboardDensityPreset = DashboardDensityPreset.STANDARD
-    ): DashboardLayout = DashboardLayoutEngine.changeMode(
-        layout = defaultLayout(densityPreset),
-        targetMode = DashboardLayoutMode.FREEFORM,
-        definitions = definitions,
-        defaultLayout = defaultLayout(densityPreset)
+    ): DashboardLayout = DashboardLayout(
+        version = DASHBOARD_LAYOUT_VERSION,
+        pageId = DashboardPageId.INSTALLED_MODULES,
+        layoutMode = DashboardLayoutMode.FREEFORM,
+        densityPreset = densityPreset,
+        items = listOf(
+            dashboardFreeformItem(CONTROLS, densityPreset, y = 0, h = 124),
+            dashboardFreeformItem(LIST, densityPreset, y = 136, h = 960)
+        )
     )
 }
 
@@ -223,11 +236,15 @@ object RootAuthDashboardWidgets {
 
     fun defaultFreeformLayout(
         densityPreset: DashboardDensityPreset = DashboardDensityPreset.STANDARD
-    ): DashboardLayout = DashboardLayoutEngine.changeMode(
-        layout = defaultLayout(densityPreset),
-        targetMode = DashboardLayoutMode.FREEFORM,
-        definitions = definitions,
-        defaultLayout = defaultLayout(densityPreset)
+    ): DashboardLayout = DashboardLayout(
+        version = DASHBOARD_LAYOUT_VERSION,
+        pageId = DashboardPageId.ROOT_AUTH,
+        layoutMode = DashboardLayoutMode.FREEFORM,
+        densityPreset = densityPreset,
+        items = listOf(
+            dashboardFreeformItem(CONTROLS, densityPreset, y = 0, h = 188),
+            dashboardFreeformItem(LIST, densityPreset, y = 200, h = 980)
+        )
     )
 }
 
@@ -381,10 +398,22 @@ object SettingsDashboardWidgets {
 
     fun defaultFreeformLayout(
         densityPreset: DashboardDensityPreset = DashboardDensityPreset.STANDARD
-    ): DashboardLayout = DashboardLayoutEngine.changeMode(
-        layout = defaultLayout(densityPreset),
-        targetMode = DashboardLayoutMode.FREEFORM,
-        definitions = definitions,
-        defaultLayout = defaultLayout(densityPreset)
+    ): DashboardLayout = DashboardLayout(
+        version = DASHBOARD_LAYOUT_VERSION,
+        pageId = DashboardPageId.SETTINGS,
+        layoutMode = DashboardLayoutMode.FREEFORM,
+        densityPreset = densityPreset,
+        items = listOf(
+            dashboardFreeformItem(ACCOUNT, densityPreset, y = 0, h = 188),
+            dashboardFreeformItem(BUILD, densityPreset, y = 200, h = 480),
+            dashboardFreeformItem(APP_UPDATE, densityPreset, y = 692, h = 248),
+            dashboardFreeformItem(MANAGER, densityPreset, y = 952, h = 248),
+            dashboardFreeformItem(NOTIFICATION, densityPreset, y = 1212, h = 112),
+            dashboardFreeformItem(NAVIGATION, densityPreset, y = 1336, h = 112),
+            dashboardFreeformItem(LANGUAGE, densityPreset, y = 1460, h = 112),
+            dashboardFreeformItem(THEME, densityPreset, y = 1584, h = 136),
+            dashboardFreeformItem(EXTENSIONS, densityPreset, y = 1732, h = 112),
+            dashboardFreeformItem(ABOUT, densityPreset, y = 1856, h = 320)
+        )
     )
 }

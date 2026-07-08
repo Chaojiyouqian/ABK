@@ -82,10 +82,15 @@ object RuntimeDashboardWidgets {
 
     fun defaultFreeformLayout(
         densityPreset: DashboardDensityPreset = DashboardDensityPreset.STANDARD
-    ): DashboardLayout = DashboardLayoutEngine.changeMode(
-        layout = defaultLayout(densityPreset),
-        targetMode = DashboardLayoutMode.FREEFORM,
-        definitions = definitions,
-        defaultLayout = defaultLayout(densityPreset)
+    ): DashboardLayout = DashboardLayout(
+        version = DASHBOARD_LAYOUT_VERSION,
+        pageId = DashboardPageId.RUNTIME_HOME,
+        layoutMode = DashboardLayoutMode.FREEFORM,
+        densityPreset = densityPreset,
+        items = listOf(
+            dashboardFreeformItem(STATUS_HEADER, densityPreset, y = 0, h = 168),
+            dashboardFreeformItem(MANAGER, densityPreset, y = 180, h = 252),
+            dashboardFreeformItem(BUILD_PARAMETERS, densityPreset, y = 444, h = 288)
+        )
     )
 }
