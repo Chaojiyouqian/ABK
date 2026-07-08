@@ -770,6 +770,43 @@ fun BuildScreen(
         }
     }
 
+    val openModuleSetEditorAction: (BuildCustomModuleGroup) -> Unit = fun(group: BuildCustomModuleGroup) {
+        val repoUrl = group.groupRepoUrl.ifBlank {
+            group.catalogModule?.module?.repoUrl ?: group.url
+        }.trim()
+        if (repoUrl.isBlank()) return
+        coroutineScope.launch {
+            val metadata = vm.checkCustomExternalModuleMetadata(repoUrl) ?: return@launch
+            if (metadata.kind != ModuleCatalogItemKind.MODULE_SET) return@launch
+            val currentGroupModules = config.customExternalModules.filter {
+                CustomExternalModuleEntryKind.normalize(it.entryKind) == CustomExternalModuleEntryKind.MODULE_SET_CHILD &&
+                    (
+                        it.groupRepoUrl.equals(repoUrl, ignoreCase = true) ||
+                            (it.groupRepoUrl.isBlank() && it.url.equals(repoUrl, ignoreCase = true))
+                        )
+            }
+            val selectedChildIds = currentGroupModules
+                .mapNotNull { childId -> childId.childId.trim().takeIf { it.isNotBlank() } }
+                .distinct()
+            val stageSelections = metadata.children.associate { child ->
+                val existingStages = currentGroupModules
+                    .filter { it.childId.equals(child.id, ignoreCase = true) }
+                    .map { CustomExternalModuleStage.normalize(it.stage) }
+                    .distinct()
+                    .filter { it in child.supportedStages }
+                child.id to existingStages.ifEmpty {
+                    child.recommendedStages
+                        .filter { it in child.supportedStages }
+                        .ifEmpty { listOf(child.defaultStage) }
+                }
+            }
+            editingModuleSetGroup = group
+            editingModuleSetMetadata = metadata
+            editingModuleSetChildIds = selectedChildIds
+            editingModuleSetStageSelections = stageSelections
+        }
+    }
+
     @Composable
     fun BuildDashboardCustomModulesWidget() {
         SectionCard(section = BuildSection.CustomModules) {
@@ -807,7 +844,7 @@ fun BuildScreen(
                                                     IconButton(
                                                         onClick = {
                                                             if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
-                                                                openModuleSetEditor(group)
+                                                                openModuleSetEditorAction(group)
                                                             } else {
                                                                 editingCustomModuleGroup = group
                                                                 editingCustomModuleStages = group.stages
@@ -868,7 +905,7 @@ fun BuildScreen(
                                                     IconButton(
                                                         onClick = {
                                                             if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
-                                                                openModuleSetEditor(group)
+                                                                openModuleSetEditorAction(group)
                                                             } else {
                                                                 editingCustomModuleGroup = group
                                                                 editingCustomModuleStages = group.stages
@@ -1234,44 +1271,6 @@ fun BuildScreen(
             }
         }
     }
-
-    fun openModuleSetEditor(group: BuildCustomModuleGroup) {
-        val repoUrl = group.groupRepoUrl.ifBlank {
-            group.catalogModule?.module?.repoUrl ?: group.url
-        }.trim()
-        if (repoUrl.isBlank()) return
-        coroutineScope.launch {
-            val metadata = vm.checkCustomExternalModuleMetadata(repoUrl) ?: return@launch
-            if (metadata.kind != ModuleCatalogItemKind.MODULE_SET) return@launch
-            val currentGroupModules = config.customExternalModules.filter {
-                CustomExternalModuleEntryKind.normalize(it.entryKind) == CustomExternalModuleEntryKind.MODULE_SET_CHILD &&
-                    (
-                        it.groupRepoUrl.equals(repoUrl, ignoreCase = true) ||
-                            (it.groupRepoUrl.isBlank() && it.url.equals(repoUrl, ignoreCase = true))
-                        )
-            }
-            val selectedChildIds = currentGroupModules
-                .mapNotNull { childId -> childId.childId.trim().takeIf { it.isNotBlank() } }
-                .distinct()
-            val stageSelections = metadata.children.associate { child ->
-                val existingStages = currentGroupModules
-                    .filter { it.childId.equals(child.id, ignoreCase = true) }
-                    .map { CustomExternalModuleStage.normalize(it.stage) }
-                    .distinct()
-                    .filter { it in child.supportedStages }
-                child.id to existingStages.ifEmpty {
-                    child.recommendedStages
-                        .filter { it in child.supportedStages }
-                        .ifEmpty { listOf(child.defaultStage) }
-                }
-            }
-            editingModuleSetGroup = group
-            editingModuleSetMetadata = metadata
-            editingModuleSetChildIds = selectedChildIds
-            editingModuleSetStageSelections = stageSelections
-        }
-    }
-
 
     if (showBuildSubmittedDialog) {
         AlertDialog(
@@ -2731,7 +2730,7 @@ fun BuildScreen(
                                                     IconButton(
                                                         onClick = {
                                                             if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
-                                                                openModuleSetEditor(group)
+                                                                openModuleSetEditorAction(group)
                                                             } else {
                                                                 editingCustomModuleGroup = group
                                                                 editingCustomModuleStages = group.stages
@@ -2794,7 +2793,7 @@ fun BuildScreen(
                                                     IconButton(
                                                         onClick = {
                                                             if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
-                                                                openModuleSetEditor(group)
+                                                                openModuleSetEditorAction(group)
                                                             } else {
                                                                 editingCustomModuleGroup = group
                                                                 editingCustomModuleStages = group.stages
