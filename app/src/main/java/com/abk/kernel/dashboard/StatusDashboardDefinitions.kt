@@ -22,11 +22,11 @@ object StatusDashboardWidgets {
         ),
         BuiltinWidgetDefinition(
             widgetId = METRICS,
-            defaultW = 6,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
             defaultH = 4,
-            minW = 4,
+            minW = 8,
             minH = 3,
-            collapsedW = 4,
+            collapsedW = 8,
             collapsedH = 3,
             expandedH = 5,
             maxH = 5
@@ -34,34 +34,34 @@ object StatusDashboardWidgets {
         BuiltinWidgetDefinition(
             widgetId = BUILD_ACTIVITY,
             defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 9,
+            defaultH = 6,
             minW = 8,
             minH = 4,
             collapsedW = 8,
             collapsedH = 4,
-            expandedH = 12,
-            maxH = 12
+            expandedH = 8,
+            maxH = 10
         ),
         BuiltinWidgetDefinition(
             widgetId = DEVICE_REPOSITORY,
-            defaultW = 10,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
             defaultH = 6,
-            minW = 5,
+            minW = 8,
             minH = 4,
-            collapsedW = 5,
+            collapsedW = 8,
             collapsedH = 4,
             expandedH = 8,
-            maxH = 8
+            maxH = 10
         ),
         BuiltinWidgetDefinition(
             widgetId = RECENT_RUNS,
             defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 8,
+            defaultH = 7,
             minW = 6,
             minH = 5,
             collapsedW = 6,
             collapsedH = 5,
-            expandedH = 12,
+            expandedH = 10,
             maxH = 12
         )
     )
@@ -76,23 +76,23 @@ object StatusDashboardWidgets {
             DashboardDensityPreset.COMPACT -> listOf(
                 seed(HERO, 0, 0, columns, 4),
                 seed(METRICS, 0, 4, columns, 4),
-                seed(BUILD_ACTIVITY, 0, 8, columns, 9),
-                seed(DEVICE_REPOSITORY, 0, 17, columns, 6),
-                seed(RECENT_RUNS, 0, 23, columns, 8),
+                seed(BUILD_ACTIVITY, 0, 8, columns, 6),
+                seed(DEVICE_REPOSITORY, 0, 14, columns, 6),
+                seed(RECENT_RUNS, 0, 20, columns, 7),
             )
             DashboardDensityPreset.STANDARD -> listOf(
                 seed(HERO, 0, 0, columns, 4),
                 seed(METRICS, 0, 4, columns, 4),
-                seed(BUILD_ACTIVITY, 0, 8, columns, 9),
-                seed(DEVICE_REPOSITORY, 0, 17, columns, 6),
-                seed(RECENT_RUNS, 0, 23, columns, 8),
+                seed(BUILD_ACTIVITY, 0, 8, columns, 6),
+                seed(DEVICE_REPOSITORY, 0, 14, columns, 6),
+                seed(RECENT_RUNS, 0, 20, columns, 7),
             )
             DashboardDensityPreset.RELAXED -> listOf(
                 seed(HERO, 0, 0, columns, 4),
                 seed(METRICS, 0, 4, columns, 4),
-                seed(BUILD_ACTIVITY, 0, 8, columns, 9),
-                seed(DEVICE_REPOSITORY, 0, 17, columns, 6),
-                seed(RECENT_RUNS, 0, 23, columns, 8),
+                seed(BUILD_ACTIVITY, 0, 8, columns, 6),
+                seed(DEVICE_REPOSITORY, 0, 14, columns, 6),
+                seed(RECENT_RUNS, 0, 20, columns, 7),
             )
         }
         return DashboardLayout(
