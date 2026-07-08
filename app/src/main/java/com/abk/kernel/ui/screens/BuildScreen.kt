@@ -340,6 +340,127 @@ fun BuildScreen(
         showCustomKernelConfigImportDialog = false
     }
 
+    @Composable
+    fun GuidedCustomKernelOptionsSection() {
+        ExpressiveSectionCard(
+            title = stringResource(R.string.build_custom_kernel_config),
+            subtitle = stringResource(R.string.build_custom_kernel_config_hint),
+            icon = Icons.Default.Tune
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = customKernelConfigDraft,
+                    onValueChange = {
+                        customKernelConfigDraft = it
+                        customKernelConfigInlineError = null
+                    },
+                    label = { Text(stringResource(R.string.build_custom_kernel_config)) },
+                    placeholder = { Text(stringResource(R.string.build_custom_kernel_config_single_placeholder)) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+                Button(
+                    onClick = ::addCustomKernelConfigEntry,
+                    enabled = customKernelConfigDraft.trim().isNotBlank()
+                ) {
+                    Icon(Icons.Default.Add, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.add))
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = {
+                    showCustomKernelConfigImportDialog = true
+                    customKernelConfigImportError = null
+                }) {
+                    Icon(Icons.Default.UploadFile, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.build_import))
+                }
+                if (customKernelConfigEntries.isNotEmpty()) {
+                    TextButton(onClick = {
+                        updateCustomKernelConfigEntries(emptyList())
+                        customKernelConfigInlineError = null
+                    }) {
+                        Icon(Icons.Default.Clear, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.clear))
+                    }
+                }
+            }
+            customKernelConfigInlineError?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            Text(
+                text = if (customKernelConfigEntries.isNotEmpty()) {
+                    stringResource(R.string.build_custom_kernel_config_count, customKernelConfigEntryCount)
+                } else {
+                    stringResource(R.string.build_custom_kernel_config_hint)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            customKernelConfigEntries.forEach { entry ->
+                key(entry.key) {
+                    CustomKernelConfigEntryCard(
+                        entry = entry,
+                        onStateChange = { state ->
+                            updateCustomKernelConfigEntries(
+                                customKernelConfigEntries.map { current ->
+                                    if (current.key == entry.key) current.copy(state = state) else current
+                                }
+                            )
+                        },
+                        onRemove = {
+                            updateCustomKernelConfigEntries(
+                                customKernelConfigEntries.filterNot { it.key == entry.key }
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun GuidedFinishOverviewSection() {
+        ExpressiveSectionCard(
+            title = stringResource(R.string.build_guided_step_finish),
+            subtitle = stringResource(R.string.build_guided_step_finish_desc),
+            icon = Icons.Default.CheckCircle
+        ) {
+            Text(
+                text = buildPlanSummary(config),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            if (!isOnePlusBuild && config.useCustomExternalModules && customModuleGroups.isNotEmpty()) {
+                Text(
+                    text = customModuleGroups.joinToString("\n") {
+                        "• ${it.displayName(stringResource(R.string.build_external_module_default))}"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (customKernelConfigEntries.isNotEmpty()) {
+                Text(
+                    text = stringResource(R.string.build_custom_kernel_config_count, customKernelConfigEntryCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+
     fun openModuleSetEditor(group: BuildCustomModuleGroup) {
         val repoUrl = group.groupRepoUrl.ifBlank {
             group.catalogModule?.module?.repoUrl ?: group.url
@@ -1142,6 +1263,7 @@ fun BuildScreen(
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize()
+                    .animateContentSize()
                     .then(
                         if (guidedMode) Modifier else Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
                     )
@@ -1810,9 +1932,16 @@ fun BuildScreen(
                     }
                 }
             }
+
+            if (guidedMode) {
+                GuidedCustomKernelOptionsSection()
+            }
             }
 
             if (!guidedMode || activeGuideStep == BuildGuideStep.Finish) {
+            if (guidedMode) {
+                GuidedFinishOverviewSection()
+            }
             SectionCard(section = BuildSection.OptionalConfig) {
                 OutlinedTextField(
                     value = config.version,
