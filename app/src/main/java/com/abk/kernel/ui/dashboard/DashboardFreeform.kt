@@ -100,8 +100,15 @@ fun DashboardFreeform(
                         )
                     )
                 }
-                .clip(MaterialTheme.shapes.extraLarge)
-                .background(uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainerLowest))
+                .then(
+                    if (editable) {
+                        Modifier
+                            .clip(MaterialTheme.shapes.extraLarge)
+                            .background(uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainerLowest))
+                    } else {
+                        Modifier
+                    }
+                )
                 .pointerInput(editable, selectedWidgetId) {
                     if (!editable) return@pointerInput
                     detectTapGestures(onTap = { onSelectWidget(null) })

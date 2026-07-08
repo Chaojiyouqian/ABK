@@ -191,8 +191,17 @@ fun ModuleRepositoryScreen(
         return
     }
     val widgetLabels = mapOf(
-        ModuleRepositoryDashboardWidgets.SUMMARY to buildRepoTitleLabel(context),
-        ModuleRepositoryDashboardWidgets.CONTENT to buildRepoCentralLabel(context)
+        ModuleRepositoryDashboardWidgets.SUMMARY to if (mode == ModuleRepositoryMode.BUILD_ABK) {
+            buildRepoTitleLabel(context)
+        } else {
+            runtimeRepoTitleLabel(context)
+        },
+        ModuleRepositoryDashboardWidgets.SEARCH to context.getString(R.string.module_repo_search),
+        ModuleRepositoryDashboardWidgets.LIST to if (mode == ModuleRepositoryMode.BUILD_ABK) {
+            buildRepoCentralLabel(context)
+        } else {
+            runtimeRepoCentralLabel(context)
+        }
     )
     var actionMenuExpanded by remember { mutableStateOf(false) }
     var widgetsTrayExpanded by remember { mutableStateOf(false) }
@@ -439,7 +448,7 @@ fun ModuleRepositoryScreen(
     @Composable
     fun runtimeSummaryContent() {
         ExpressiveSectionCard(
-            title = buildRepoTitleLabel(context),
+            title = runtimeRepoTitleLabel(context),
             subtitle = runtimeRepoCentralDescLabel(context),
             icon = Icons.Default.Dns
         ) {
@@ -457,6 +466,46 @@ fun ModuleRepositoryScreen(
                     icon = Icons.Default.Extension,
                     color = MaterialTheme.colorScheme.secondary
                 )
+            }
+        }
+    }
+
+    @Composable
+    fun buildSearchWidget() {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            CompactModuleSearchField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it }
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = ::openRepositorySettings) {
+                    Icon(Icons.Default.Dns, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(buildRepoManageLabel(context))
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun runtimeSearchWidget() {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            CompactModuleSearchField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it }
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = ::openRepositorySettings) {
+                    Icon(Icons.Default.Dns, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(runtimeRepoManageLabel(context))
+                }
             }
         }
     }
@@ -480,6 +529,7 @@ fun ModuleRepositoryScreen(
                 runCatching { uriHandler.openUri(url) }
                     .onFailure { Toast.makeText(context, context.getString(R.string.module_repo_open_failed), Toast.LENGTH_SHORT).show() }
             },
+            includeSearch = false,
             scrollBehavior = scrollBehavior,
             bottomPadding = 0.dp
         )
@@ -577,6 +627,7 @@ fun ModuleRepositoryScreen(
             onInstallModule = { module ->
                 if (!editorActive && !readOnlyPreview) startInstall(module)
             },
+            includeSearch = false,
             scrollBehavior = scrollBehavior,
             bottomPadding = 0.dp
         )
@@ -586,6 +637,11 @@ fun ModuleRepositoryScreen(
         { buildSummaryContent() }
     } else {
         { runtimeSummaryContent() }
+    }
+    val searchWidgetContent: @Composable () -> Unit = if (mode == ModuleRepositoryMode.BUILD_ABK) {
+        { buildSearchWidget() }
+    } else {
+        { runtimeSearchWidget() }
     }
     val mainWidgetContent: @Composable () -> Unit = if (mode == ModuleRepositoryMode.BUILD_ABK) {
         { buildContentWidget() }
@@ -694,7 +750,8 @@ fun ModuleRepositoryScreen(
                     ) { widgetId, _ ->
                         when (widgetId) {
                             ModuleRepositoryDashboardWidgets.SUMMARY -> summaryWidgetContent()
-                            ModuleRepositoryDashboardWidgets.CONTENT -> mainWidgetContent()
+                            ModuleRepositoryDashboardWidgets.SEARCH -> searchWidgetContent()
+                            ModuleRepositoryDashboardWidgets.LIST -> mainWidgetContent()
                         }
                     }
                     DashboardLayoutMode.FREEFORM -> DashboardFreeform(
@@ -742,7 +799,8 @@ fun ModuleRepositoryScreen(
                     ) { widgetId, _ ->
                         when (widgetId) {
                             ModuleRepositoryDashboardWidgets.SUMMARY -> summaryWidgetContent()
-                            ModuleRepositoryDashboardWidgets.CONTENT -> mainWidgetContent()
+                            ModuleRepositoryDashboardWidgets.SEARCH -> searchWidgetContent()
+                            ModuleRepositoryDashboardWidgets.LIST -> mainWidgetContent()
                         }
                     }
                 }
@@ -784,7 +842,8 @@ fun ModuleRepositoryScreen(
                 ) { widgetId ->
                     when (widgetId) {
                         ModuleRepositoryDashboardWidgets.SUMMARY -> summaryWidgetContent()
-                        ModuleRepositoryDashboardWidgets.CONTENT -> mainWidgetContent()
+                        ModuleRepositoryDashboardWidgets.SEARCH -> searchWidgetContent()
+                        ModuleRepositoryDashboardWidgets.LIST -> mainWidgetContent()
                     }
                 }
 
@@ -1431,6 +1490,7 @@ private fun RuntimeModuleRepositoryListContent(
     onOpenRepositorySettings: () -> Unit,
     onOpenModule: (MergedRuntimeCatalogModule) -> Unit,
     onInstallModule: (MergedRuntimeCatalogModule) -> Unit,
+    includeSearch: Boolean = true,
     scrollBehavior: androidx.compose.material3.TopAppBarScrollBehavior,
     bottomPadding: Dp
 ) {
@@ -1444,11 +1504,13 @@ private fun RuntimeModuleRepositoryListContent(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(bottom = bottomPadding + 24.dp)
     ) {
-        item(key = "search") {
-            CompactModuleSearchField(
-                value = searchQuery,
-                onValueChange = onSearchQueryChange
-            )
+        if (includeSearch) {
+            item(key = "search") {
+                CompactModuleSearchField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange
+                )
+            }
         }
 
         if (refreshing && !showInitialLoading) {
@@ -2231,6 +2293,7 @@ private fun BuildModuleRepositoryListContent(
     onOpenRepositorySettings: () -> Unit,
     onAddModule: (ModuleCatalogItem) -> Unit,
     onOpenModule: (ModuleCatalogItem) -> Unit,
+    includeSearch: Boolean = true,
     scrollBehavior: androidx.compose.material3.TopAppBarScrollBehavior,
     bottomPadding: Dp
 ) {
@@ -2245,11 +2308,13 @@ private fun BuildModuleRepositoryListContent(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(bottom = bottomPadding + 24.dp)
     ) {
-        item(key = "search") {
-            CompactModuleSearchField(
-                value = searchQuery,
-                onValueChange = onSearchQueryChange
-            )
+        if (includeSearch) {
+            item(key = "search") {
+                CompactModuleSearchField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange
+                )
+            }
         }
 
         if (refreshing && !showInitialLoading) {

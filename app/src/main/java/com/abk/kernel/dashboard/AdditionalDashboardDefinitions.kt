@@ -2,7 +2,8 @@ package com.abk.kernel.dashboard
 
 object ModuleRepositoryDashboardWidgets {
     const val SUMMARY = "modules.summary"
-    const val CONTENT = "modules.content"
+    const val SEARCH = "modules.search"
+    const val LIST = "modules.list"
 
     val definitions: List<BuiltinWidgetDefinition> = listOf(
         BuiltinWidgetDefinition(
@@ -18,14 +19,25 @@ object ModuleRepositoryDashboardWidgets {
             defaultVisible = false
         ),
         BuiltinWidgetDefinition(
-            widgetId = CONTENT,
+            widgetId = SEARCH,
             defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 28,
+            defaultH = 4,
+            minW = 8,
+            minH = 3,
+            collapsedW = 8,
+            collapsedH = 3,
+            expandedH = 5,
+            maxH = 6
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = LIST,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 24,
             minW = 8,
             minH = 12,
             collapsedW = 8,
             collapsedH = 12,
-            expandedH = 40,
+            expandedH = 38,
             maxH = 48
         )
     )
@@ -40,8 +52,9 @@ object ModuleRepositoryDashboardWidgets {
         layoutMode = DashboardLayoutMode.GRID,
         densityPreset = densityPreset,
         items = listOf(
-            DashboardLayoutItem(SUMMARY, 0, 0, densityPreset.columns, 6),
-            DashboardLayoutItem(CONTENT, 0, 6, densityPreset.columns, 28)
+            DashboardLayoutItem(SUMMARY, 0, 0, densityPreset.columns, 6, visible = false),
+            DashboardLayoutItem(SEARCH, 0, 0, densityPreset.columns, 4),
+            DashboardLayoutItem(LIST, 0, 4, densityPreset.columns, 24)
         )
     )
 
@@ -95,8 +108,8 @@ object FlashDashboardWidgets {
         layoutMode = DashboardLayoutMode.GRID,
         densityPreset = densityPreset,
         items = listOf(
-            DashboardLayoutItem(SUMMARY, 0, 0, densityPreset.columns, 10),
-            DashboardLayoutItem(CONTENT, 0, 10, densityPreset.columns, 32)
+            DashboardLayoutItem(SUMMARY, 0, 0, densityPreset.columns, 10, visible = false),
+            DashboardLayoutItem(CONTENT, 0, 0, densityPreset.columns, 32)
         )
     )
 

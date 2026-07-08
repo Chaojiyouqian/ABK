@@ -471,9 +471,634 @@ fun BuildScreen(
     val buildWidgetLabels = mapOf(
         BuildDashboardWidgets.OVERVIEW to stringResource(R.string.build_title),
         BuildDashboardWidgets.TOOLS to stringResource(R.string.build_plan_tools_title),
-        BuildDashboardWidgets.CONFIG to stringResource(R.string.build_features),
+        BuildDashboardWidgets.KERNEL_VERSION to stringResource(R.string.build_kernel_version_config),
+        BuildDashboardWidgets.KERNEL_SU to stringResource(R.string.build_kernelsu_config),
+        BuildDashboardWidgets.FEATURES to stringResource(R.string.build_features),
+        BuildDashboardWidgets.CUSTOM_MODULES to stringResource(R.string.build_custom_modules),
+        BuildDashboardWidgets.OPTIONAL_CONFIG to stringResource(R.string.build_optional_config),
         BuildDashboardWidgets.SUBMIT to stringResource(R.string.build_submit)
     )
+
+    @Composable
+    fun BuildDashboardKernelVersionWidget() {
+        SectionCard(section = BuildSection.KernelVersion) {
+            if (isOnePlusBuild) {
+                DropdownField(
+                    label = stringResource(R.string.build_oneplus_device_manifest),
+                    value = config.onePlusDeviceManifest,
+                    options = KernelSupport.onePlusDeviceManifestOptions,
+                    optionLabel = KernelSupport::onePlusDeviceLabel,
+                    onSelect = { manifest ->
+                        val profile = KernelSupport.onePlusDeviceProfile(manifest)
+                        vm.updateBuildConfig(
+                            KernelSupport.normalize(
+                                config.copy(
+                                    onePlusDeviceManifest = manifest,
+                                    onePlusCpu = profile?.cpu ?: config.onePlusCpu,
+                                    androidVersion = profile?.androidVersion ?: config.androidVersion,
+                                    kernelVersion = profile?.kernelVersion ?: config.kernelVersion
+                                )
+                            )
+                        )
+                    }
+                )
+                Text(
+                    text = stringResource(R.string.build_oneplus_profile_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                ReadOnlyField(label = stringResource(R.string.build_oneplus_cpu), value = config.onePlusCpu)
+                ReadOnlyField(label = stringResource(R.string.build_android_version), value = config.androidVersion)
+                ReadOnlyField(label = stringResource(R.string.build_kernel_version), value = config.kernelVersion)
+            } else {
+                DropdownField(
+                    label = stringResource(R.string.build_android_version),
+                    value = config.androidVersion,
+                    options = KernelSupport.androidVersions(),
+                    recommendedValue = recommended?.androidVersion,
+                    onSelect = {
+                        vm.updateBuildConfig(
+                            KernelSupport.normalize(
+                                config.copy(
+                                    androidVersion = it,
+                                    kernelVersion = KernelSupport.kernelForAndroid(it)
+                                )
+                            )
+                        )
+                    }
+                )
+                DropdownField(
+                    label = stringResource(R.string.build_kernel_version),
+                    value = config.kernelVersion,
+                    options = KernelSupport.kernelVersions(),
+                    recommendedValue = recommended?.kernelVersion,
+                    onSelect = {
+                        vm.updateBuildConfig(
+                            KernelSupport.normalize(
+                                config.copy(
+                                    androidVersion = KernelSupport.androidForKernel(it),
+                                    kernelVersion = it
+                                )
+                            )
+                        )
+                    }
+                )
+                DropdownField(
+                    label = stringResource(R.string.build_sub_level),
+                    value = config.subLevel,
+                    options = subLevelOptions,
+                    recommendedValue = recommended
+                        ?.takeIf {
+                            it.androidVersion == config.androidVersion && it.kernelVersion == config.kernelVersion
+                        }
+                        ?.subLevel,
+                    onSelect = { vm.updateBuildConfig(KernelSupport.normalize(config.copy(subLevel = it))) }
+                )
+                DropdownField(
+                    label = stringResource(R.string.build_security_patch_level),
+                    value = config.osPatchLevel,
+                    options = osPatchOptions,
+                    recommendedValue = recommended
+                        ?.takeIf {
+                            it.androidVersion == config.androidVersion &&
+                                it.kernelVersion == config.kernelVersion &&
+                                it.subLevel == config.subLevel
+                        }
+                        ?.osPatchLevel,
+                    onSelect = { vm.updateBuildConfig(config.copy(osPatchLevel = it)) }
+                )
+                if (config.kernelVersion == "5.10") {
+                    OutlinedTextField(
+                        value = config.revision,
+                        onValueChange = { vm.updateBuildConfig(config.copy(revision = it)) },
+                        label = {
+                            Text(
+                                recommended?.revision?.let {
+                                    stringResource(R.string.build_revision_recommended, it)
+                                } ?: stringResource(R.string.build_revision_510)
+                            )
+                        },
+                        placeholder = { Text(stringResource(R.string.build_revision_placeholder)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun BuildDashboardKernelSuWidget() {
+        SectionCard(section = BuildSection.KernelSu) {
+            val noRootScheme = config.kernelsuVariant == KSU_VARIANT_NONE
+            DropdownField(
+                label = stringResource(R.string.build_kernelsu_variant),
+                value = config.kernelsuVariant,
+                options = ksuVariantOptions,
+                onSelect = { vm.updateBuildConfig(KernelSupport.normalize(config.copy(kernelsuVariant = it))) }
+            )
+            if (noRootScheme) {
+                Text(
+                    text = if (isOnePlusBuild) {
+                        stringResource(R.string.build_oneplus_no_root_scheme_desc)
+                    } else {
+                        stringResource(R.string.build_no_root_scheme_desc)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else if (!isOnePlusBuild) {
+                DropdownField(
+                    label = stringResource(R.string.build_ksu_branch),
+                    value = KernelSupport.normalizeKsuBranch(config.kernelsuBranch),
+                    options = ksuBranchOptions,
+                    onSelect = {
+                        vm.updateBuildConfig(
+                            KernelSupport.normalize(config.copy(kernelsuBranch = it))
+                        )
+                    }
+                )
+                AnimatedVisibility(config.kernelsuBranch == KSU_BRANCH_LATEST) {
+                    Text(
+                        text = stringResource(R.string.build_ksu_branch_latest_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                AnimatedVisibility(config.kernelsuBranch == KSU_BRANCH_CUSTOM) {
+                    OutlinedTextField(
+                        value = config.customRef,
+                        onValueChange = { vm.updateBuildConfig(config.copy(customRef = it)) },
+                        label = { Text(stringResource(R.string.build_custom_ksu_ref)) },
+                        placeholder = { Text(stringResource(R.string.build_custom_ksu_ref_placeholder)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            } else {
+                Text(
+                    text = stringResource(R.string.build_oneplus_ksu_branch_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+
+    @Composable
+    fun BuildDashboardFeaturesWidget() {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionCard(section = BuildSection.Features) {
+                val noRootScheme = config.kernelsuVariant == KSU_VARIANT_NONE
+                val kpmSupported = KernelSupport.isKpmSupported(
+                    config.buildTarget,
+                    config.kernelsuVariant,
+                    config.kernelsuBranch
+                )
+                if (isOnePlusBuild) {
+                    val proxyAllowed = !config.onePlusCpu.startsWith("mt")
+                    val onePlusSusfsSupported = KernelSupport.onePlusSusfsSupported(config.androidVersion, config.kernelVersion)
+                    SwitchRow(
+                        stringResource(R.string.build_enable_susfs),
+                        !config.cancelSusfs && onePlusSusfsSupported,
+                        enabled = !noRootScheme && onePlusSusfsSupported
+                    ) { vm.updateBuildConfig(KernelSupport.normalize(config.copy(cancelSusfs = !it))) }
+                    if (!onePlusSusfsSupported) {
+                        Text(
+                            text = stringResource(R.string.build_oneplus_susfs_unsupported),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    SwitchRow(stringResource(R.string.build_enable_kpm), config.useKpm, enabled = kpmSupported && !noRootScheme) {
+                        vm.updateBuildConfig(KernelSupport.normalize(config.copy(useKpm = it)))
+                    }
+                    SwitchRow(stringResource(R.string.build_oneplus_lz4kd), config.onePlusUseLz4kd) {
+                        vm.updateBuildConfig(config.copy(onePlusUseLz4kd = it))
+                    }
+                    SwitchRow(stringResource(R.string.build_enable_bbg), config.useBbg) {
+                        vm.updateBuildConfig(config.copy(useBbg = it))
+                    }
+                    SwitchRow(stringResource(R.string.build_oneplus_bbr), config.onePlusUseBbr) {
+                        vm.updateBuildConfig(config.copy(onePlusUseBbr = it))
+                    }
+                    SwitchRow(
+                        stringResource(R.string.build_oneplus_proxy_optimization),
+                        config.onePlusUseProxyOptimization,
+                        enabled = proxyAllowed
+                    ) { vm.updateBuildConfig(KernelSupport.normalize(config.copy(onePlusUseProxyOptimization = it))) }
+                    if (!proxyAllowed) {
+                        Text(
+                            text = stringResource(R.string.build_oneplus_proxy_mtk_disabled),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    SwitchRow(stringResource(R.string.build_oneplus_unicode_bypass), config.onePlusUseUnicodeBypass) {
+                        vm.updateBuildConfig(config.copy(onePlusUseUnicodeBypass = it))
+                    }
+                } else {
+                    SwitchRow(stringResource(R.string.build_enable_susfs), !config.cancelSusfs, enabled = !noRootScheme) {
+                        vm.updateBuildConfig(KernelSupport.normalize(config.copy(cancelSusfs = !it)))
+                    }
+                    SwitchRow(stringResource(R.string.build_enable_zram), config.useZram) {
+                        vm.updateBuildConfig(config.copy(useZram = it))
+                    }
+                    SwitchRow(stringResource(R.string.build_enable_bbg), config.useBbg) {
+                        vm.updateBuildConfig(config.copy(useBbg = it))
+                    }
+                    SwitchRow(stringResource(R.string.build_enable_ddk), config.useDdk) {
+                        vm.updateBuildConfig(config.copy(useDdk = it))
+                    }
+                    SwitchRow(stringResource(R.string.build_enable_ntsync), config.useNtsync) {
+                        vm.updateBuildConfig(config.copy(useNtsync = it))
+                    }
+                    SwitchRow(stringResource(R.string.build_enable_networking), config.useNetworking) {
+                        vm.updateBuildConfig(config.copy(useNetworking = it))
+                    }
+                    SwitchRow(stringResource(R.string.build_enable_kpm), config.useKpm, enabled = kpmSupported && !noRootScheme) {
+                        vm.updateBuildConfig(KernelSupport.normalize(config.copy(useKpm = it)))
+                    }
+                    SwitchRow(stringResource(R.string.build_enable_rekernel), config.useRekernel) {
+                        vm.updateBuildConfig(config.copy(useRekernel = it))
+                    }
+                    DropdownField(
+                        label = stringResource(R.string.build_virtualization_support),
+                        value = config.virtualizationSupport,
+                        options = virtualizationSupportOptions,
+                        onSelect = { vm.updateBuildConfig(config.copy(virtualizationSupport = it)) }
+                    )
+                    Text(
+                        text = stringResource(R.string.build_virtualization_userns_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    SwitchRow(stringResource(R.string.build_enable_oneplus_8e), config.suppOp) {
+                        vm.updateBuildConfig(config.copy(suppOp = it))
+                    }
+                }
+            }
+            AnimatedVisibility(!isOnePlusBuild && config.useZram) {
+                SectionCard(section = BuildSection.ZramOptions) {
+                    SwitchRow(stringResource(R.string.build_zram_full_algo), config.zramFullAlgo) {
+                        vm.updateBuildConfig(config.copy(zramFullAlgo = it))
+                    }
+                    if (!config.zramFullAlgo) {
+                        OutlinedTextField(
+                            value = config.zramExtraAlgos,
+                            onValueChange = { vm.updateBuildConfig(config.copy(zramExtraAlgos = it)) },
+                            label = { Text(stringResource(R.string.build_zram_custom_algo)) },
+                            placeholder = { Text(stringResource(R.string.build_zram_algo_placeholder)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                }
+            }
+            AnimatedVisibility(!isOnePlusBuild && config.useKpm) {
+                SectionCard(section = BuildSection.KpmOptions) {
+                    OutlinedTextField(
+                        value = config.kpmPassword,
+                        onValueChange = { vm.updateBuildConfig(config.copy(kpmPassword = it)) },
+                        label = { Text(stringResource(R.string.build_kpm_password)) },
+                        placeholder = { Text(stringResource(R.string.build_kpm_password_placeholder)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun BuildDashboardCustomModulesWidget() {
+        SectionCard(section = BuildSection.CustomModules) {
+            if (!isOnePlusBuild) {
+                SwitchRow(stringResource(R.string.build_enable_custom_modules), config.useCustomExternalModules) {
+                    vm.updateBuildConfig(config.copy(useCustomExternalModules = it))
+                }
+                AnimatedVisibility(config.useCustomExternalModules) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        val catalogGroups = customModuleGroups.filter { it.catalogModule != null }
+                        val manualGroups = customModuleGroups.filter { it.catalogModule == null }
+                        if (catalogGroups.isNotEmpty()) {
+                            Text(
+                                text = stringResource(R.string.build_add_from_module_repo),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            catalogGroups.forEach { group ->
+                                key(group.key) {
+                                    AnimatedVisibility(
+                                        visible = group.key !in removingCustomModuleKeys,
+                                        enter = fadeIn() + expandVertically(),
+                                        exit = fadeOut() + shrinkVertically()
+                                    ) {
+                                        ExpressiveListItem(
+                                            title = group.displayName(stringResource(R.string.build_external_module_default)),
+                                            subtitle = group.subtitle(
+                                                noStageLabel = stringResource(R.string.build_stage_none),
+                                                sourcePrefix = stringResource(R.string.build_source_list, "%s")
+                                            ),
+                                            leadingIcon = Icons.Default.CheckCircle,
+                                            trailingContent = {
+                                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
+                                                                openModuleSetEditor(group)
+                                                            } else {
+                                                                editingCustomModuleGroup = group
+                                                                editingCustomModuleStages = group.stages
+                                                            }
+                                                        }
+                                                    ) {
+                                                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.build_edit_injection_stage))
+                                                    }
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (group.key in removingCustomModuleKeys) return@IconButton
+                                                            removingCustomModuleKeys = (removingCustomModuleKeys + group.key).distinct()
+                                                            coroutineScope.launch {
+                                                                delay(CATALOG_MODULE_REMOVE_DELAY_MS)
+                                                                if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
+                                                                    vm.removeModuleSetSelection(group.groupRepoUrl.ifBlank { group.url })
+                                                                } else {
+                                                                    vm.setCustomExternalModuleStages(group.url, emptyList())
+                                                                }
+                                                                removingCustomModuleKeys = removingCustomModuleKeys - group.key
+                                                            }
+                                                        },
+                                                        enabled = group.key !in removingCustomModuleKeys
+                                                    ) {
+                                                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.build_remove_module))
+                                                    }
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (manualGroups.isNotEmpty()) {
+                            Text(
+                                text = stringResource(R.string.build_manual_add),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            manualGroups.forEach { group ->
+                                key(group.key) {
+                                    AnimatedVisibility(
+                                        visible = group.key !in removingCustomModuleKeys,
+                                        enter = fadeIn() + expandVertically(),
+                                        exit = fadeOut() + shrinkVertically()
+                                    ) {
+                                        ExpressiveListItem(
+                                            title = group.displayName(stringResource(R.string.build_external_module_default)),
+                                            subtitle = group.subtitle(
+                                                noStageLabel = stringResource(R.string.build_stage_none),
+                                                sourcePrefix = stringResource(R.string.build_source_list, "%s")
+                                            ),
+                                            leadingIcon = Icons.Default.Extension,
+                                            trailingContent = {
+                                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
+                                                                openModuleSetEditor(group)
+                                                            } else {
+                                                                editingCustomModuleGroup = group
+                                                                editingCustomModuleStages = group.stages
+                                                            }
+                                                        }
+                                                    ) {
+                                                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.build_edit_injection_stage))
+                                                    }
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (group.key in removingCustomModuleKeys) return@IconButton
+                                                            removingCustomModuleKeys = (removingCustomModuleKeys + group.key).distinct()
+                                                            coroutineScope.launch {
+                                                                delay(CATALOG_MODULE_REMOVE_DELAY_MS)
+                                                                if (group.entryKind == CustomExternalModuleEntryKind.MODULE_SET_CHILD) {
+                                                                    vm.removeModuleSetSelection(group.groupRepoUrl.ifBlank { group.url })
+                                                                } else {
+                                                                    vm.setCustomExternalModuleStages(group.url, emptyList())
+                                                                }
+                                                                removingCustomModuleKeys = removingCustomModuleKeys - group.key
+                                                            }
+                                                        },
+                                                        enabled = group.key !in removingCustomModuleKeys
+                                                    ) {
+                                                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.build_remove_module))
+                                                    }
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (customModuleGroups.isNotEmpty()) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        }
+
+                        OutlinedTextField(
+                            value = customModuleUrl,
+                            onValueChange = { customModuleUrl = it },
+                            label = { Text(stringResource(R.string.build_repo_url)) },
+                            placeholder = { Text("https://github.com/user/module") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        Button(
+                            onClick = {
+                                val cleanUrl = customModuleUrl.trim()
+                                if (cleanUrl.isNotEmpty()) {
+                                    coroutineScope.launch {
+                                        vm.checkCustomExternalModuleMetadata(cleanUrl)?.let { metadata ->
+                                            pendingCustomModuleUrl = cleanUrl
+                                            pendingCustomModuleMetadata = metadata
+                                            selectedCustomModuleStages = metadata.recommendedStages
+                                                .filter { it in metadata.supportedStages }
+                                                .ifEmpty { listOf(metadata.defaultStage) }
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = customModuleUrl.isNotBlank() && !state.validatingCustomExternalModule,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (state.validatingCustomExternalModule) {
+                                    Icons.Default.Refresh
+                                } else {
+                                    Icons.Default.Add
+                                },
+                                contentDescription = null
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (state.validatingCustomExternalModule) {
+                                    stringResource(R.string.build_checking)
+                                } else {
+                                    stringResource(R.string.build_check_module)
+                                }
+                            )
+                        }
+
+                        state.customExternalModuleError?.let { err ->
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer
+                                )
+                            ) {
+                                Row(
+                                    Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Error,
+                                        null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        err,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    IconButton(onClick = { vm.clearCustomExternalModuleError() }) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = stringResource(R.string.close_error),
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text(
+                    text = stringResource(R.string.build_section_custom_modules_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+
+    @Composable
+    fun BuildDashboardOptionalConfigWidget() {
+        SectionCard(section = BuildSection.OptionalConfig) {
+            OutlinedTextField(
+                value = config.version,
+                onValueChange = { vm.updateBuildConfig(config.copy(version = it)) },
+                label = { Text(stringResource(R.string.build_custom_version_optional)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            ConfigPreviewText(versionPreview)
+            OutlinedTextField(
+                value = config.buildTime,
+                onValueChange = { vm.updateBuildConfig(config.copy(buildTime = it)) },
+                label = { Text(stringResource(R.string.build_custom_time_optional)) },
+                placeholder = { Text(stringResource(R.string.build_time_placeholder)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            ConfigPreviewText(buildTimePreview)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = customKernelConfigDraft,
+                    onValueChange = {
+                        customKernelConfigDraft = it
+                        customKernelConfigInlineError = null
+                    },
+                    label = { Text(stringResource(R.string.build_custom_kernel_config)) },
+                    placeholder = { Text(stringResource(R.string.build_custom_kernel_config_single_placeholder)) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+                Button(
+                    onClick = ::addCustomKernelConfigEntry,
+                    enabled = customKernelConfigDraft.trim().isNotBlank()
+                ) {
+                    Icon(Icons.Default.Add, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.add))
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = {
+                    showCustomKernelConfigImportDialog = true
+                    customKernelConfigImportError = null
+                }) {
+                    Icon(Icons.Default.UploadFile, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.build_import))
+                }
+                if (customKernelConfigEntries.isNotEmpty()) {
+                    TextButton(onClick = {
+                        updateCustomKernelConfigEntries(emptyList())
+                        customKernelConfigInlineError = null
+                    }) {
+                        Icon(Icons.Default.Clear, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.clear))
+                    }
+                }
+            }
+            customKernelConfigInlineError?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            Text(
+                text = if (customKernelConfigEntries.isNotEmpty()) {
+                    stringResource(R.string.build_custom_kernel_config_count, customKernelConfigEntryCount)
+                } else {
+                    stringResource(R.string.build_custom_kernel_config_hint)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            customKernelConfigEntries.forEach { entry ->
+                key(entry.key) {
+                    CustomKernelConfigEntryCard(
+                        entry = entry,
+                        onStateChange = { state ->
+                            updateCustomKernelConfigEntries(
+                                customKernelConfigEntries.map { current ->
+                                    if (current.key == entry.key) current.copy(state = state) else current
+                                }
+                            )
+                        },
+                        onRemove = {
+                            updateCustomKernelConfigEntries(
+                                customKernelConfigEntries.filterNot { it.key == entry.key }
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
 
     @Composable
     fun BuildDashboardWidget(widgetId: String) {
@@ -582,316 +1207,15 @@ fun BuildScreen(
                 }
             )
 
-            BuildDashboardWidgets.CONFIG -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SectionCard(section = BuildSection.KernelVersion) {
-                    if (isOnePlusBuild) {
-                        DropdownField(
-                            label = stringResource(R.string.build_oneplus_device_manifest),
-                            value = config.onePlusDeviceManifest,
-                            options = KernelSupport.onePlusDeviceManifestOptions,
-                            optionLabel = KernelSupport::onePlusDeviceLabel,
-                            onSelect = { manifest ->
-                                val profile = KernelSupport.onePlusDeviceProfile(manifest)
-                                vm.updateBuildConfig(
-                                    KernelSupport.normalize(
-                                        config.copy(
-                                            onePlusDeviceManifest = manifest,
-                                            onePlusCpu = profile?.cpu ?: config.onePlusCpu,
-                                            androidVersion = profile?.androidVersion ?: config.androidVersion,
-                                            kernelVersion = profile?.kernelVersion ?: config.kernelVersion
-                                        )
-                                    )
-                                )
-                            }
-                        )
-                        Text(
-                            text = stringResource(R.string.build_oneplus_profile_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        ReadOnlyField(label = stringResource(R.string.build_oneplus_cpu), value = config.onePlusCpu)
-                        ReadOnlyField(label = stringResource(R.string.build_android_version), value = config.androidVersion)
-                        ReadOnlyField(label = stringResource(R.string.build_kernel_version), value = config.kernelVersion)
-                    } else {
-                        DropdownField(
-                            label = stringResource(R.string.build_android_version),
-                            value = config.androidVersion,
-                            options = KernelSupport.androidVersions(),
-                            recommendedValue = recommended?.androidVersion,
-                            onSelect = {
-                                vm.updateBuildConfig(
-                                    KernelSupport.normalize(
-                                        config.copy(
-                                            androidVersion = it,
-                                            kernelVersion = KernelSupport.kernelForAndroid(it)
-                                        )
-                                    )
-                                )
-                            }
-                        )
-                        DropdownField(
-                            label = stringResource(R.string.build_kernel_version),
-                            value = config.kernelVersion,
-                            options = KernelSupport.kernelVersions(),
-                            recommendedValue = recommended?.kernelVersion,
-                            onSelect = {
-                                vm.updateBuildConfig(
-                                    KernelSupport.normalize(
-                                        config.copy(
-                                            androidVersion = KernelSupport.androidForKernel(it),
-                                            kernelVersion = it
-                                        )
-                                    )
-                                )
-                            }
-                        )
-                        DropdownField(
-                            label = stringResource(R.string.build_sub_level),
-                            value = config.subLevel,
-                            options = subLevelOptions,
-                            recommendedValue = recommended
-                                ?.takeIf {
-                                    it.androidVersion == config.androidVersion && it.kernelVersion == config.kernelVersion
-                                }
-                                ?.subLevel,
-                            onSelect = { vm.updateBuildConfig(KernelSupport.normalize(config.copy(subLevel = it))) }
-                        )
-                        DropdownField(
-                            label = stringResource(R.string.build_security_patch_level),
-                            value = config.osPatchLevel,
-                            options = osPatchOptions,
-                            recommendedValue = recommended
-                                ?.takeIf {
-                                    it.androidVersion == config.androidVersion &&
-                                        it.kernelVersion == config.kernelVersion &&
-                                        it.subLevel == config.subLevel
-                                }
-                                ?.osPatchLevel,
-                            onSelect = { vm.updateBuildConfig(config.copy(osPatchLevel = it)) }
-                        )
-                        if (config.kernelVersion == "5.10") {
-                            OutlinedTextField(
-                                value = config.revision,
-                                onValueChange = { vm.updateBuildConfig(config.copy(revision = it)) },
-                                label = {
-                                    Text(
-                                        recommended?.revision?.let {
-                                            stringResource(R.string.build_revision_recommended, it)
-                                        } ?: stringResource(R.string.build_revision_510)
-                                    )
-                                },
-                                placeholder = { Text(stringResource(R.string.build_revision_placeholder)) },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
-                            )
-                        }
-                    }
-                }
-                SectionCard(section = BuildSection.KernelSu) {
-                    val noRootScheme = config.kernelsuVariant == KSU_VARIANT_NONE
-                    DropdownField(
-                        label = stringResource(R.string.build_kernelsu_variant),
-                        value = config.kernelsuVariant,
-                        options = ksuVariantOptions,
-                        onSelect = { vm.updateBuildConfig(KernelSupport.normalize(config.copy(kernelsuVariant = it))) }
-                    )
-                    if (noRootScheme) {
-                        Text(
-                            text = if (isOnePlusBuild) {
-                                stringResource(R.string.build_oneplus_no_root_scheme_desc)
-                            } else {
-                                stringResource(R.string.build_no_root_scheme_desc)
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else if (!isOnePlusBuild) {
-                        DropdownField(
-                            label = stringResource(R.string.build_ksu_branch),
-                            value = KernelSupport.normalizeKsuBranch(config.kernelsuBranch),
-                            options = ksuBranchOptions,
-                            onSelect = {
-                                vm.updateBuildConfig(
-                                    KernelSupport.normalize(config.copy(kernelsuBranch = it))
-                                )
-                            }
-                        )
-                        AnimatedVisibility(config.kernelsuBranch == KSU_BRANCH_LATEST) {
-                            Text(
-                                text = stringResource(R.string.build_ksu_branch_latest_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        AnimatedVisibility(config.kernelsuBranch == KSU_BRANCH_CUSTOM) {
-                            OutlinedTextField(
-                                value = config.customRef,
-                                onValueChange = { vm.updateBuildConfig(config.copy(customRef = it)) },
-                                label = { Text(stringResource(R.string.build_custom_ksu_ref)) },
-                                placeholder = { Text(stringResource(R.string.build_custom_ksu_ref_placeholder)) },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
-                            )
-                        }
-                    } else {
-                        Text(
-                            text = stringResource(R.string.build_oneplus_ksu_branch_desc),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                SectionCard(section = BuildSection.Features) {
-                    val noRootScheme = config.kernelsuVariant == KSU_VARIANT_NONE
-                    val kpmSupported = KernelSupport.isKpmSupported(
-                        config.buildTarget,
-                        config.kernelsuVariant,
-                        config.kernelsuBranch
-                    )
-                    if (isOnePlusBuild) {
-                        val proxyAllowed = !config.onePlusCpu.startsWith("mt")
-                        val onePlusSusfsSupported = KernelSupport.onePlusSusfsSupported(config.androidVersion, config.kernelVersion)
-                        SwitchRow(
-                            stringResource(R.string.build_enable_susfs),
-                            !config.cancelSusfs && onePlusSusfsSupported,
-                            enabled = !noRootScheme && onePlusSusfsSupported
-                        ) { vm.updateBuildConfig(KernelSupport.normalize(config.copy(cancelSusfs = !it))) }
-                        if (!onePlusSusfsSupported) {
-                            Text(
-                                text = stringResource(R.string.build_oneplus_susfs_unsupported),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        SwitchRow(stringResource(R.string.build_enable_kpm), config.useKpm, enabled = kpmSupported && !noRootScheme) {
-                            vm.updateBuildConfig(KernelSupport.normalize(config.copy(useKpm = it)))
-                        }
-                        SwitchRow(stringResource(R.string.build_oneplus_lz4kd), config.onePlusUseLz4kd) {
-                            vm.updateBuildConfig(config.copy(onePlusUseLz4kd = it))
-                        }
-                        SwitchRow(stringResource(R.string.build_enable_bbg), config.useBbg) {
-                            vm.updateBuildConfig(config.copy(useBbg = it))
-                        }
-                        SwitchRow(stringResource(R.string.build_oneplus_bbr), config.onePlusUseBbr) {
-                            vm.updateBuildConfig(config.copy(onePlusUseBbr = it))
-                        }
-                        SwitchRow(
-                            stringResource(R.string.build_oneplus_proxy_optimization),
-                            config.onePlusUseProxyOptimization,
-                            enabled = proxyAllowed
-                        ) { vm.updateBuildConfig(KernelSupport.normalize(config.copy(onePlusUseProxyOptimization = it))) }
-                        if (!proxyAllowed) {
-                            Text(
-                                text = stringResource(R.string.build_oneplus_proxy_mtk_disabled),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        SwitchRow(stringResource(R.string.build_oneplus_unicode_bypass), config.onePlusUseUnicodeBypass) {
-                            vm.updateBuildConfig(config.copy(onePlusUseUnicodeBypass = it))
-                        }
-                    } else {
-                        SwitchRow(stringResource(R.string.build_enable_susfs), !config.cancelSusfs, enabled = !noRootScheme) {
-                            vm.updateBuildConfig(KernelSupport.normalize(config.copy(cancelSusfs = !it)))
-                        }
-                        SwitchRow(stringResource(R.string.build_enable_zram), config.useZram) {
-                            vm.updateBuildConfig(config.copy(useZram = it))
-                        }
-                        SwitchRow(stringResource(R.string.build_enable_bbg), config.useBbg) {
-                            vm.updateBuildConfig(config.copy(useBbg = it))
-                        }
-                        SwitchRow(stringResource(R.string.build_enable_ddk), config.useDdk) {
-                            vm.updateBuildConfig(config.copy(useDdk = it))
-                        }
-                        SwitchRow(stringResource(R.string.build_enable_ntsync), config.useNtsync) {
-                            vm.updateBuildConfig(config.copy(useNtsync = it))
-                        }
-                        SwitchRow(stringResource(R.string.build_enable_networking), config.useNetworking) {
-                            vm.updateBuildConfig(config.copy(useNetworking = it))
-                        }
-                        SwitchRow(stringResource(R.string.build_enable_kpm), config.useKpm, enabled = kpmSupported && !noRootScheme) {
-                            vm.updateBuildConfig(KernelSupport.normalize(config.copy(useKpm = it)))
-                        }
-                        SwitchRow(stringResource(R.string.build_enable_rekernel), config.useRekernel) {
-                            vm.updateBuildConfig(config.copy(useRekernel = it))
-                        }
-                        DropdownField(
-                            label = stringResource(R.string.build_virtualization_support),
-                            value = config.virtualizationSupport,
-                            options = virtualizationSupportOptions,
-                            onSelect = { vm.updateBuildConfig(config.copy(virtualizationSupport = it)) }
-                        )
-                        Text(
-                            text = stringResource(R.string.build_virtualization_userns_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        SwitchRow(stringResource(R.string.build_enable_oneplus_8e), config.suppOp) {
-                            vm.updateBuildConfig(config.copy(suppOp = it))
-                        }
-                    }
-                }
-                AnimatedVisibility(!isOnePlusBuild && config.useZram) {
-                    SectionCard(section = BuildSection.ZramOptions) {
-                        SwitchRow(stringResource(R.string.build_zram_full_algo), config.zramFullAlgo) {
-                            vm.updateBuildConfig(config.copy(zramFullAlgo = it))
-                        }
-                        if (!config.zramFullAlgo) {
-                            OutlinedTextField(
-                                value = config.zramExtraAlgos,
-                                onValueChange = { vm.updateBuildConfig(config.copy(zramExtraAlgos = it)) },
-                                label = { Text(stringResource(R.string.build_zram_custom_algo)) },
-                                placeholder = { Text(stringResource(R.string.build_zram_algo_placeholder)) },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
-                            )
-                        }
-                    }
-                }
-                AnimatedVisibility(!isOnePlusBuild && config.useKpm) {
-                    SectionCard(section = BuildSection.KpmOptions) {
-                        OutlinedTextField(
-                            value = config.kpmPassword,
-                            onValueChange = { vm.updateBuildConfig(config.copy(kpmPassword = it)) },
-                            label = { Text(stringResource(R.string.build_kpm_password)) },
-                            placeholder = { Text(stringResource(R.string.build_kpm_password_placeholder)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-                    }
-                }
-                if (!isOnePlusBuild) {
-                    SectionCard(section = BuildSection.CustomModules) {
-                        SwitchRow(stringResource(R.string.build_enable_custom_modules), config.useCustomExternalModules) {
-                            vm.updateBuildConfig(config.copy(useCustomExternalModules = it))
-                        }
-                        Text(
-                            text = stringResource(R.string.build_section_custom_modules_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                SectionCard(section = BuildSection.OptionalConfig) {
-                    OutlinedTextField(
-                        value = config.version,
-                        onValueChange = { vm.updateBuildConfig(config.copy(version = it)) },
-                        label = { Text(stringResource(R.string.build_custom_version_optional)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    ConfigPreviewText(versionPreview)
-                    OutlinedTextField(
-                        value = config.buildTime,
-                        onValueChange = { vm.updateBuildConfig(config.copy(buildTime = it)) },
-                        label = { Text(stringResource(R.string.build_custom_time_optional)) },
-                        placeholder = { Text(stringResource(R.string.build_time_placeholder)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    ConfigPreviewText(buildTimePreview)
-                }
-            }
+            BuildDashboardWidgets.KERNEL_VERSION -> BuildDashboardKernelVersionWidget()
+
+            BuildDashboardWidgets.KERNEL_SU -> BuildDashboardKernelSuWidget()
+
+            BuildDashboardWidgets.FEATURES -> BuildDashboardFeaturesWidget()
+
+            BuildDashboardWidgets.CUSTOM_MODULES -> BuildDashboardCustomModulesWidget()
+
+            BuildDashboardWidgets.OPTIONAL_CONFIG -> BuildDashboardOptionalConfigWidget()
 
             BuildDashboardWidgets.SUBMIT -> Button(
                 onClick = { showConfirmDialog = true },

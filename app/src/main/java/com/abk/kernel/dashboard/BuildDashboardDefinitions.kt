@@ -3,7 +3,11 @@ package com.abk.kernel.dashboard
 object BuildDashboardWidgets {
     const val OVERVIEW = "build.overview"
     const val TOOLS = "build.tools"
-    const val CONFIG = "build.config"
+    const val KERNEL_VERSION = "build.kernel_version"
+    const val KERNEL_SU = "build.kernel_su"
+    const val FEATURES = "build.features"
+    const val CUSTOM_MODULES = "build.custom_modules"
+    const val OPTIONAL_CONFIG = "build.optional_config"
     const val SUBMIT = "build.submit"
 
     val definitions: List<BuiltinWidgetDefinition> = listOf(
@@ -30,15 +34,59 @@ object BuildDashboardWidgets {
             maxH = 16
         ),
         BuiltinWidgetDefinition(
-            widgetId = CONFIG,
+            widgetId = KERNEL_VERSION,
             defaultW = DashboardDensityPreset.STANDARD.columns,
-            defaultH = 86,
+            defaultH = 16,
             minW = 8,
-            minH = 24,
+            minH = 10,
             collapsedW = 8,
-            collapsedH = 24,
-            expandedH = 110,
-            maxH = 128
+            collapsedH = 10,
+            expandedH = 22,
+            maxH = 26
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = KERNEL_SU,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 10,
+            minW = 8,
+            minH = 8,
+            collapsedW = 8,
+            collapsedH = 8,
+            expandedH = 14,
+            maxH = 18
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = FEATURES,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 24,
+            minW = 8,
+            minH = 14,
+            collapsedW = 8,
+            collapsedH = 14,
+            expandedH = 36,
+            maxH = 44
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = CUSTOM_MODULES,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 26,
+            minW = 8,
+            minH = 10,
+            collapsedW = 8,
+            collapsedH = 10,
+            expandedH = 42,
+            maxH = 52
+        ),
+        BuiltinWidgetDefinition(
+            widgetId = OPTIONAL_CONFIG,
+            defaultW = DashboardDensityPreset.STANDARD.columns,
+            defaultH = 24,
+            minW = 8,
+            minH = 12,
+            collapsedW = 8,
+            collapsedH = 12,
+            expandedH = 36,
+            maxH = 44
         ),
         BuiltinWidgetDefinition(
             widgetId = SUBMIT,
@@ -63,8 +111,12 @@ object BuildDashboardWidgets {
         val items = listOf(
             seed(OVERVIEW, 0, 0, columns, 15),
             seed(TOOLS, 0, 15, columns, 10),
-            seed(CONFIG, 0, 25, columns, 86),
-            seed(SUBMIT, 0, 111, columns, 4)
+            seed(KERNEL_VERSION, 0, 25, columns, 16),
+            seed(KERNEL_SU, 0, 41, columns, 10),
+            seed(FEATURES, 0, 51, columns, 24),
+            seed(CUSTOM_MODULES, 0, 75, columns, 26),
+            seed(OPTIONAL_CONFIG, 0, 101, columns, 24),
+            seed(SUBMIT, 0, 125, columns, 4)
         )
         return DashboardLayout(
             version = DASHBOARD_LAYOUT_VERSION,

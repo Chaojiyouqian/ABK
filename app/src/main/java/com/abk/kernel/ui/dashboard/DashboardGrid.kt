@@ -136,8 +136,15 @@ fun DashboardGrid(
                         )
                     )
                 }
-                .clip(MaterialTheme.shapes.extraLarge)
-                .background(uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainerLowest))
+                .then(
+                    if (editable) {
+                        Modifier
+                            .clip(MaterialTheme.shapes.extraLarge)
+                            .background(uiSurfaceColor(MaterialTheme.colorScheme.surfaceContainerLowest))
+                    } else {
+                        Modifier
+                    }
+                )
                 .drawBehind {
                     if (!editable) return@drawBehind
                     val lineColor = outlineColor
