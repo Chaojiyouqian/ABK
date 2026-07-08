@@ -158,6 +158,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.Velocity
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost

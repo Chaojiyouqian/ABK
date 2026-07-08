@@ -120,6 +120,7 @@ import com.abk.kernel.ui.theme.uiSurfaceColor
 import com.abk.kernel.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
@@ -331,7 +332,6 @@ fun RootAuthorizationScreen(
                                 anySaving = state.rootGrantSavingPackage != null,
                                 onToggle = { allowed -> vm.setRootGrantAllowed(app.packageName, allowed) },
                                 onOpen = {
-                                    childPageBack.resetProgress()
                                     selectedPackage = app.packageName
                                     vm.openRootGrantProfile(app.packageName)
                                 }

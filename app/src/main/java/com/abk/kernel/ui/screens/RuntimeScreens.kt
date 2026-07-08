@@ -948,17 +948,16 @@ fun InstalledModulesScreen(
         },
         floatingActionButton = if (!editorActive && !readOnlyPreview) {
             {
-            SmallFloatingActionButton(
-                onClick = {
-                    launchModulePickerWithPermissionCheck()
-                },
-                modifier = Modifier.padding(bottom = outerPadding.calculateBottomPadding()),
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-            ) {
-                Icon(Icons.Default.UploadFile, contentDescription = stringResource(R.string.runtime_install_module))
-            }
-        }
+                SmallFloatingActionButton(
+                    onClick = {
+                        launchModulePickerWithPermissionCheck()
+                    },
+                    modifier = Modifier.padding(bottom = outerPadding.calculateBottomPadding()),
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ) {
+                    Icon(Icons.Default.UploadFile, contentDescription = stringResource(R.string.runtime_install_module))
+                }
             }
         } else {
             {}

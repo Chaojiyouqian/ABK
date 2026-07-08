@@ -498,7 +498,7 @@ fun ModuleRepositoryScreen(
             onSearchQueryChange = { searchQuery = it },
             onOpenRepositorySettings = {},
             onOpenModule = { module ->
-                val url = module.module.homepage.ifBlank { module.module.repoUrl }
+                val url = module.module.preferredOpenUrl()
                 runCatching { uriHandler.openUri(url) }
                     .onFailure { Toast.makeText(context, context.getString(R.string.module_repo_open_failed), Toast.LENGTH_SHORT).show() }
             },
@@ -508,6 +508,17 @@ fun ModuleRepositoryScreen(
             scrollBehavior = scrollBehavior,
             bottomPadding = 0.dp
         )
+    }
+
+    val summaryWidgetContent: @Composable () -> Unit = if (mode == ModuleRepositoryMode.BUILD_ABK) {
+        { buildSummaryContent() }
+    } else {
+        { runtimeSummaryContent() }
+    }
+    val mainWidgetContent: @Composable () -> Unit = if (mode == ModuleRepositoryMode.BUILD_ABK) {
+        { buildContentWidget() }
+    } else {
+        { runtimeContentWidget() }
     }
 
     fun startInstall(module: MergedRuntimeCatalogModule) {
@@ -637,16 +648,6 @@ fun ModuleRepositoryScreen(
                     ),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                val summary: @Composable () -> Unit = if (mode == ModuleRepositoryMode.BUILD_ABK) {
-                    { buildSummaryContent() }
-                } else {
-                    { runtimeSummaryContent() }
-                }
-                val content: @Composable () -> Unit = if (mode == ModuleRepositoryMode.BUILD_ABK) {
-                    { buildContentWidget() }
-                } else {
-                    { runtimeContentWidget() }
-                }
                 when (pageLayout.layoutMode) {
                     DashboardLayoutMode.GRID -> DashboardGrid(
                         layout = pageLayout,
@@ -692,8 +693,8 @@ fun ModuleRepositoryScreen(
                         onDragPointerYChanged = { activeDragPointerY = it }
                     ) { widgetId, _ ->
                         when (widgetId) {
-                            ModuleRepositoryDashboardWidgets.SUMMARY -> summary()
-                            ModuleRepositoryDashboardWidgets.CONTENT -> content()
+                            ModuleRepositoryDashboardWidgets.SUMMARY -> summaryWidgetContent()
+                            ModuleRepositoryDashboardWidgets.CONTENT -> mainWidgetContent()
                         }
                     }
                     DashboardLayoutMode.FREEFORM -> DashboardFreeform(
@@ -740,8 +741,8 @@ fun ModuleRepositoryScreen(
                         onDragPointerYChanged = { activeDragPointerY = it }
                     ) { widgetId, _ ->
                         when (widgetId) {
-                            ModuleRepositoryDashboardWidgets.SUMMARY -> summary()
-                            ModuleRepositoryDashboardWidgets.CONTENT -> content()
+                            ModuleRepositoryDashboardWidgets.SUMMARY -> summaryWidgetContent()
+                            ModuleRepositoryDashboardWidgets.CONTENT -> mainWidgetContent()
                         }
                     }
                 }
@@ -782,8 +783,8 @@ fun ModuleRepositoryScreen(
                         .onGloballyPositioned { trayTopY = it.positionInRoot().y }
                 ) { widgetId ->
                     when (widgetId) {
-                        ModuleRepositoryDashboardWidgets.SUMMARY -> summary()
-                        ModuleRepositoryDashboardWidgets.CONTENT -> content()
+                        ModuleRepositoryDashboardWidgets.SUMMARY -> summaryWidgetContent()
+                        ModuleRepositoryDashboardWidgets.CONTENT -> mainWidgetContent()
                     }
                 }
 
