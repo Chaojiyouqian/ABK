@@ -202,6 +202,7 @@ fun BuildScreen(
     val guideSteps = remember(isOnePlusBuild) {
         buildGuideSteps(isOnePlusBuild)
     }
+    val guidedScrollState = rememberScrollState()
     var guidedStepIndex by rememberSaveable(guidedMode, isOnePlusBuild) { mutableStateOf(0) }
     val activeGuideStep = guideSteps.getOrElse(guidedStepIndex.coerceIn(0, guideSteps.lastIndex)) { guideSteps.first() }
     val childPageVisible = showPlanLibraryPage || showBuildQueuePage
@@ -258,6 +259,12 @@ fun BuildScreen(
 
     LaunchedEffect(guideSteps) {
         guidedStepIndex = guidedStepIndex.coerceIn(0, guideSteps.lastIndex)
+    }
+
+    LaunchedEffect(guidedMode, activeGuideStep) {
+        if (guidedMode) {
+            guidedScrollState.scrollTo(0)
+        }
     }
 
     if (guidedMode && !childPageVisible) {
@@ -1268,7 +1275,7 @@ fun BuildScreen(
                     .then(
                         if (guidedMode) Modifier else Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
                     )
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(guidedScrollState)
                     .padding(horizontal = AbkScreenHorizontalPadding),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
