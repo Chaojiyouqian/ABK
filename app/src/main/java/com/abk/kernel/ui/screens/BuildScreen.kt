@@ -459,6 +459,15 @@ fun BuildScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            Text(
+                text = stringResource(R.string.build_guided_progress, guidedStepIndex + 1, guideSteps.size),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+            LinearProgressIndicator(
+                progress = { ((guidedStepIndex + 1).toFloat() / guideSteps.size.toFloat()).coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 
@@ -1273,11 +1282,15 @@ fun BuildScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 if (guidedMode) {
-                    BuildGuideHeader(
-                        steps = guideSteps,
-                        activeStep = activeGuideStep,
-                        activeIndex = guidedStepIndex
-                    )
+                    if (activeGuideStep == BuildGuideStep.Finish) {
+                        GuidedFinishOverviewSection()
+                    } else {
+                        BuildGuideHeader(
+                            steps = guideSteps,
+                            activeStep = activeGuideStep,
+                            activeIndex = guidedStepIndex
+                        )
+                    }
                 }
 
                 if (!guidedMode || activeGuideStep == BuildGuideStep.Overview) {
@@ -1940,9 +1953,6 @@ fun BuildScreen(
             }
 
             if (!guidedMode || activeGuideStep == BuildGuideStep.Finish) {
-            if (guidedMode) {
-                GuidedFinishOverviewSection()
-            }
             SectionCard(section = BuildSection.OptionalConfig) {
                 OutlinedTextField(
                     value = config.version,
