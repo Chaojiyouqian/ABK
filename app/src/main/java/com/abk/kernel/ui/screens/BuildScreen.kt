@@ -2075,6 +2075,7 @@ fun BuildScreen(
         }
     }
 }
+}
 
 @Composable
 private fun BuildPlanPageBackground(
