@@ -1943,112 +1943,26 @@ fun BuildScreen(
 
             if (guidedMode) {
                 GuidedCustomKernelOptionsSection()
-            }
-            }
-
-            if (!guidedMode || activeGuideStep == BuildGuideStep.Finish) {
-            if (guidedMode) {
                 GuidedFinishOverviewSection()
-            }
-            SectionCard(section = BuildSection.OptionalConfig) {
-                OutlinedTextField(
-                    value = config.version,
-                    onValueChange = { vm.updateBuildConfig(config.copy(version = it)) },
-                    label = { Text(stringResource(R.string.build_custom_version_optional)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                ConfigPreviewText(versionPreview)
-                OutlinedTextField(
-                    value = config.buildTime,
-                    onValueChange = { vm.updateBuildConfig(config.copy(buildTime = it)) },
-                    label = { Text(stringResource(R.string.build_custom_time_optional)) },
-                    placeholder = { Text(stringResource(R.string.build_time_placeholder)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                ConfigPreviewText(buildTimePreview)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                SectionCard(section = BuildSection.OptionalConfig) {
                     OutlinedTextField(
-                        value = customKernelConfigDraft,
-                        onValueChange = {
-                            customKernelConfigDraft = it
-                            customKernelConfigInlineError = null
-                        },
-                        label = { Text(stringResource(R.string.build_custom_kernel_config)) },
-                        placeholder = { Text(stringResource(R.string.build_custom_kernel_config_single_placeholder)) },
-                        modifier = Modifier.weight(1f),
+                        value = config.version,
+                        onValueChange = { vm.updateBuildConfig(config.copy(version = it)) },
+                        label = { Text(stringResource(R.string.build_custom_version_optional)) },
+                        modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
-                    Button(
-                        onClick = ::addCustomKernelConfigEntry,
-                        enabled = customKernelConfigDraft.trim().isNotBlank()
-                    ) {
-                        Icon(Icons.Default.Add, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.add))
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = {
-                        showCustomKernelConfigImportDialog = true
-                        customKernelConfigImportError = null
-                    }) {
-                        Icon(Icons.Default.UploadFile, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.build_import))
-                    }
-                    if (customKernelConfigEntries.isNotEmpty()) {
-                        TextButton(onClick = {
-                            updateCustomKernelConfigEntries(emptyList())
-                            customKernelConfigInlineError = null
-                        }) {
-                            Icon(Icons.Default.Clear, null)
-                            Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.clear))
-                        }
-                    }
-                }
-                customKernelConfigInlineError?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
+                    ConfigPreviewText(versionPreview)
+                    OutlinedTextField(
+                        value = config.buildTime,
+                        onValueChange = { vm.updateBuildConfig(config.copy(buildTime = it)) },
+                        label = { Text(stringResource(R.string.build_custom_time_optional)) },
+                        placeholder = { Text(stringResource(R.string.build_time_placeholder)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
                     )
+                    ConfigPreviewText(buildTimePreview)
                 }
-                Text(
-                    text = if (customKernelConfigEntries.isNotEmpty()) {
-                        stringResource(R.string.build_custom_kernel_config_count, customKernelConfigEntryCount)
-                    } else {
-                        stringResource(R.string.build_custom_kernel_config_hint)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                customKernelConfigEntries.forEach { entry ->
-                    key(entry.key) {
-                        CustomKernelConfigEntryCard(
-                            entry = entry,
-                            onStateChange = { state ->
-                                updateCustomKernelConfigEntries(
-                                    customKernelConfigEntries.map { current ->
-                                        if (current.key == entry.key) current.copy(state = state) else current
-                                    }
-                                )
-                            },
-                            onRemove = {
-                                updateCustomKernelConfigEntries(
-                                    customKernelConfigEntries.filterNot { it.key == entry.key }
-                                )
-                            }
-                        )
-                    }
-                }
-            }
             }
             }
 
@@ -3577,8 +3491,7 @@ private enum class BuildGuideStep {
     Overview,
     Kernel,
     KernelSu,
-    Features,
-    Finish
+    Features
 }
 
 private fun buildGuideSteps(isOnePlusBuild: Boolean): List<BuildGuideStep> =
@@ -3587,16 +3500,14 @@ private fun buildGuideSteps(isOnePlusBuild: Boolean): List<BuildGuideStep> =
             BuildGuideStep.Overview,
             BuildGuideStep.Kernel,
             BuildGuideStep.KernelSu,
-            BuildGuideStep.Features,
-            BuildGuideStep.Finish
+            BuildGuideStep.Features
         )
     } else {
         listOf(
             BuildGuideStep.Overview,
             BuildGuideStep.Kernel,
             BuildGuideStep.KernelSu,
-            BuildGuideStep.Features,
-            BuildGuideStep.Finish
+            BuildGuideStep.Features
         )
     }
 
@@ -3606,7 +3517,6 @@ private fun BuildGuideStep.title(): String = when (this) {
     BuildGuideStep.Kernel -> stringResource(R.string.build_guided_step_kernel)
     BuildGuideStep.KernelSu -> stringResource(R.string.build_guided_step_ksu)
     BuildGuideStep.Features -> stringResource(R.string.build_guided_step_features)
-    BuildGuideStep.Finish -> stringResource(R.string.build_guided_step_finish)
 }
 
 @Composable
@@ -3615,7 +3525,6 @@ private fun BuildGuideStep.description(): String = when (this) {
     BuildGuideStep.Kernel -> stringResource(R.string.build_guided_step_kernel_desc)
     BuildGuideStep.KernelSu -> stringResource(R.string.build_guided_step_ksu_desc)
     BuildGuideStep.Features -> stringResource(R.string.build_guided_step_features_desc)
-    BuildGuideStep.Finish -> stringResource(R.string.build_guided_step_finish_desc)
 }
 
 @Composable
