@@ -17,6 +17,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import kotlin.io.path.createTempDirectory
 
 class DownloadAndProgressUtilsTest {
 
@@ -74,8 +75,7 @@ class DownloadAndProgressUtilsTest {
             runId = PREBUILT_GKI_RUN_ID,
             runTitle = "预编译 GKI",
             sourceAssetId = asset.id,
-            sourceAssetName = asset.name,
-            category = ArtifactType.KERNEL_IMG.toArtifactCategory()
+            sourceAssetName = asset.name
         )
 
         assertTrue(DownloadUtils.matchesDownloadedPrebuilt(downloaded, asset))
@@ -100,8 +100,7 @@ class DownloadAndProgressUtilsTest {
             type = ArtifactType.ANYKERNEL3,
             sizeBytes = 1L,
             runId = PREBUILT_GKI_RUN_ID,
-            runTitle = "预编译 GKI",
-            category = ArtifactType.ANYKERNEL3.toArtifactCategory()
+            runTitle = "预编译 GKI"
         )
 
         assertTrue(DownloadUtils.matchesDownloadedPrebuilt(downloaded, asset))
@@ -109,7 +108,7 @@ class DownloadAndProgressUtilsTest {
 
     @Test
     fun selectsExpectedApkForAppUpdateChannel() {
-        val root = kotlin.io.path.createTempDirectory("app-update-select").toFile()
+        val root = createTempDirectory("app-update-select").toFile()
         val release = File(root, "app-release.apk").apply { writeText("release") }
         val debug = File(root, "app-debug.apk").apply { writeText("debug") }
         val devRelease = File(root, "app-release-dev.apk").apply { writeText("dev-release") }
@@ -129,7 +128,7 @@ class DownloadAndProgressUtilsTest {
 
     @Test
     fun collectArtifactPayloadFilesSkipsNoticeFilesEvenAsFallback() {
-        val root = kotlin.io.path.createTempDirectory("download-utils-test").toFile().apply {
+        val root = createTempDirectory("download-utils-test").toFile().apply {
             deleteOnExit()
         }
         File(root, "LICENSE").writeText("license text")
@@ -200,3 +199,5 @@ class DownloadAndProgressUtilsTest {
         assertEquals(2, progress.totalSteps)
     }
 }
+
+
