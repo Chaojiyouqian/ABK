@@ -319,7 +319,7 @@ internal class AbkAgentServer(
     }
 
     private fun jsonResponse(
-        status: Response.Status = Response.Status.OK,
+        status: Response.IStatus = Response.Status.OK,
         payload: Any,
     ): Response {
         val response = newFixedLengthResponse(
@@ -434,7 +434,7 @@ internal class AbkAgentServer(
         } catch (error: Exception) {
             connection.disconnect()
             jsonResponse(
-                status = Response.Status.BAD_GATEWAY,
+                status = proxyStatus(502),
                 payload = mapOf(
                     "error" to (error.message ?: error::class.java.simpleName),
                     "target" to target,
