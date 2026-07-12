@@ -157,7 +157,13 @@ internal object AbkAgentFacade {
         val rootGranted = RootUtils.isRootAvailable()
         val access = RootUtils.resolveManagerAccess(rootGranted)
         if (!access.hasNativeManagerPermission) {
-            return RootUtils.ShellResult(false, listOf(managerAccessError(context, access, rootGranted)))
+            return RootUtils.ShellResult(
+                false,
+                listOf(
+                    managerAccessError(context, access, rootGranted)
+                        ?: "native manager permission unavailable",
+                ),
+            )
         }
         val app = RootUtils.listRootGrantApps(context).firstOrNull { it.packageName == cleanPackage }
             ?: return RootUtils.ShellResult(false, listOf("package not found: $cleanPackage"))

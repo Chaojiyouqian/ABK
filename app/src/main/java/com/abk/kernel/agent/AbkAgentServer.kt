@@ -57,10 +57,10 @@ internal class AbkAgentServer(
                         Response.Status.BAD_REQUEST,
                         mapOf("error" to "invalid susfs config json"),
                     )
-                    acceptTask("susfs.apply") { handle ->
-                        val result = AbkAgentFacade.applySusfsConfig(config) { line -> handle.log(line) }
+                    acceptTask("susfs.apply") {
+                        val result = AbkAgentFacade.applySusfsConfig(config) { line -> log(line) }
                         if (result.success) {
-                            handle.success(
+                            success(
                                 message = "susfs applied",
                                 result = mapOf(
                                     "shell" to shellResultPayload(result),
@@ -68,7 +68,7 @@ internal class AbkAgentServer(
                                 ),
                             )
                         } else {
-                            handle.fail(result.output.lastOrNull().orEmpty().ifBlank { "susfs apply failed" }, appendMessage = false)
+                            fail(result.output.lastOrNull().orEmpty().ifBlank { "susfs apply failed" }, appendMessage = false)
                         }
                     }
                 }
@@ -81,15 +81,15 @@ internal class AbkAgentServer(
                     jsonResponse(payload = shellResultPayload(AbkAgentFacade.setRuntimeModulePendingUninstall(decode(route.moduleId), pending)))
                 }
                 is AbkAgentRoute.RuntimeModuleAction -> requireMethod(session, Method.POST) {
-                    acceptTask("runtime.module.action") { handle ->
-                        val result = AbkAgentFacade.runRuntimeModuleAction(decode(route.moduleId)) { line -> handle.log(line) }
+                    acceptTask("runtime.module.action") {
+                        val result = AbkAgentFacade.runRuntimeModuleAction(decode(route.moduleId)) { line -> log(line) }
                         if (result.success) {
-                            handle.success(
+                            success(
                                 message = "module action complete",
                                 result = shellResultPayload(result),
                             )
                         } else {
-                            handle.fail(result.output.lastOrNull().orEmpty().ifBlank { "module action failed" }, appendMessage = false)
+                            fail(result.output.lastOrNull().orEmpty().ifBlank { "module action failed" }, appendMessage = false)
                         }
                     }
                 }
@@ -98,12 +98,12 @@ internal class AbkAgentServer(
                     if (path.isBlank()) {
                         return@requireMethod jsonResponse(Response.Status.BAD_REQUEST, mapOf("error" to "zipPath missing"))
                     }
-                    acceptTask("install.module") { handle ->
-                        val result = AbkAgentFacade.installModule(path) { line -> handle.log(line) }
+                    acceptTask("install.module") {
+                        val result = AbkAgentFacade.installModule(path) { line -> log(line) }
                         if (result.success) {
-                            handle.success(message = "module installed", result = shellResultPayload(result))
+                            success(message = "module installed", result = shellResultPayload(result))
                         } else {
-                            handle.fail(result.output.lastOrNull().orEmpty().ifBlank { "module install failed" })
+                            fail(result.output.lastOrNull().orEmpty().ifBlank { "module install failed" })
                         }
                     }
                 }
@@ -112,12 +112,12 @@ internal class AbkAgentServer(
                     if (path.isBlank()) {
                         return@requireMethod jsonResponse(Response.Status.BAD_REQUEST, mapOf("error" to "apkPath missing"))
                     }
-                    acceptTask("install.apk") { handle ->
-                        val result = AbkAgentFacade.installApk(context, path) { line -> handle.log(line) }
+                    acceptTask("install.apk") {
+                        val result = AbkAgentFacade.installApk(context, path) { line -> log(line) }
                         if (result.success) {
-                            handle.success(message = "apk installed", result = shellResultPayload(result))
+                            success(message = "apk installed", result = shellResultPayload(result))
                         } else {
-                            handle.fail(result.output.lastOrNull().orEmpty().ifBlank { "apk install failed" })
+                            fail(result.output.lastOrNull().orEmpty().ifBlank { "apk install failed" })
                         }
                     }
                 }
@@ -128,19 +128,19 @@ internal class AbkAgentServer(
                     if (imagePath.isBlank()) {
                         return@requireMethod jsonResponse(Response.Status.BAD_REQUEST, mapOf("error" to "imagePath missing"))
                     }
-                    acceptTask("flash.image") { handle ->
-                        val result = AbkAgentFacade.flashImage(imagePath, partition) { line -> handle.log(line) }
+                    acceptTask("flash.image") {
+                        val result = AbkAgentFacade.flashImage(imagePath, partition) { line -> log(line) }
                         if (result.success) {
-                            handle.success(message = "image flashed", result = shellResultPayload(result))
+                            success(message = "image flashed", result = shellResultPayload(result))
                         } else {
-                            handle.fail(result.output.lastOrNull().orEmpty().ifBlank { "flash failed" })
+                            fail(result.output.lastOrNull().orEmpty().ifBlank { "flash failed" })
                         }
                     }
                 }
                 AbkAgentRoute.ExportDiagnostics -> requireMethod(session, Method.POST) {
-                    acceptTask("diagnostics.export") { handle ->
+                    acceptTask("diagnostics.export") {
                         val (zipFile, warnings) = AbkAgentFacade.exportDiagnostics(context)
-                        handle.success(
+                        success(
                             message = "diagnostics exported",
                             result = mapOf("warnings" to warnings),
                             download = AbkAgentDownload(

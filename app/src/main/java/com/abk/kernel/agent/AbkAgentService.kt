@@ -11,7 +11,6 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.abk.kernel.MainActivity
-import com.abk.kernel.R
 
 class AbkAgentService : Service() {
     private var server: AbkAgentServer? = null
@@ -71,7 +70,7 @@ class AbkAgentService : Service() {
             android.app.PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_data_usb)
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle("ABK Agent running")
             .setContentText("Listening on 127.0.0.1:$port")
             .setOngoing(true)

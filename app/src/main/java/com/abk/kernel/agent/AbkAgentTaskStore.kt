@@ -143,7 +143,7 @@ internal object AbkAgentTaskStore {
         }
     }
 
-    internal class AbkAgentTaskHandle(
+    internal class AbkAgentTaskHandle private constructor(
         private val task: MutableTask,
     ) {
         fun markRunning() {
