@@ -709,6 +709,7 @@
     <string name="settings_group_about_desc">App version and source information.</string>
     <string name="settings_group_backend_desc">Load dynamically from current %1$s backend capabilities.</string>
     <string name="settings_group_manager_settings_desc">Load dynamically from current KSU backend capabilities.</string>
+    <string name="settings_group_kernel_capabilities_desc">Load dynamically from root access and built-in kernel capabilities.</string>
     <string name="settings_group_system_tools_desc">Tools for SELinux and module umount paths.</string>
     <string name="settings_group_allowlist_desc">Export or import the current root authorization list.</string>
     <string name="settings_group_tool_status_desc">Result of the most recent tool operation.</string>
@@ -928,6 +929,8 @@
     <string name="settings_tools">Tools</string>
     <string name="settings_tools_desc">More advanced features</string>
     <string name="settings_manager_settings">Manager settings</string>
+    <string name="settings_kernel_capabilities">Kernel capabilities</string>
+    <string name="settings_susfs_control">SUSFS control</string>
     <string name="settings_manager_loading_title">Reading backend settings</string>
     <string name="settings_manager_loading_desc">Loading available features from the current KSU backend</string>
     <string name="settings_manager_load_failed">Failed to read backend settings</string>
@@ -1200,6 +1203,11 @@
     <string name="ru_diag_compat_shell_only">Currently working only through the ksud/root shell compatibility layer. ABK is not yet recognized by the kernel as the native manager and cannot manage root authorization policies.</string>
     <string name="ru_diag_generic_su_only">Only a generic su shell is available; no KernelSU/ReSukiSU native manager interface was detected.</string>
     <string name="ru_diag_native_not_manager">The KernelSU/ReSukiSU native interface is reachable, but the current ABK APK is not recognized as the manager. Make sure the installed app is the officially signed com.abk.kernel APK whose signature matches ABK_MANAGER_CERT_SHA256 used at kernel build time.</string>
+    <string name="susfs_title">SUSFS Control</string>
+    <string name="susfs_unavailable">No usable SUSFS capability was detected in the current kernel.</string>
+    <string name="susfs_load_failed">Failed to load SUSFS status.</string>
+    <string name="susfs_apply_failed">Failed to apply SUSFS configuration.</string>
+    <string name="susfs_reset_failed">Failed to reset SUSFS configuration.</string>
     <string name="ru_diag_control_no_response">ABK control did not respond; the kernel may not have CONFIG_ABK_CONTROL enabled, or the ABK Control external module is missing the before_build stage.</string>
     <string name="ru_log_invoke_libksud">[ABK] Invoking bundled libksud.so via root shell</string>
     <string name="ru_log_ksud_path">[ABK] ksud path: %1$s</string>

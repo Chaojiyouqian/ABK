@@ -37,6 +37,8 @@ import com.abk.kernel.utils.FailureLogExtractor
 import com.abk.kernel.utils.NotificationUtils
 import com.abk.kernel.utils.WorkflowStepI18n
 import com.abk.kernel.utils.RootUtils
+import com.abk.kernel.utils.defaultSusfsConfig
+import com.abk.kernel.utils.normalizeSusfsConfig
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CancellationException
@@ -223,6 +225,12 @@ data class MainUiState(
     val managerSettingsLoading: Boolean = false,
     val managerSettingsError: String? = null,
     val managerSettingActionId: String? = null,
+    val susfsRuntimeStatus: SusfsRuntimeStatus? = null,
+    val susfsConfig: SusfsConfig = defaultSusfsConfig(),
+    val susfsLoading: Boolean = false,
+    val susfsSaving: Boolean = false,
+    val susfsError: String? = null,
+    val susfsLastApplyOutput: List<String> = emptyList(),
     val managerToolsLoading: Boolean = false,
     val managerToolsError: String? = null,
     val managerToolActionId: String? = null,
@@ -3326,6 +3334,94 @@ class MainViewModel @JvmOverloads constructor(
 
     fun consumeAppUpdatePendingInstallPath() {
         _uiState.update { it.copy(appUpdatePendingInstallPath = null) }
+    }
+
+    fun refreshSusfsState(force: Boolean = false) {
+        if (!force && _uiState.value.susfsLoading) return
+        viewModelScope.launch {
+            val rootGranted = _uiState.value.rootGranted
+            _uiState.update { it.copy(susfsLoading = true, susfsError = null) }
+            if (!rootGranted) {
+                _uiState.update {
+                    it.copy(
+                        susfsRuntimeStatus = null,
+                        susfsConfig = defaultSusfsConfig(),
+                        susfsLoading = false,
+                        susfsError = null,
+                        susfsLastApplyOutput = emptyList(),
+                    )
+                }
+                return@launch
+            }
+            val loaded = runCatching {
+                withContext(Dispatchers.IO) {
+                    RootUtils.readSusfsRuntimeStatus() to normalizeSusfsConfig(RootUtils.readSusfsConfig())
+                }
+            }.getOrElse { error ->
+                null to defaultSusfsConfig().also {
+                    _uiState.update {
+                        it.copy(
+                            susfsLoading = false,
+                            susfsError = error.message ?: text(R.string.susfs_load_failed),
+                        )
+                    }
+                }
+            }
+            val status = loaded.first
+            if (status == null) return@launch
+            _uiState.update {
+                it.copy(
+                    susfsRuntimeStatus = status,
+                    susfsConfig = loaded.second,
+                    susfsLoading = false,
+                    susfsError = when {
+                        status.available -> null
+                        status.diagnostics.isNotEmpty() -> status.diagnostics.joinToString("\n")
+                        else -> text(R.string.susfs_unavailable)
+                    },
+                )
+            }
+        }
+    }
+
+    fun applySusfsConfig(config: SusfsConfig) {
+        if (_uiState.value.susfsSaving) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(susfsSaving = true, susfsError = null, susfsLastApplyOutput = emptyList()) }
+            val result = withContext(Dispatchers.IO) {
+                RootUtils.applySusfsConfig(normalizeSusfsConfig(config))
+            }
+            _uiState.update {
+                it.copy(
+                    susfsSaving = false,
+                    susfsLastApplyOutput = result.output,
+                    susfsError = if (result.success) null else {
+                        result.output.lastOrNull { line -> line.isNotBlank() } ?: text(R.string.susfs_apply_failed)
+                    },
+                )
+            }
+            refreshSusfsState(force = true)
+        }
+    }
+
+    fun resetSusfsConfig() {
+        if (_uiState.value.susfsSaving) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(susfsSaving = true, susfsError = null, susfsLastApplyOutput = emptyList()) }
+            val result = withContext(Dispatchers.IO) {
+                RootUtils.resetSusfsConfig()
+            }
+            _uiState.update {
+                it.copy(
+                    susfsSaving = false,
+                    susfsLastApplyOutput = result.output,
+                    susfsError = if (result.success) null else {
+                        result.output.lastOrNull { line -> line.isNotBlank() } ?: text(R.string.susfs_reset_failed)
+                    },
+                )
+            }
+            refreshSusfsState(force = true)
+        }
     }
 
     fun refreshManagerSettings(force: Boolean = false) {
