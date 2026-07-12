@@ -7,6 +7,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import fi.iki.elonen.NanoHTTPD
+import java.io.ByteArrayInputStream
 import java.io.FileInputStream
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -42,6 +43,18 @@ internal class AbkAgentServer(
                     val body = readJsonBody(session)
                     val allowed = body?.get("allowed")?.asBoolean ?: false
                     jsonResponse(payload = shellResultPayload(AbkAgentFacade.setRootGrantAllowed(context, decode(route.packageName), allowed)))
+                }
+                is AbkAgentRoute.RootGrantIcon -> requireMethod(session, Method.GET) {
+                    val icon = AbkAgentFacade.readRootGrantIconPng(context, decode(route.packageName))
+                        ?: return@requireMethod jsonResponse(
+                            Response.Status.NOT_FOUND,
+                            mapOf("error" to "icon not found", "packageName" to route.packageName),
+                        )
+                    binaryResponse(
+                        bytes = icon,
+                        contentType = "image/png",
+                        fileName = "${decode(route.packageName)}.png",
+                    )
                 }
                 AbkAgentRoute.Susfs -> requireMethod(session, Method.GET) {
                     jsonResponse(payload = AbkAgentFacade.susfs(context))
@@ -238,6 +251,21 @@ internal class AbkAgentServer(
             FileInputStream(download.file),
         )
         response.addHeader("Content-Disposition", "attachment; filename=\"${download.fileName}\"")
+        response.addHeader("Cache-Control", "no-store")
+        return response
+    }
+
+    private fun binaryResponse(
+        bytes: ByteArray,
+        contentType: String,
+        fileName: String,
+    ): Response {
+        val response = newChunkedResponse(
+            Response.Status.OK,
+            contentType,
+            ByteArrayInputStream(bytes),
+        )
+        response.addHeader("Content-Disposition", "inline; filename=\"$fileName\"")
         response.addHeader("Cache-Control", "no-store")
         return response
     }

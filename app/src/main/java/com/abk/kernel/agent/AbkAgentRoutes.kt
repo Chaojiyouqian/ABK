@@ -6,6 +6,7 @@ internal sealed interface AbkAgentRoute {
     data object Runtime : AbkAgentRoute
     data object RootGrants : AbkAgentRoute
     data class RootGrantAllow(val packageName: String) : AbkAgentRoute
+    data class RootGrantIcon(val packageName: String) : AbkAgentRoute
     data object Susfs : AbkAgentRoute
     data object ApplySusfs : AbkAgentRoute
     data class RuntimeModuleEnable(val moduleId: String) : AbkAgentRoute
@@ -24,6 +25,7 @@ internal object AbkAgentRoutes {
     private val runtimePendingUninstall = Regex("""^/api/v1/runtime/modules/([^/]+)/pending-uninstall$""")
     private val runtimeAction = Regex("""^/api/v1/runtime/modules/([^/]+)/action$""")
     private val rootGrantAllow = Regex("""^/api/v1/root-grants/([^/]+)/allow$""")
+    private val rootGrantIcon = Regex("""^/api/v1/root-grants/([^/]+)/icon$""")
     private val task = Regex("""^/api/v1/tasks/([^/]+)$""")
     private val taskDownload = Regex("""^/api/v1/tasks/([^/]+)/download$""")
 
@@ -56,6 +58,9 @@ internal object AbkAgentRoutes {
                 }
                 rootGrantAllow.matchEntire(clean)?.groupValues?.getOrNull(1)?.let {
                     return AbkAgentRoute.RootGrantAllow(it)
+                }
+                rootGrantIcon.matchEntire(clean)?.groupValues?.getOrNull(1)?.let {
+                    return AbkAgentRoute.RootGrantIcon(it)
                 }
                 taskDownload.matchEntire(clean)?.groupValues?.getOrNull(1)?.let {
                     return AbkAgentRoute.TaskDownload(it)

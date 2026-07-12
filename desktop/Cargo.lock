@@ -7,6 +7,7 @@ name = "abk-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "gdk-pixbuf",
  "glib",
  "gtk4",
  "libadwaita",

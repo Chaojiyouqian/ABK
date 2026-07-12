@@ -1,6 +1,9 @@
 package com.abk.kernel.agent
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
 import com.abk.kernel.BuildConfig
 import com.abk.kernel.R
 import com.abk.kernel.data.model.AbkRuntimeModule
@@ -25,6 +28,7 @@ import com.abk.kernel.viewmodel.sortRuntimeModulesForDisplay
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
+import java.io.ByteArrayOutputStream
 
 internal data class AbkAgentSessionResponse(
     @SerializedName("protocolVersion") val protocolVersion: String,
@@ -145,6 +149,19 @@ internal object AbkAgentFacade {
             managerDiagnostic = managerAccessError(context, access, rootGranted),
             apps = apps,
         )
+    }
+
+    fun readRootGrantIconPng(context: Context, packageName: String): ByteArray? {
+        val cleanPackage = packageName.trim()
+        if (cleanPackage.isBlank()) return null
+        val packageManager = context.packageManager
+        val drawable = runCatching { packageManager.getApplicationIcon(cleanPackage) }.getOrNull()
+            ?: return null
+        val bitmap = drawable.toBitmap(64)
+        return ByteArrayOutputStream().use { output ->
+            if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) return null
+            output.toByteArray()
+        }
     }
 
     fun setRootGrantAllowed(
@@ -319,5 +336,22 @@ internal object AbkAgentFacade {
                 context.getString(R.string.vm_native_kernel_no_manager)
         }
         return message.ifBlank { if (rootGranted) null else null }
+    }
+
+    private fun android.graphics.drawable.Drawable.toBitmap(sizePx: Int): Bitmap {
+        if (this is BitmapDrawable && bitmap != null) {
+            return Bitmap.createScaledBitmap(bitmap, sizePx, sizePx, true)
+        }
+        val width = intrinsicWidth.takeIf { it > 0 } ?: sizePx
+        val height = intrinsicHeight.takeIf { it > 0 } ?: sizePx
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        setBounds(0, 0, canvas.width, canvas.height)
+        draw(canvas)
+        return if (width == sizePx && height == sizePx) {
+            bitmap
+        } else {
+            Bitmap.createScaledBitmap(bitmap, sizePx, sizePx, true)
+        }
     }
 }

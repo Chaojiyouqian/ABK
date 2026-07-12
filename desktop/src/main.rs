@@ -7,8 +7,10 @@ use crate::commands::{
     build_adb_stop_agent_command, build_cli_command, run_command,
 };
 use adw::prelude::*;
+use gdk_pixbuf::Pixbuf;
 use gtk::{gdk, glib};
 use serde_json::Value;
+use std::io::Cursor;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::Duration;
@@ -1442,14 +1444,16 @@ fn status_block(title: &str, initial: &str) -> (gtk::Box, gtk::Label) {
 }
 
 fn summarize_session(value: &Value) -> String {
-    let version = json_str_any(value, &["appVersion", "app_version"]);
-    let manager = json_str_any(value, &["managerAccessKind", "manager_access_kind"]);
-    let root = json_bool_opt(value, &["rootGranted", "root_granted"]);
-    let caps = json_array_len(value, &["capabilities"]);
+    let version = json_str_any_recursive(value, &["appVersion", "app_version"]);
+    let manager = json_str_any_recursive(value, &["managerAccessKind", "manager_access_kind"]);
+    let root = json_bool_opt_recursive(value, &["rootGranted", "root_granted"]);
+    let caps = json_array_len_recursive(value, &["capabilities"]);
     if version.is_none() && manager.is_none() && root.is_none() && caps.is_none() {
-        return json_str_any(value, &["error", "managerDiagnostic", "manager_diagnostic"])
-            .unwrap_or("Session payload unavailable")
-            .to_string();
+        return diagnostic_or_keys(
+            value,
+            &["error", "managerDiagnostic", "manager_diagnostic"],
+            "Session payload unavailable",
+        );
     }
     format!(
         "ABK {} · {} · {} · {} capabilities",
@@ -1462,28 +1466,19 @@ fn summarize_session(value: &Value) -> String {
 }
 
 fn summarize_runtime(value: &Value) -> String {
-    let root = json_bool_opt(value, &["rootGranted", "root_granted"]);
-    let runtime = value.get("runtimeStatus");
-    if runtime.is_none() {
-        return json_str_any(value, &["managerDiagnostic", "manager_diagnostic", "error"])
-            .unwrap_or("Runtime payload unavailable")
-            .to_string();
+    let root = json_bool_opt_recursive(value, &["rootGranted", "root_granted"]);
+    let manager =
+        json_str_any_recursive(value, &["display_name", "displayName"]).unwrap_or("inactive");
+    let modules = find_array_of_objects(value, is_runtime_module_record).len();
+    let build =
+        json_str_any_recursive(value, &["kernel_version", "kernelVersion"]).unwrap_or("unknown");
+    if manager == "inactive" && modules == 0 && build == "unknown" {
+        return diagnostic_or_keys(
+            value,
+            &["managerDiagnostic", "manager_diagnostic", "error"],
+            "Runtime payload unavailable",
+        );
     }
-    let manager = runtime
-        .and_then(|v| v.get("manager"))
-        .and_then(|v| v.get("display_name").or_else(|| v.get("displayName")))
-        .and_then(Value::as_str)
-        .unwrap_or("inactive");
-    let modules = runtime
-        .and_then(|v| v.get("modules"))
-        .and_then(Value::as_array)
-        .map(|items| items.len())
-        .unwrap_or(0);
-    let build = runtime
-        .and_then(|v| v.get("build"))
-        .and_then(|v| v.get("kernel_version").or_else(|| v.get("kernelVersion")))
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
     format!(
         "{manager} · {modules} modules · kernel {build} · {}",
         root.map(|granted| bool_label(granted, "root", "no root"))
@@ -1492,19 +1487,16 @@ fn summarize_runtime(value: &Value) -> String {
 }
 
 fn summarize_root_grants(value: &Value) -> String {
-    let root = json_bool_opt(value, &["rootGranted", "root_granted"]);
-    let diagnostic = json_str_any(value, &["managerDiagnostic", "manager_diagnostic", "error"]);
-    let apps = value
-        .get("apps")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let root = json_bool_opt_recursive(value, &["rootGranted", "root_granted"]);
+    let diagnostic =
+        json_str_any_recursive(value, &["managerDiagnostic", "manager_diagnostic", "error"]);
+    let apps = find_array_of_objects(value, is_root_grant_record);
     if apps.is_empty() {
         return match root {
             Some(false) => "Root not granted on device".to_string(),
             _ => diagnostic
-                .unwrap_or("No root grant entries reported")
-                .to_string(),
+                .map(ToString::to_string)
+                .unwrap_or_else(|| payload_keys_message(value, "No root grant entries reported")),
         };
     }
     let allowed = apps
@@ -1520,26 +1512,14 @@ fn summarize_root_grants(value: &Value) -> String {
 }
 
 fn summarize_susfs(value: &Value) -> String {
-    let root = json_bool_opt(value, &["rootGranted", "root_granted"]);
+    let root = json_bool_opt_recursive(value, &["rootGranted", "root_granted"]);
     if matches!(root, Some(false)) {
         return "Root not granted on device".to_string();
     }
-    let available = value
-        .get("status")
-        .and_then(|v| v.get("available"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let kernel = value
-        .get("status")
-        .and_then(|v| v.get("kernelVersion"))
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
-    let path_rules = value
-        .get("config")
-        .and_then(|v| v.get("pathRules"))
-        .and_then(Value::as_array)
-        .map(|items| items.len())
-        .unwrap_or(0);
+    let available = json_bool_opt_recursive(value, &["available"]).unwrap_or(false);
+    let kernel =
+        json_str_any_recursive(value, &["kernelVersion", "kernel_version"]).unwrap_or("unknown");
+    let path_rules = json_array_len_recursive(value, &["pathRules", "path_rules"]).unwrap_or(0);
     format!(
         "{} · kernel {kernel} · {path_rules} path rules",
         if available {
@@ -1558,30 +1538,27 @@ fn render_root_grant_rows(
     _strings: Strings,
 ) {
     clear_list_box(list);
-    let root = json_bool_opt(value, &["rootGranted", "root_granted"]);
-    let diagnostic = json_str_any(value, &["managerDiagnostic", "manager_diagnostic", "error"]);
-    let apps = value
-        .get("apps")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let root = json_bool_opt_recursive(value, &["rootGranted", "root_granted"]);
+    let diagnostic =
+        json_str_any_recursive(value, &["managerDiagnostic", "manager_diagnostic", "error"]);
+    let apps = find_array_of_objects(value, is_root_grant_record);
     if apps.is_empty() {
         let message = match root {
             Some(false) => "Root not granted on device",
             _ => diagnostic.unwrap_or("No root grant entries reported"),
         };
-        append_placeholder_row(list, message);
+        append_placeholder_row(list, &payload_keys_message(value, message));
         return;
     }
 
     for app in apps.into_iter().take(20) {
-        let package = json_str_any(&app, &["packageName", "package_name"])
+        let package = json_str_any_recursive(&app, &["packageName", "package_name"])
             .unwrap_or("")
             .to_string();
         if package.is_empty() {
             continue;
         }
-        let label = json_str_any(&app, &["label"])
+        let label = json_str_any_recursive(&app, &["label"])
             .unwrap_or(&package)
             .to_string();
         let allowed = app
@@ -1593,9 +1570,13 @@ fn render_root_grant_rows(
         let row = gtk::ListBoxRow::new();
         let shell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         shell.add_css_class("list-row-shell");
-        set_margin_all(&shell, 10);
+        set_margin_all(&shell, 8);
+
+        let icon = root_grant_icon_widget(parse_port(&port_entry.text()), &package);
+        shell.append(&icon);
 
         let text = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        text.set_hexpand(true);
         let title = gtk::Label::new(Some(&label));
         title.set_xalign(0.0);
         title.add_css_class("list-row-title");
@@ -1607,6 +1588,8 @@ fn render_root_grant_rows(
 
         let toggle = gtk::Switch::new();
         toggle.set_active(allowed);
+        toggle.set_valign(gtk::Align::Center);
+        toggle.add_css_class("compact-switch");
         {
             let sender = sender.clone();
             let port_entry = port_entry.clone();
@@ -1635,30 +1618,31 @@ fn render_module_rows(
     strings: Strings,
 ) {
     clear_list_box(list);
-    let diagnostic = json_str_any(value, &["managerDiagnostic", "manager_diagnostic", "error"]);
-    let modules = value
-        .get("runtimeStatus")
-        .and_then(|v| v.get("modules"))
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let diagnostic =
+        json_str_any_recursive(value, &["managerDiagnostic", "manager_diagnostic", "error"]);
+    let modules = find_array_of_objects(value, is_runtime_module_record);
     if modules.is_empty() {
         append_placeholder_row(
             list,
-            diagnostic.unwrap_or("No runtime modules reported by the device"),
+            &payload_keys_message(
+                value,
+                diagnostic.unwrap_or("No runtime modules reported by the device"),
+            ),
         );
         return;
     }
 
     for module in modules.into_iter().take(20) {
-        let module_id = json_str_any(&module, &["id"]).unwrap_or("").to_string();
+        let module_id = json_str_any_recursive(&module, &["id"])
+            .unwrap_or("")
+            .to_string();
         if module_id.is_empty() {
             continue;
         }
-        let name = json_str_any(&module, &["name"])
+        let name = json_str_any_recursive(&module, &["name"])
             .unwrap_or(&module_id)
             .to_string();
-        let source = json_str_any(&module, &["source"]).unwrap_or("runtime");
+        let source = json_str_any_recursive(&module, &["source"]).unwrap_or("runtime");
         let enabled = module
             .get("enabled")
             .and_then(Value::as_bool)
@@ -1678,9 +1662,13 @@ fn render_module_rows(
         let row = gtk::ListBoxRow::new();
         let shell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         shell.add_css_class("list-row-shell");
-        set_margin_all(&shell, 10);
+        set_margin_all(&shell, 8);
+
+        let icon = module_icon_widget(&module);
+        shell.append(&icon);
 
         let text = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        text.set_hexpand(true);
         let title = gtk::Label::new(Some(&name));
         title.set_xalign(0.0);
         title.add_css_class("list-row-title");
@@ -1691,9 +1679,12 @@ fn render_module_rows(
         text.append(&subtitle);
 
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        actions.add_css_class("inline-actions");
 
         let toggle = gtk::Switch::new();
         toggle.set_active(enabled);
+        toggle.set_valign(gtk::Align::Center);
+        toggle.add_css_class("compact-switch");
         {
             let sender = sender.clone();
             let port_entry = port_entry.clone();
@@ -1775,9 +1766,55 @@ fn append_placeholder_row(list: &gtk::ListBox, message: &str) {
     list.append(&row);
 }
 
+fn root_grant_icon_widget(port: u16, package_name: &str) -> gtk::Image {
+    let image = gtk::Image::from_icon_name("application-x-executable-symbolic");
+    image.add_css_class("list-icon");
+    image.set_pixel_size(28);
+    if package_name.trim().is_empty() {
+        return image;
+    }
+    let client = AgentClient::new("127.0.0.1", port);
+    if let Ok(bytes) = client.root_grant_icon_png(package_name) {
+        if let Ok(pixbuf) = Pixbuf::from_read(Cursor::new(bytes)) {
+            image.set_from_pixbuf(Some(&pixbuf));
+            image.set_pixel_size(28);
+        }
+    }
+    image
+}
+
+fn module_icon_widget(module: &Value) -> gtk::Image {
+    let source = json_str_any_recursive(module, &["source"]).unwrap_or("");
+    let icon_name = if source.contains("abk") {
+        "applications-system-symbolic"
+    } else if source.contains("ksud") {
+        "extension-symbolic"
+    } else if source.contains("kpm") {
+        "preferences-system-symbolic"
+    } else {
+        "application-x-executable-symbolic"
+    };
+    let image = gtk::Image::from_icon_name(icon_name);
+    image.add_css_class("list-icon");
+    image.set_pixel_size(24);
+    image
+}
+
 fn json_str_any<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
     keys.iter()
         .find_map(|key| value.get(*key).and_then(Value::as_str))
+}
+
+fn json_str_any_recursive<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
+    json_str_any(value, keys).or_else(|| match value {
+        Value::Object(map) => map
+            .values()
+            .find_map(|nested| json_str_any_recursive(nested, keys)),
+        Value::Array(items) => items
+            .iter()
+            .find_map(|nested| json_str_any_recursive(nested, keys)),
+        _ => None,
+    })
 }
 
 fn json_bool_opt(value: &Value, keys: &[&str]) -> Option<bool> {
@@ -1785,9 +1822,103 @@ fn json_bool_opt(value: &Value, keys: &[&str]) -> Option<bool> {
         .find_map(|key| value.get(*key).and_then(Value::as_bool))
 }
 
+fn json_bool_opt_recursive(value: &Value, keys: &[&str]) -> Option<bool> {
+    json_bool_opt(value, keys).or_else(|| match value {
+        Value::Object(map) => map
+            .values()
+            .find_map(|nested| json_bool_opt_recursive(nested, keys)),
+        Value::Array(items) => items
+            .iter()
+            .find_map(|nested| json_bool_opt_recursive(nested, keys)),
+        _ => None,
+    })
+}
+
 fn json_array_len(value: &Value, keys: &[&str]) -> Option<usize> {
     keys.iter()
         .find_map(|key| value.get(*key).and_then(Value::as_array).map(Vec::len))
+}
+
+fn json_array_len_recursive(value: &Value, keys: &[&str]) -> Option<usize> {
+    json_array_len(value, keys).or_else(|| match value {
+        Value::Object(map) => map
+            .values()
+            .find_map(|nested| json_array_len_recursive(nested, keys)),
+        Value::Array(items) => items
+            .iter()
+            .find_map(|nested| json_array_len_recursive(nested, keys)),
+        _ => None,
+    })
+}
+
+fn find_array_of_objects(value: &Value, predicate: fn(&Value) -> bool) -> Vec<Value> {
+    match value {
+        Value::Array(items) => {
+            if items.iter().any(predicate) {
+                items.clone()
+            } else {
+                items
+                    .iter()
+                    .find_map(|nested| {
+                        let found = find_array_of_objects(nested, predicate);
+                        if found.is_empty() {
+                            None
+                        } else {
+                            Some(found)
+                        }
+                    })
+                    .unwrap_or_default()
+            }
+        }
+        Value::Object(map) => map
+            .values()
+            .find_map(|nested| {
+                let found = find_array_of_objects(nested, predicate);
+                if found.is_empty() {
+                    None
+                } else {
+                    Some(found)
+                }
+            })
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+fn is_root_grant_record(value: &Value) -> bool {
+    value.get("packageName").is_some()
+        || value.get("package_name").is_some()
+        || value.get("profile").is_some()
+}
+
+fn is_runtime_module_record(value: &Value) -> bool {
+    value.get("id").is_some()
+        && (value.get("name").is_some()
+            || value.get("source").is_some()
+            || value.get("enabled").is_some())
+}
+
+fn diagnostic_or_keys(value: &Value, keys: &[&str], fallback: &str) -> String {
+    json_str_any_recursive(value, keys)
+        .map(ToString::to_string)
+        .unwrap_or_else(|| payload_keys_message(value, fallback))
+}
+
+fn payload_keys_message(value: &Value, fallback: &str) -> String {
+    let keys = top_level_keys(value);
+    if keys.is_empty() {
+        fallback.to_string()
+    } else {
+        format!("{fallback} · keys: {}", keys.join(", "))
+    }
+}
+
+fn top_level_keys(value: &Value) -> Vec<String> {
+    match value {
+        Value::Object(map) => map.keys().cloned().collect(),
+        Value::Array(items) if !items.is_empty() => vec![format!("array[{}]", items.len())],
+        _ => Vec::new(),
+    }
 }
 
 fn bool_label<'a>(value: bool, truthy: &'a str, falsy: &'a str) -> &'a str {
@@ -1958,6 +2089,46 @@ const APP_CSS: &str = r#"
   border-radius: 28px;
   border: 1px solid alpha(@window_fg_color, 0.08);
   padding: 18px;
+}
+
+.plain-list {
+  background: transparent;
+}
+
+.plain-list row {
+  border-radius: 18px;
+  margin: 2px 0;
+}
+
+.plain-list row:hover {
+  background-color: alpha(@accent_bg_color, 0.06);
+}
+
+.list-row-shell {
+  min-height: 52px;
+}
+
+.list-row-title {
+  font-size: 1rem;
+  font-weight: 680;
+}
+
+.list-row-subtitle {
+  font-size: 0.9rem;
+  opacity: 0.72;
+}
+
+.list-icon {
+  min-width: 32px;
+  min-height: 32px;
+}
+
+.inline-actions {
+  margin-left: 8px;
+}
+
+.compact-switch {
+  margin-left: 8px;
 }
 
 .material-entry {

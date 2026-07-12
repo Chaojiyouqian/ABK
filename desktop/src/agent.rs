@@ -65,6 +65,23 @@ impl AgentClient {
         )
     }
 
+    pub fn root_grant_icon_png(&self, package_name: &str) -> Result<Vec<u8>> {
+        let url = format!(
+            "{}/api/v1/root-grants/{package_name}/icon",
+            self.base_url()
+        );
+        let response = self
+            .http
+            .get(&url)
+            .send()
+            .with_context(|| format!("GET {url} failed"))?;
+        if !response.status().is_success() {
+            let body = response.text().unwrap_or_default();
+            return Err(anyhow!("HTTP icon fetch failed: {}", body.trim()));
+        }
+        Ok(response.bytes().context("failed to read icon bytes")?.to_vec())
+    }
+
     pub fn set_module_enabled(&self, module_id: &str, enabled: bool) -> Result<String> {
         self.post_pretty(
             &format!("/api/v1/runtime/modules/{module_id}/enable"),
