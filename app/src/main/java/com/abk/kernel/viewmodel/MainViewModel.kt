@@ -36,6 +36,7 @@ import com.abk.kernel.utils.DownloadUtils
 import com.abk.kernel.utils.FailureLogExtractor
 import com.abk.kernel.utils.NotificationUtils
 import com.abk.kernel.utils.WorkflowStepI18n
+import com.abk.kernel.utils.BUNDLED_SUSFS_VERSION
 import com.abk.kernel.utils.RootUtils
 import com.abk.kernel.utils.defaultSusfsConfig
 import com.abk.kernel.utils.normalizeSusfsConfig
@@ -3430,7 +3431,7 @@ class MainViewModel @JvmOverloads constructor(
             val rootGranted = _uiState.value.rootGranted
             _uiState.update { it.copy(managerSettingsLoading = true, managerSettingsError = null) }
             val access = withContext(Dispatchers.IO) { resolveManagerAccess(rootGranted) }
-            if (!access.hasNativeManagerPermission) {
+            if (access.kind == RootUtils.ManagerAccessKind.NO_ROOT) {
                 _uiState.update {
                     it.copy(
                         managerAccessState = access.toUiState(),
@@ -3448,23 +3449,24 @@ class MainViewModel @JvmOverloads constructor(
             }
             val loaded = runCatching {
                 withContext(Dispatchers.IO) {
-                    loadManagerSettings()
+                    loadManagerSettings(access = access, rootGranted = rootGranted)
                 }
             }.getOrElse { error ->
                 ManagerSettingsLoad(
                     error = error.message?.takeIf { it.isNotBlank() } ?: text(R.string.settings_manager_load_failed)
                 )
             }
+            val accessError = managerAccessErrorMessage(access, rootGranted)
             _uiState.update {
                 it.copy(
                     managerAccessState = access.toUiState(),
-                    managerAccessError = null,
-                    hasNativeManagerPermission = true,
+                    managerAccessError = if (access.hasNativeManagerPermission || loaded.items.isNotEmpty()) null else accessError,
+                    hasNativeManagerPermission = access.hasNativeManagerPermission,
                     managerSettingsBackend = loaded.backend?.trim()?.ifBlank { null },
                     managerSettingsTitle = loaded.title.trim(),
                     managerSettingsItems = sanitizeManagerSettingItems(loaded.items),
                     managerSettingsLoading = false,
-                    managerSettingsError = loaded.error,
+                    managerSettingsError = loaded.error ?: if (!access.hasNativeManagerPermission && loaded.items.isEmpty()) accessError else null,
                     managerSettingActionId = null
                 )
             }
@@ -3848,17 +3850,34 @@ class MainViewModel @JvmOverloads constructor(
         }
     }
 
-    private fun loadManagerSettings(): ManagerSettingsLoad =
+    private fun loadManagerSettings(
+        access: RootUtils.ManagerAccessInfo,
+        rootGranted: Boolean
+    ): ManagerSettingsLoad =
         runCatching {
-            if (!RootUtils.isNativeManagerActive()) {
-                return@runCatching ManagerSettingsLoad()
-            }
-            val snapshot = RootUtils.readManagerRuntimeSnapshot()
-            val manager = snapshot.manager.normalizedForManagerSettings()
-            if (!manager.active) {
-                ManagerSettingsLoad()
+            val susfsItem = if (rootGranted) {
+                buildSusfsManagerSetting(RootUtils.readSusfsRuntimeStatus())
             } else {
-                when {
+                null
+            }
+
+            if (!access.hasNativeManagerPermission || !RootUtils.isNativeManagerActive()) {
+                if (susfsItem == null) {
+                    ManagerSettingsLoad()
+                } else {
+                    ManagerSettingsLoad(
+                        backend = "susfs",
+                        title = text(R.string.settings_manager_settings),
+                        items = listOf(susfsItem)
+                    )
+                }
+            } else {
+                val snapshot = RootUtils.readManagerRuntimeSnapshot()
+                val manager = snapshot.manager.normalizedForManagerSettings()
+                val base = if (!manager.active) {
+                    ManagerSettingsLoad()
+                } else {
+                    when {
                     manager.isReSukiSu() -> ManagerSettingsLoad(
                         backend = "resukisu",
                         title = "ReSukiSU",
@@ -3880,12 +3899,33 @@ class MainViewModel @JvmOverloads constructor(
                         error = buildUnknownManagerSettingsError(manager)
                     )
                 }
+                }
+                if (susfsItem == null) {
+                    base
+                } else {
+                    base.copy(items = base.items + susfsItem)
+                }
             }
         }.getOrElse { error ->
             ManagerSettingsLoad(
                 error = error.message?.takeIf { it.isNotBlank() } ?: text(R.string.settings_manager_load_failed)
             )
         }
+
+    private fun buildSusfsManagerSetting(status: SusfsRuntimeStatus): ManagerSettingItem? {
+        if (!status.available) return null
+        val subtitle = text(
+            R.string.settings_susfs_control_summary,
+            status.kernelVersion.ifBlank { text(R.string.settings_unknown) },
+            status.bundledBinaryVersion.ifBlank { BUNDLED_SUSFS_VERSION }
+        )
+        return ManagerSettingItem(
+            id = MANAGER_SETTING_SUSFS,
+            title = text(R.string.settings_susfs_control),
+            subtitle = subtitle,
+            kind = ManagerSettingKind.NAVIGATION
+        )
+    }
 
     private fun buildReSukiSuSettings(): List<ManagerSettingItem> {
         val suCompat = RootUtils.readKsuFeature("su_compat")
@@ -6071,6 +6111,7 @@ private const val MANAGER_SETTING_SULOG = "sulog"
 private const val MANAGER_SETTING_SELINUX_HIDE = "selinux_hide"
 private const val MANAGER_SETTING_DEFAULT_UMOUNT = "default_umount_modules"
 private const val MANAGER_SETTING_WEBVIEW_DEBUG = "webview_debug"
+private const val MANAGER_SETTING_SUSFS = "susfs_control"
 private const val MANAGER_TOOL_SELINUX_MODE = "selinux_mode"
 private const val MANAGER_TOOL_BACKUP_ALLOWLIST = "backup_allowlist"
 private const val MANAGER_TOOL_RESTORE_ALLOWLIST = "restore_allowlist"

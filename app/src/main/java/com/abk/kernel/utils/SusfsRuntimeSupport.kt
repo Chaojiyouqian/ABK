@@ -166,10 +166,11 @@ fun parseSusfsFeatureFlags(raw: String): List<String> =
 fun buildSusfsSupportMatrix(versionText: String, featureFlags: List<String>): SusfsSupportMatrix {
     val version = parseSusfsVersion(versionText)
     fun has(flag: String) = featureFlags.any { it.equals(flag, ignoreCase = true) }
-    val supportsLoopPath = version?.isAtLeast(1, 5, 9) == true || version?.major ?: 0 >= 2
-    val supportsRootPaths = version?.isAtLeast(1, 5, 8) == true || version?.major ?: 0 >= 2
-    val supportsCmdlineOrBootconfig = version?.isAtLeast(1, 5, 4) == true || version?.major ?: 0 >= 2
-    val supportsHideMountsMode = version?.isAtLeast(1, 5, 7) == true || version?.major ?: 0 >= 2
+    val majorVersion = version?.major ?: 0
+    val supportsLoopPath = version?.isAtLeast(1, 5, 9) == true || majorVersion >= 2
+    val supportsRootPaths = version?.isAtLeast(1, 5, 8) == true || majorVersion >= 2
+    val supportsCmdlineOrBootconfig = version?.isAtLeast(1, 5, 4) == true || majorVersion >= 2
+    val supportsHideMountsMode = version?.isAtLeast(1, 5, 7) == true || majorVersion >= 2
     val supportsSusSu = version?.let { it.isAtLeast(1, 5, 3) && it.major < 2 } == true
     return SusfsSupportMatrix(
         log = true,
@@ -180,25 +181,25 @@ fun buildSusfsSupportMatrix(versionText: String, featureFlags: List<String>): Su
         susMap = has("CONFIG_KSU_SUSFS_SUS_MAP"),
         susMount = has("CONFIG_KSU_SUSFS_SUS_MOUNT"),
         tryUmount = has("CONFIG_KSU_SUSFS_TRY_UMOUNT"),
-        ksudKernelUmountFallback = (version?.major ?: 0) >= 2 && !has("CONFIG_KSU_SUSFS_TRY_UMOUNT"),
+        ksudKernelUmountFallback = majorVersion >= 2 && !has("CONFIG_KSU_SUSFS_TRY_UMOUNT"),
         openRedirect = has("CONFIG_KSU_SUSFS_OPEN_REDIRECT"),
-        staticKstat = version?.isAtLeast(1, 5, 8) == true || (version?.major ?: 0) >= 2,
+        staticKstat = version?.isAtLeast(1, 5, 8) == true || majorVersion >= 2,
         dynamicKstat = true,
         setUname = version != null,
         setCmdlineOrBootconfig = supportsCmdlineOrBootconfig,
         setProcCmdline = version?.isAtLeast(1, 5, 4) != true && version != null,
         sdcardRootPath = supportsRootPaths,
         androidDataRootPath = supportsRootPaths,
-        avcLogSpoofing = has("CONFIG_KSU_SUSFS_AVC_LOG_SPOOFING") || (version?.major ?: 0) >= 2,
+        avcLogSpoofing = has("CONFIG_KSU_SUSFS_AVC_LOG_SPOOFING") || majorVersion >= 2,
         spoofCmdlinePreset = supportsCmdlineOrBootconfig || version != null,
         hideVendorSepolicyPreset = true,
         hideCompatMatrixPreset = true,
         hideGappsPreset = true,
         hideRevancedPreset = true,
         hideLoopsPreset = true,
-        autoTryUmountPreset = version?.isAtLeast(1, 5, 5) == true || (version?.major ?: 0) >= 2,
+        autoTryUmountPreset = version?.isAtLeast(1, 5, 5) == true || majorVersion >= 2,
         forceHideLsposedPreset = true,
-        umountForZygoteIsoService = supportsSusSu || (version?.major ?: 0) >= 2,
+        umountForZygoteIsoService = supportsSusSu || majorVersion >= 2,
     )
 }
 

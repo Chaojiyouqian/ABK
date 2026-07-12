@@ -73,8 +73,11 @@ internal fun SusfsControlScreen(
     onRefresh: () -> Unit,
 ) {
     val runtime = state.susfsRuntimeStatus
+    val support = runtime?.support
     val config = normalizeSusfsConfig(state.susfsConfig)
     val applyFailedText = stringResource(R.string.susfs_apply_failed)
+    val unavailableText = stringResource(R.string.susfs_value_unavailable)
+    val noOutputText = stringResource(R.string.susfs_no_output)
 
     var autoReplayEnabled by rememberSaveable { mutableStateOf(config.autoReplayEnabled) }
     var logEnabled by rememberSaveable { mutableStateOf(config.logEnabled) }
@@ -216,20 +219,22 @@ internal fun SusfsControlScreen(
         }
         runtime?.let {
             ExpressiveSectionCard(
-                title = "运行时概览",
-                subtitle = "latest binary、内核版本与动态特性探测",
+                title = stringResource(R.string.susfs_section_overview),
+                subtitle = stringResource(R.string.susfs_section_overview_desc),
                 icon = Icons.Default.Extension
             ) {
+                val kernelVersionText = it.kernelVersion.ifBlank { unavailableText }
+                val installedBinaryText = it.installedBinaryPath.ifBlank { unavailableText }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ExpressiveStatusChip(label = it.kernelVersion.ifBlank { "unknown" })
+                    ExpressiveStatusChip(label = kernelVersionText)
                     ExpressiveStatusChip(label = it.bundledBinaryVersion)
-                    ExpressiveStatusChip(label = "${it.featureFlags.size} flags")
+                    ExpressiveStatusChip(label = stringResource(R.string.susfs_feature_flags_count, it.featureFlags.size))
                 }
                 Spacer(Modifier.height(8.dp))
-                Text("内核 SUSFS 版本: ${it.kernelVersion.ifBlank { "unknown" }}")
-                Text("Bundled binary: ${it.bundledBinaryVersion} (${it.bundledBinaryRef})")
-                Text("已安装 binary: ${it.installedBinaryPath.ifBlank { "未落盘" }}")
-                Text("配置文件: ${it.configPath}")
+                Text(stringResource(R.string.susfs_label_kernel_version, kernelVersionText))
+                Text(stringResource(R.string.susfs_label_bundled_binary, "${it.bundledBinaryVersion} (${it.bundledBinaryRef})"))
+                Text(stringResource(R.string.susfs_label_installed_binary, installedBinaryText))
+                Text(stringResource(R.string.susfs_label_config_path, it.configPath))
                 if (it.rawFeatureText.isNotBlank()) {
                     Spacer(Modifier.height(8.dp))
                     Text(
@@ -242,8 +247,8 @@ internal fun SusfsControlScreen(
         }
 
         ExpressiveSectionCard(
-            title = "应用",
-            subtitle = "保存配置、刷新状态或恢复默认配置",
+            title = stringResource(R.string.susfs_section_actions),
+            subtitle = stringResource(R.string.susfs_section_actions_desc),
             icon = Icons.Default.Settings
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -252,77 +257,85 @@ internal fun SusfsControlScreen(
                     enabled = !state.susfsSaving,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(if (state.susfsSaving) "应用中..." else "应用配置")
+                    Text(if (state.susfsSaving) stringResource(R.string.susfs_action_applying) else stringResource(R.string.susfs_action_apply))
                 }
                 TextButton(
                     onClick = onReset,
                     enabled = !state.susfsSaving,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("恢复默认")
+                    Text(stringResource(R.string.susfs_action_reset))
                 }
             }
             TextButton(onClick = onRefresh, enabled = !state.susfsSaving) {
-                Text("重新探测")
+                Text(stringResource(R.string.susfs_action_refresh))
             }
         }
 
         ExpressiveSectionCard(
-            title = "基础设置",
-            subtitle = "最常用的运行时与开机重放开关",
+            title = stringResource(R.string.susfs_section_basic),
+            subtitle = stringResource(R.string.susfs_section_basic_desc),
             icon = Icons.Default.Settings
         ) {
             ExpressiveSwitchItem(
-                title = "开机重放",
-                subtitle = "由 ABK runtime module 在开机阶段自动重放当前配置",
+                title = stringResource(R.string.susfs_toggle_auto_replay),
+                subtitle = stringResource(R.string.susfs_toggle_auto_replay_desc),
                 checked = autoReplayEnabled,
                 onCheckedChange = { autoReplayEnabled = it }
             )
             ExpressiveSwitchItem(
-                title = "启用日志",
-                subtitle = "调用 ksu_susfs enable_log",
+                title = stringResource(R.string.susfs_toggle_log),
+                subtitle = stringResource(R.string.susfs_toggle_log_desc),
                 checked = logEnabled,
                 onCheckedChange = { logEnabled = it }
             )
-            ExpressiveSwitchItem(
-                title = "AVC Log Spoofing",
-                subtitle = "调用 enable_avc_log_spoofing",
-                checked = avcLogSpoofing,
-                onCheckedChange = { avcLogSpoofing = it }
-            )
-            SegmentedSetting(
-                title = "隐藏 SUS 挂载模式",
-                options = listOf(
-                    AbkSegmentedButtonOption(SUSFS_HIDE_MOUNTS_OFF, "关闭"),
-                    AbkSegmentedButtonOption(SUSFS_HIDE_MOUNTS_ALL, "全部进程"),
-                    AbkSegmentedButtonOption(SUSFS_HIDE_MOUNTS_NON_SU, "仅非 SU"),
-                ),
-                selected = hideSusMountsMode,
-                onSelect = { hideSusMountsMode = it }
-            )
-            SegmentedSetting(
-                title = "Spoof Uname 阶段",
-                options = listOf(
-                    AbkSegmentedButtonOption(SUSFS_SPOOF_UNAME_OFF, "关闭"),
-                    AbkSegmentedButtonOption(SUSFS_SPOOF_UNAME_POST_FS_DATA, "post-fs-data"),
-                    AbkSegmentedButtonOption(SUSFS_SPOOF_UNAME_BOOT_COMPLETED, "boot-completed"),
-                ),
-                selected = spoofUnameStage,
-                onSelect = { spoofUnameStage = it }
-            )
-            TextAreaSetting("Uname 值", unameValue, { unameValue = it }, minLines = 1)
-            TextAreaSetting("Build Time 值", buildTimeValue, { buildTimeValue = it }, minLines = 1)
-            TextAreaSetting("sdcard root path", sdcardRootPath, { sdcardRootPath = it }, minLines = 1)
-            TextAreaSetting("Android/data root path", androidDataRootPath, { androidDataRootPath = it }, minLines = 1)
+            if (support?.avcLogSpoofing == true) {
+                ExpressiveSwitchItem(
+                    title = stringResource(R.string.susfs_toggle_avc_log_spoofing),
+                    subtitle = stringResource(R.string.susfs_toggle_avc_log_spoofing_desc),
+                    checked = avcLogSpoofing,
+                    onCheckedChange = { avcLogSpoofing = it }
+                )
+            }
+            if (support?.hideSusMountsForAll == true || support?.hideSusMountsForNonSu == true) {
+                SegmentedSetting(
+                    title = stringResource(R.string.susfs_hide_mount_mode),
+                    options = listOf(
+                        AbkSegmentedButtonOption(SUSFS_HIDE_MOUNTS_OFF, stringResource(R.string.susfs_option_off)),
+                        AbkSegmentedButtonOption(SUSFS_HIDE_MOUNTS_ALL, stringResource(R.string.susfs_option_all_processes)),
+                        AbkSegmentedButtonOption(SUSFS_HIDE_MOUNTS_NON_SU, stringResource(R.string.susfs_option_non_su_processes)),
+                    ),
+                    selected = hideSusMountsMode,
+                    onSelect = { hideSusMountsMode = it }
+                )
+            }
+            if (support?.setUname == true) {
+                SegmentedSetting(
+                    title = stringResource(R.string.susfs_uname_stage),
+                    options = listOf(
+                        AbkSegmentedButtonOption(SUSFS_SPOOF_UNAME_OFF, stringResource(R.string.susfs_option_off)),
+                        AbkSegmentedButtonOption(SUSFS_SPOOF_UNAME_POST_FS_DATA, stringResource(R.string.susfs_option_post_fs_data)),
+                        AbkSegmentedButtonOption(SUSFS_SPOOF_UNAME_BOOT_COMPLETED, stringResource(R.string.susfs_option_boot_completed)),
+                    ),
+                    selected = spoofUnameStage,
+                    onSelect = { spoofUnameStage = it }
+                )
+                TextAreaSetting(stringResource(R.string.susfs_field_uname_value), unameValue, { unameValue = it }, minLines = 1)
+                TextAreaSetting(stringResource(R.string.susfs_field_build_time_value), buildTimeValue, { buildTimeValue = it }, minLines = 1)
+            }
+            if (support?.sdcardRootPath == true) {
+                TextAreaSetting(stringResource(R.string.susfs_field_sdcard_root_path), sdcardRootPath, { sdcardRootPath = it }, minLines = 1)
+                TextAreaSetting(stringResource(R.string.susfs_field_android_data_root_path), androidDataRootPath, { androidDataRootPath = it }, minLines = 1)
+            }
         }
 
         ExpressiveSectionCard(
-            title = "预设行为",
-            subtitle = "对上游脚本行为的 ABK 化封装",
+            title = stringResource(R.string.susfs_section_presets),
+            subtitle = stringResource(R.string.susfs_section_presets_desc),
             icon = Icons.Default.Route
         ) {
             SegmentedSetting(
-                title = "Hide Custom ROM 级别",
+                title = stringResource(R.string.susfs_preset_hide_custom_rom_level),
                 options = (0..5).map { level ->
                     AbkSegmentedButtonOption(level, level.toString())
                 },
@@ -331,9 +344,9 @@ internal fun SusfsControlScreen(
                 equalWidth = false
             )
             SegmentedSetting(
-                title = "模拟 Vold App Data",
+                title = stringResource(R.string.susfs_preset_emulate_vold_app_data),
                 options = listOf(
-                    AbkSegmentedButtonOption(0, "关闭"),
+                    AbkSegmentedButtonOption(0, stringResource(R.string.susfs_option_off)),
                     AbkSegmentedButtonOption(1, "sus_path"),
                     AbkSegmentedButtonOption(2, "sus_path_loop"),
                 ),
@@ -341,52 +354,72 @@ internal fun SusfsControlScreen(
                 onSelect = { emulateVoldAppDataMode = it },
                 equalWidth = false
             )
-            ExpressiveSwitchItem("Hide Vendor Sepolicy", hideVendorSepolicy, { hideVendorSepolicy = it })
-            ExpressiveSwitchItem("Hide Compat Matrix", hideCompatMatrix, { hideCompatMatrix = it })
-            ExpressiveSwitchItem("Hide Gapps", hideGapps, { hideGapps = it })
-            ExpressiveSwitchItem("Hide ReVanced", hideRevanced, { hideRevanced = it })
-            ExpressiveSwitchItem("Spoof Cmdline", spoofCmdline, { spoofCmdline = it })
-            ExpressiveSwitchItem("Hide Loops", hideLoops, { hideLoops = it })
-            ExpressiveSwitchItem("Force Hide LSPosed", forceHideLsposed, { forceHideLsposed = it })
-            ExpressiveSwitchItem("Auto Try Umount", autoTryUmount, { autoTryUmount = it })
-            ExpressiveSwitchItem("Skip Legit Mounts", skipLegitMounts, { skipLegitMounts = it })
-            ExpressiveSwitchItem("Umount For Zygote Iso Service", umountForZygoteIsoService, { umountForZygoteIsoService = it })
+            ExpressiveSwitchItem(stringResource(R.string.susfs_toggle_hide_vendor_sepolicy), hideVendorSepolicy, { hideVendorSepolicy = it })
+            ExpressiveSwitchItem(stringResource(R.string.susfs_toggle_hide_compat_matrix), hideCompatMatrix, { hideCompatMatrix = it })
+            ExpressiveSwitchItem(stringResource(R.string.susfs_toggle_hide_gapps), hideGapps, { hideGapps = it })
+            ExpressiveSwitchItem(stringResource(R.string.susfs_toggle_hide_revanced), hideRevanced, { hideRevanced = it })
+            ExpressiveSwitchItem(stringResource(R.string.susfs_toggle_spoof_cmdline), spoofCmdline, { spoofCmdline = it })
+            ExpressiveSwitchItem(stringResource(R.string.susfs_toggle_hide_loops), hideLoops, { hideLoops = it })
+            ExpressiveSwitchItem(stringResource(R.string.susfs_toggle_force_hide_lsposed), forceHideLsposed, { forceHideLsposed = it })
+            if (support?.autoTryUmountPreset == true || support?.ksudKernelUmountFallback == true) {
+                ExpressiveSwitchItem(stringResource(R.string.susfs_toggle_auto_try_umount), autoTryUmount, { autoTryUmount = it })
+                ExpressiveSwitchItem(stringResource(R.string.susfs_toggle_skip_legit_mounts), skipLegitMounts, { skipLegitMounts = it })
+            }
+            if (support?.umountForZygoteIsoService == true) {
+                ExpressiveSwitchItem(stringResource(R.string.susfs_toggle_umount_for_zygote_iso_service), umountForZygoteIsoService, { umountForZygoteIsoService = it })
+            }
         }
 
         ExpressiveSectionCard(
-            title = "路径与挂载",
-            subtitle = "复杂能力统一用多行文本承载；每行一条规则",
+            title = stringResource(R.string.susfs_section_rules),
+            subtitle = stringResource(R.string.susfs_section_rules_desc),
             icon = Icons.Default.Storage
         ) {
-            TextAreaSetting("sus_path", pathRulesText, { pathRulesText = it }, hint = "格式: <path> [max_tries]")
-            TextAreaSetting("sus_path_loop", loopPathRulesText, { loopPathRulesText = it }, hint = "格式: <path> [max_tries]")
-            TextAreaSetting("sus_map", mapsText, { mapsText = it })
-            TextAreaSetting("sus_mount", mountsText, { mountsText = it })
-            TextAreaSetting("try_umount", tryUmountText, { tryUmountText = it })
-            TextAreaSetting("legit_mounts", legitMountsText, { legitMountsText = it })
+            if (support?.susPath == true) {
+                TextAreaSetting(stringResource(R.string.susfs_field_sus_path_rules), pathRulesText, { pathRulesText = it }, hint = stringResource(R.string.susfs_hint_path_rules))
+            }
+            if (support?.susPathLoop == true) {
+                TextAreaSetting(stringResource(R.string.susfs_field_sus_path_loop_rules), loopPathRulesText, { loopPathRulesText = it }, hint = stringResource(R.string.susfs_hint_path_rules))
+            }
+            if (support?.susMap == true) {
+                TextAreaSetting(stringResource(R.string.susfs_field_sus_maps), mapsText, { mapsText = it })
+            }
+            if (support?.susMount == true) {
+                TextAreaSetting(stringResource(R.string.susfs_field_sus_mounts), mountsText, { mountsText = it })
+            }
+            if (support?.tryUmount == true || support?.ksudKernelUmountFallback == true) {
+                TextAreaSetting(stringResource(R.string.susfs_field_try_umount), tryUmountText, { tryUmountText = it })
+            }
+            TextAreaSetting(stringResource(R.string.susfs_field_legit_mounts), legitMountsText, { legitMountsText = it })
+        }
+
+        if (support?.openRedirect == true || support?.staticKstat == true) {
+            ExpressiveSectionCard(
+                title = stringResource(R.string.susfs_section_advanced),
+                subtitle = stringResource(R.string.susfs_section_advanced_desc),
+                icon = Icons.Default.DataObject
+            ) {
+                if (support?.openRedirect == true) {
+                    TextAreaSetting(
+                        stringResource(R.string.susfs_field_open_redirect),
+                        openRedirectText,
+                        { openRedirectText = it },
+                        hint = stringResource(R.string.susfs_hint_open_redirect)
+                    )
+                }
+                if (support?.staticKstat == true) {
+                    TextAreaSetting(stringResource(R.string.susfs_field_kstat_json), kstatJsonText, { kstatJsonText = it }, minLines = 8)
+                }
+            }
         }
 
         ExpressiveSectionCard(
-            title = "重定向与 KSTAT",
-            subtitle = "open_redirect 用行式配置，KSTAT 用 JSON",
-            icon = Icons.Default.DataObject
-        ) {
-            TextAreaSetting(
-                "open_redirect",
-                openRedirectText,
-                { openRedirectText = it },
-                hint = "格式: <original> <redirected> <boot_completed|service> [uid_scheme]"
-            )
-            TextAreaSetting("sus_kstat_statically.json", kstatJsonText, { kstatJsonText = it }, minLines = 8)
-        }
-
-        ExpressiveSectionCard(
-            title = "最后输出",
-            subtitle = "保存/应用过程中采集到的 shell 输出",
+            title = stringResource(R.string.susfs_section_output),
+            subtitle = stringResource(R.string.susfs_section_output_desc),
             icon = Icons.Default.Description
         ) {
             Text(
-                text = state.susfsLastApplyOutput.joinToString("\n").ifBlank { "暂无输出" },
+                text = state.susfsLastApplyOutput.joinToString("\n").ifBlank { noOutputText },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

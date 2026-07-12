@@ -888,13 +888,8 @@ private fun SettingsMainContent(
             vm = vm,
             onOpenAppProfileTemplates = onOpenAppProfileTemplates,
             onOpenManagerTools = onOpenManagerTools,
-            onOpenInstalledModules = onOpenInstalledModules
-        )
-
-        KernelCapabilitySettingsGroup(
-            state = state,
             onOpenSusfsControl = onOpenSusfsControl,
-            onRefresh = { vm.refreshSusfsState(force = true) }
+            onOpenInstalledModules = onOpenInstalledModules
         )
 
         SettingsGroup(title = stringResource(R.string.settings_notification)) {
@@ -1014,9 +1009,9 @@ private fun ManagerInjectedSettingsGroup(
     vm: MainViewModel,
     onOpenAppProfileTemplates: () -> Unit,
     onOpenManagerTools: () -> Unit,
+    onOpenSusfsControl: () -> Unit,
     onOpenInstalledModules: () -> Unit
 ) {
-    if (!state.hasNativeManagerPermission) return
     val hasInjectedSettings = state.managerSettingsItems.isNotEmpty()
     val refreshPresentation = rememberAbkInteractiveRefreshPresentation(loading = state.managerSettingsLoading)
     val showRefreshLoading = refreshPresentation.showLoading
@@ -1068,6 +1063,7 @@ private fun ManagerInjectedSettingsGroup(
                             when (item.id) {
                                 "app_profile_templates" -> onOpenAppProfileTemplates()
                                 "manager_tools" -> onOpenManagerTools()
+                                "susfs_control" -> onOpenSusfsControl()
                                 "kpm" -> onOpenInstalledModules()
                             }
                         }
@@ -1087,47 +1083,6 @@ private fun ManagerInjectedSettingsGroup(
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun KernelCapabilitySettingsGroup(
-    state: MainUiState,
-    onOpenSusfsControl: () -> Unit,
-    onRefresh: () -> Unit
-) {
-    val status = state.susfsRuntimeStatus
-    val available = status?.available == true
-    if (!state.susfsLoading && !available) return
-
-    SettingsGroup(title = stringResource(R.string.settings_kernel_capabilities)) {
-        if (state.susfsLoading && !available) {
-            AbkInlineLoadingPill(
-                text = stringResource(R.string.settings_manager_loading_title),
-                modifier = Modifier.fillMaxWidth(),
-                compact = false
-            )
-        }
-        status?.takeIf { it.available }?.let {
-            ExpressiveListItem(
-                title = stringResource(R.string.settings_susfs_control),
-                subtitle = buildString {
-                    append(it.kernelVersion.ifBlank { stringResource(R.string.settings_unknown) })
-                    append(" · ")
-                    append(it.bundledBinaryVersion)
-                },
-                leadingIcon = Icons.Default.Extension,
-                trailingContent = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onRefresh) {
-                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
-                        }
-                        Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.settings_enter))
-                    }
-                },
-                onClick = onOpenSusfsControl
-            )
         }
     }
 }
@@ -1791,6 +1746,7 @@ private fun managerSettingIcon(id: String) = when (id) {
     "selinux_hide" -> Icons.Default.Shield
     "default_umount_modules" -> Icons.Default.FolderDelete
     "webview_debug" -> Icons.Default.Code
+    "susfs_control" -> Icons.Default.Extension
     else -> Icons.Default.Settings
 }
 
