@@ -1,5 +1,6 @@
 package com.abk.kernel.utils
 
+import com.abk.kernel.data.model.ROOT_PROFILE_FLAG_NO_NEW_PRIVS
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -18,6 +19,7 @@ class RootUtilsRootGrantProfileTest {
         assertTrue(profile.allowSu)
         assertEquals("com.example.app", profile.name)
         assertEquals(10123, profile.currentUid)
+        assertEquals(ROOT_PROFILE_FLAG_NO_NEW_PRIVS, profile.flags)
         assertTrue(profile.rootUseDefault)
     }
 
@@ -32,6 +34,7 @@ class RootUtilsRootGrantProfileTest {
         assertFalse(profile.allowSu)
         assertEquals("com.example.app", profile.name)
         assertEquals(10123, profile.currentUid)
+        assertEquals(ROOT_PROFILE_FLAG_NO_NEW_PRIVS, profile.flags)
         assertTrue(profile.nonRootUseDefault)
         assertTrue(profile.umountModules)
     }

@@ -11,6 +11,7 @@ import android.os.Environment
 import android.util.Base64
 import android.util.Log
 import com.abk.kernel.data.model.RootGrantApp
+import com.abk.kernel.data.model.ROOT_PROFILE_FLAG_NO_NEW_PRIVS
 import com.abk.kernel.data.model.RootGrantProfile
 import com.topjohnwu.superuser.CallbackList
 import com.topjohnwu.superuser.Shell
@@ -767,7 +768,8 @@ object RootUtils {
     ): RootGrantProfile = RootGrantProfile(
         name = packageName,
         currentUid = uid,
-        allowSu = uid in grantedUids
+        allowSu = uid in grantedUids,
+        flags = ROOT_PROFILE_FLAG_NO_NEW_PRIVS
     )
 
     fun readKsuFeature(featureName: String): KsuFeatureState {
