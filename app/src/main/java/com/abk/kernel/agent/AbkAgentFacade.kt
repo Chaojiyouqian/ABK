@@ -23,40 +23,42 @@ import com.abk.kernel.viewmodel.preferredActionBackend
 import com.abk.kernel.viewmodel.preferredControlBackend
 import com.abk.kernel.viewmodel.sortRuntimeModulesForDisplay
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 
 internal data class AbkAgentSessionResponse(
-    val protocolVersion: String,
-    val appVersion: String,
-    val appVersionCode: Long,
-    val packageName: String,
-    val serviceHost: String,
-    val servicePort: Int,
-    val rootGranted: Boolean,
-    val managerAccessKind: String,
-    val managerDiagnostic: String? = null,
+    @SerializedName("protocolVersion") val protocolVersion: String,
+    @SerializedName("appVersion") val appVersion: String,
+    @SerializedName("appVersionCode") val appVersionCode: Long,
+    @SerializedName("packageName") val packageName: String,
+    @SerializedName("serviceHost") val serviceHost: String,
+    @SerializedName("servicePort") val servicePort: Int,
+    @SerializedName("rootGranted") val rootGranted: Boolean,
+    @SerializedName("managerAccessKind") val managerAccessKind: String,
+    @SerializedName("managerDiagnostic") val managerDiagnostic: String? = null,
+    @SerializedName("capabilities")
     val capabilities: List<String> = emptyList(),
 )
 
 internal data class AbkAgentRuntimeResponse(
-    val rootGranted: Boolean,
-    val managerAccessKind: String,
-    val managerDiagnostic: String? = null,
-    val runtimeStatus: AbkRuntimeStatus? = null,
+    @SerializedName("rootGranted") val rootGranted: Boolean,
+    @SerializedName("managerAccessKind") val managerAccessKind: String,
+    @SerializedName("managerDiagnostic") val managerDiagnostic: String? = null,
+    @SerializedName("runtimeStatus") val runtimeStatus: AbkRuntimeStatus? = null,
 )
 
 internal data class AbkAgentRootGrantResponse(
-    val rootGranted: Boolean,
-    val managerAccessKind: String,
-    val managerDiagnostic: String? = null,
-    val apps: List<RootGrantApp> = emptyList(),
+    @SerializedName("rootGranted") val rootGranted: Boolean,
+    @SerializedName("managerAccessKind") val managerAccessKind: String,
+    @SerializedName("managerDiagnostic") val managerDiagnostic: String? = null,
+    @SerializedName("apps") val apps: List<RootGrantApp> = emptyList(),
 )
 
 internal data class AbkAgentSusfsResponse(
-    val rootGranted: Boolean,
-    val status: SusfsRuntimeStatus? = null,
-    val config: SusfsConfig = defaultSusfsConfig(),
-    val error: String? = null,
+    @SerializedName("rootGranted") val rootGranted: Boolean,
+    @SerializedName("status") val status: SusfsRuntimeStatus? = null,
+    @SerializedName("config") val config: SusfsConfig = defaultSusfsConfig(),
+    @SerializedName("error") val error: String? = null,
 )
 
 internal object AbkAgentFacade {
