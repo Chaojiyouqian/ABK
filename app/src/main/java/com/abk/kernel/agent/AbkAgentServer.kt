@@ -106,6 +106,62 @@ internal class AbkAgentServer(
                         }
                     }
                 }
+                is AbkAgentRoute.RuntimeModuleWebUiFiles -> requireMethod(session, Method.GET) {
+                    val bytes = AbkAgentFacade.readRuntimeModuleWebResource(
+                        moduleId = decode(route.moduleId),
+                        relativePath = route.relativePath?.let(::decode),
+                    )
+                        ?: return@requireMethod jsonResponse(
+                            Response.Status.NOT_FOUND,
+                            mapOf(
+                                "error" to "module webui resource not found",
+                                "moduleId" to route.moduleId,
+                                "relativePath" to route.relativePath,
+                            ),
+                        )
+                    binaryResponse(
+                        bytes = bytes,
+                        contentType = webUiContentType(route.relativePath),
+                        fileName = webUiFileName(route.relativePath),
+                    )
+                }
+                is AbkAgentRoute.RuntimeModuleWebUiExec -> requireMethod(session, Method.POST) {
+                    val body = readJsonBody(session)
+                    val command = body?.get("command")?.asString.orEmpty()
+                    val optionsJson = body?.get("options")?.toString()
+                    jsonResponse(
+                        payload = webUiShellResultPayload(
+                            AbkAgentFacade.executeRuntimeModuleWebCommand(
+                                moduleId = decode(route.moduleId),
+                                command = command,
+                                optionsJson = optionsJson,
+                            ),
+                        ),
+                    )
+                }
+                is AbkAgentRoute.RuntimeModuleWebUiSpawn -> requireMethod(session, Method.POST) {
+                    val body = readJsonBody(session)
+                    val command = body?.get("command")?.asString.orEmpty()
+                    val argsJson = body?.get("args")?.toString()
+                    val optionsJson = body?.get("options")?.toString()
+                    jsonResponse(
+                        payload = webUiShellResultPayload(
+                            AbkAgentFacade.spawnRuntimeModuleWebCommand(
+                                moduleId = decode(route.moduleId),
+                                command = command,
+                                argsJson = argsJson,
+                                optionsJson = optionsJson,
+                            ),
+                        ),
+                    )
+                }
+                is AbkAgentRoute.RuntimeModuleWebUiModuleInfo -> requireMethod(session, Method.GET) {
+                    jsonResponse(
+                        payload = mapOf(
+                            "raw" to AbkAgentFacade.runtimeModuleWebInfoJson(decode(route.moduleId)),
+                        ),
+                    )
+                }
                 AbkAgentRoute.InstallModule -> requireMethod(session, Method.POST) {
                     val path = readJsonBody(session)?.get("zipPath")?.asString.orEmpty()
                     if (path.isBlank()) {
@@ -274,6 +330,44 @@ internal class AbkAgentServer(
         "success" to result.success,
         "output" to result.output,
     )
+
+    private fun webUiShellResultPayload(result: RootUtils.ShellResult): Map<String, Any> {
+        val stdout = result.output.joinToString("\n")
+        return mapOf(
+            "success" to result.success,
+            "code" to if (result.success) 0 else 1,
+            "stdout" to stdout,
+            "output" to result.output,
+        )
+    }
+
+    private fun webUiContentType(relativePath: String?): String {
+        val clean = relativePath
+            ?.substringAfterLast('/')
+            ?.lowercase()
+            ?.ifBlank { "index.html" }
+            ?: "index.html"
+        return when {
+            clean.endsWith(".html") || clean.endsWith(".htm") -> "text/html; charset=utf-8"
+            clean.endsWith(".js") -> "application/javascript; charset=utf-8"
+            clean.endsWith(".mjs") -> "application/javascript; charset=utf-8"
+            clean.endsWith(".css") -> "text/css; charset=utf-8"
+            clean.endsWith(".json") -> "application/json; charset=utf-8"
+            clean.endsWith(".svg") -> "image/svg+xml"
+            clean.endsWith(".png") -> "image/png"
+            clean.endsWith(".jpg") || clean.endsWith(".jpeg") -> "image/jpeg"
+            clean.endsWith(".gif") -> "image/gif"
+            clean.endsWith(".webp") -> "image/webp"
+            clean.endsWith(".ico") -> "image/x-icon"
+            else -> "application/octet-stream"
+        }
+    }
+
+    private fun webUiFileName(relativePath: String?): String =
+        relativePath
+            ?.substringAfterLast('/')
+            ?.takeIf { it.isNotBlank() }
+            ?: "index.html"
 
     private fun decode(raw: String): String =
         URLDecoder.decode(raw, StandardCharsets.UTF_8.name())

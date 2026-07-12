@@ -12,6 +12,10 @@ internal sealed interface AbkAgentRoute {
     data class RuntimeModuleEnable(val moduleId: String) : AbkAgentRoute
     data class RuntimeModulePendingUninstall(val moduleId: String) : AbkAgentRoute
     data class RuntimeModuleAction(val moduleId: String) : AbkAgentRoute
+    data class RuntimeModuleWebUiFiles(val moduleId: String, val relativePath: String?) : AbkAgentRoute
+    data class RuntimeModuleWebUiExec(val moduleId: String) : AbkAgentRoute
+    data class RuntimeModuleWebUiSpawn(val moduleId: String) : AbkAgentRoute
+    data class RuntimeModuleWebUiModuleInfo(val moduleId: String) : AbkAgentRoute
     data object InstallModule : AbkAgentRoute
     data object InstallApk : AbkAgentRoute
     data object FlashImage : AbkAgentRoute
@@ -24,6 +28,10 @@ internal object AbkAgentRoutes {
     private val runtimeEnable = Regex("""^/api/v1/runtime/modules/([^/]+)/enable$""")
     private val runtimePendingUninstall = Regex("""^/api/v1/runtime/modules/([^/]+)/pending-uninstall$""")
     private val runtimeAction = Regex("""^/api/v1/runtime/modules/([^/]+)/action$""")
+    private val runtimeWebUiFiles = Regex("""^/api/v1/runtime/modules/([^/]+)/webui/files(?:/(.*))?$""")
+    private val runtimeWebUiExec = Regex("""^/api/v1/runtime/modules/([^/]+)/webui/exec$""")
+    private val runtimeWebUiSpawn = Regex("""^/api/v1/runtime/modules/([^/]+)/webui/spawn$""")
+    private val runtimeWebUiModuleInfo = Regex("""^/api/v1/runtime/modules/([^/]+)/webui/module-info$""")
     private val rootGrantAllow = Regex("""^/api/v1/root-grants/([^/]+)/allow$""")
     private val rootGrantIcon = Regex("""^/api/v1/root-grants/([^/]+)/icon$""")
     private val task = Regex("""^/api/v1/tasks/([^/]+)$""")
@@ -55,6 +63,21 @@ internal object AbkAgentRoutes {
                 }
                 runtimeAction.matchEntire(clean)?.groupValues?.getOrNull(1)?.let {
                     return AbkAgentRoute.RuntimeModuleAction(it)
+                }
+                runtimeWebUiExec.matchEntire(clean)?.groupValues?.getOrNull(1)?.let {
+                    return AbkAgentRoute.RuntimeModuleWebUiExec(it)
+                }
+                runtimeWebUiSpawn.matchEntire(clean)?.groupValues?.getOrNull(1)?.let {
+                    return AbkAgentRoute.RuntimeModuleWebUiSpawn(it)
+                }
+                runtimeWebUiModuleInfo.matchEntire(clean)?.groupValues?.getOrNull(1)?.let {
+                    return AbkAgentRoute.RuntimeModuleWebUiModuleInfo(it)
+                }
+                runtimeWebUiFiles.matchEntire(clean)?.let { match ->
+                    return AbkAgentRoute.RuntimeModuleWebUiFiles(
+                        moduleId = match.groupValues.getOrNull(1).orEmpty(),
+                        relativePath = match.groupValues.getOrNull(2)?.takeIf { it.isNotBlank() },
+                    )
                 }
                 rootGrantAllow.matchEntire(clean)?.groupValues?.getOrNull(1)?.let {
                     return AbkAgentRoute.RootGrantAllow(it)

@@ -7,6 +7,7 @@ use crate::commands::{
     build_adb_stop_agent_command, build_cli_command, run_command,
 };
 use adw::prelude::*;
+use anyhow::Context;
 use gdk_pixbuf::Pixbuf;
 use gtk::{gdk, glib};
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Cursor;
 use std::path::PathBuf;
+use std::process::Command;
 use std::rc::Rc;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
@@ -30,6 +32,7 @@ enum UiMessage {
     RootSnapshot(Value),
     RootIconLoaded(String, Vec<u8>),
     SusfsSnapshot(Value),
+    SusfsActionOutput(String),
 }
 
 #[derive(Debug, Clone)]
@@ -51,9 +54,364 @@ struct RootGrantPageState {
     icon_inflight: HashSet<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModuleListKind {
+    Standard,
+    Extension,
+}
+
+#[derive(Debug, Clone)]
+struct RuntimeModuleEntry {
+    id: String,
+    name: String,
+    author: String,
+    type_name: String,
+    version: String,
+    description: String,
+    repo_url: String,
+    entry_kind: String,
+    source: String,
+    extension_id: String,
+    companion_package: String,
+    companion_display_name: String,
+    service_activity: String,
+    module_dir: String,
+    web_root: String,
+    readonly: bool,
+    controllable: bool,
+    enabled: bool,
+    update: bool,
+    remove: bool,
+    has_web_ui: bool,
+    has_action_script: bool,
+    action_supported: bool,
+    requires_companion_app: bool,
+    settings_supported: bool,
+    per_app_supported: bool,
+    group_id: String,
+    group_name: String,
+    group_role: String,
+    group_description: String,
+    group_repo_url: String,
+    list_kind: ModuleListKind,
+    raw: Value,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ModuleGroupEntry {
+    key: String,
+    name: String,
+    role: String,
+    description: String,
+    members: Vec<RuntimeModuleEntry>,
+}
+
+#[derive(Debug, Default)]
+struct ModulePageState {
+    modules: Vec<RuntimeModuleEntry>,
+    extension_modules: Vec<RuntimeModuleEntry>,
+    groups: Vec<ModuleGroupEntry>,
+    selected_module: Option<String>,
+    selected_group: Option<String>,
+    raw_runtime: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+struct SusfsPathRuleModel {
+    path: String,
+    max_tries: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+struct SusfsOpenRedirectRuleModel {
+    original_path: String,
+    redirected_path: String,
+    stage: String,
+    uid_scheme: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+struct SusfsKstatEntryModel {
+    path: String,
+    ino: String,
+    dev: String,
+    nlink: String,
+    size: String,
+    atime: String,
+    atime_nsec: String,
+    mtime: String,
+    mtime_nsec: String,
+    ctime: String,
+    ctime_nsec: String,
+    blocks: String,
+    blksize: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+struct SusfsPresetOptionsModel {
+    hide_custom_rom_level: i64,
+    hide_vendor_sepolicy: bool,
+    hide_compat_matrix: bool,
+    hide_gapps: bool,
+    hide_revanced: bool,
+    spoof_cmdline: bool,
+    hide_loops: bool,
+    force_hide_lsposed: bool,
+    auto_try_umount: bool,
+    skip_legit_mounts: bool,
+    emulate_vold_app_data_mode: i64,
+    umount_for_zygote_iso_service: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+struct SusfsConfigModel {
+    schema_version: i64,
+    auto_replay_enabled: bool,
+    log_enabled: bool,
+    avc_log_spoofing: bool,
+    hide_sus_mounts_mode: String,
+    spoof_uname_stage: String,
+    uname_value: String,
+    build_time_value: String,
+    sdcard_root_path: String,
+    android_data_root_path: String,
+    path_rules: Vec<SusfsPathRuleModel>,
+    loop_path_rules: Vec<SusfsPathRuleModel>,
+    maps: Vec<String>,
+    mounts: Vec<String>,
+    try_umounts: Vec<String>,
+    legit_mounts: Vec<String>,
+    open_redirects: Vec<SusfsOpenRedirectRuleModel>,
+    kstat_entries: Vec<SusfsKstatEntryModel>,
+    presets: SusfsPresetOptionsModel,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+struct SusfsSupportMatrixModel {
+    log: bool,
+    hide_sus_mounts_for_all: bool,
+    hide_sus_mounts_for_non_su: bool,
+    sus_path: bool,
+    sus_path_loop: bool,
+    sus_map: bool,
+    sus_mount: bool,
+    try_umount: bool,
+    ksud_kernel_umount_fallback: bool,
+    open_redirect: bool,
+    static_kstat: bool,
+    dynamic_kstat: bool,
+    set_uname: bool,
+    set_cmdline_or_bootconfig: bool,
+    set_proc_cmdline: bool,
+    sdcard_root_path: bool,
+    android_data_root_path: bool,
+    avc_log_spoofing: bool,
+    spoof_cmdline_preset: bool,
+    hide_vendor_sepolicy_preset: bool,
+    hide_compat_matrix_preset: bool,
+    hide_gapps_preset: bool,
+    hide_revanced_preset: bool,
+    hide_loops_preset: bool,
+    auto_try_umount_preset: bool,
+    force_hide_lsposed_preset: bool,
+    umount_for_zygote_iso_service: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+struct SusfsRuntimeStatusModel {
+    available: bool,
+    kernel_version: String,
+    raw_feature_text: String,
+    feature_flags: Vec<String>,
+    support: SusfsSupportMatrixModel,
+    bundled_binary_ref: String,
+    bundled_binary_version: String,
+    bundled_binary_published_at: String,
+    bundled_binary_path: String,
+    installed_binary_path: String,
+    runtime_module_id: String,
+    runtime_module_dir: String,
+    config_path: String,
+    diagnostics: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct SusfsPageState {
+    raw_snapshot: Value,
+    raw_config: Value,
+    config: SusfsConfigModel,
+    status: SusfsRuntimeStatusModel,
+    support: SusfsSupportMatrixModel,
+    root_granted: bool,
+    error: Option<String>,
+    action_output: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct DesktopPrefs {
     show_system_apps: Option<bool>,
+}
+
+impl Default for SusfsPathRuleModel {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            max_tries: None,
+        }
+    }
+}
+
+impl Default for SusfsOpenRedirectRuleModel {
+    fn default() -> Self {
+        Self {
+            original_path: String::new(),
+            redirected_path: String::new(),
+            stage: "boot_completed".into(),
+            uid_scheme: None,
+        }
+    }
+}
+
+impl Default for SusfsKstatEntryModel {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            ino: "default".into(),
+            dev: "default".into(),
+            nlink: "default".into(),
+            size: "default".into(),
+            atime: "0".into(),
+            atime_nsec: "0".into(),
+            mtime: "0".into(),
+            mtime_nsec: "0".into(),
+            ctime: "0".into(),
+            ctime_nsec: "0".into(),
+            blocks: "0".into(),
+            blksize: "0".into(),
+        }
+    }
+}
+
+impl Default for SusfsPresetOptionsModel {
+    fn default() -> Self {
+        Self {
+            hide_custom_rom_level: 0,
+            hide_vendor_sepolicy: false,
+            hide_compat_matrix: false,
+            hide_gapps: false,
+            hide_revanced: false,
+            spoof_cmdline: false,
+            hide_loops: true,
+            force_hide_lsposed: false,
+            auto_try_umount: false,
+            skip_legit_mounts: false,
+            emulate_vold_app_data_mode: 0,
+            umount_for_zygote_iso_service: false,
+        }
+    }
+}
+
+impl Default for SusfsConfigModel {
+    fn default() -> Self {
+        Self {
+            schema_version: 1,
+            auto_replay_enabled: true,
+            log_enabled: true,
+            avc_log_spoofing: false,
+            hide_sus_mounts_mode: "off".into(),
+            spoof_uname_stage: "off".into(),
+            uname_value: "default".into(),
+            build_time_value: "default".into(),
+            sdcard_root_path: "/sdcard".into(),
+            android_data_root_path: "/sdcard/Android/data".into(),
+            path_rules: Vec::new(),
+            loop_path_rules: Vec::new(),
+            maps: Vec::new(),
+            mounts: Vec::new(),
+            try_umounts: Vec::new(),
+            legit_mounts: default_susfs_legit_mounts(),
+            open_redirects: Vec::new(),
+            kstat_entries: Vec::new(),
+            presets: SusfsPresetOptionsModel::default(),
+        }
+    }
+}
+
+impl Default for SusfsSupportMatrixModel {
+    fn default() -> Self {
+        Self {
+            log: true,
+            hide_sus_mounts_for_all: false,
+            hide_sus_mounts_for_non_su: false,
+            sus_path: false,
+            sus_path_loop: false,
+            sus_map: false,
+            sus_mount: false,
+            try_umount: false,
+            ksud_kernel_umount_fallback: false,
+            open_redirect: false,
+            static_kstat: false,
+            dynamic_kstat: false,
+            set_uname: false,
+            set_cmdline_or_bootconfig: false,
+            set_proc_cmdline: false,
+            sdcard_root_path: false,
+            android_data_root_path: false,
+            avc_log_spoofing: false,
+            spoof_cmdline_preset: false,
+            hide_vendor_sepolicy_preset: false,
+            hide_compat_matrix_preset: false,
+            hide_gapps_preset: false,
+            hide_revanced_preset: false,
+            hide_loops_preset: true,
+            auto_try_umount_preset: false,
+            force_hide_lsposed_preset: false,
+            umount_for_zygote_iso_service: false,
+        }
+    }
+}
+
+impl Default for SusfsRuntimeStatusModel {
+    fn default() -> Self {
+        Self {
+            available: false,
+            kernel_version: String::new(),
+            raw_feature_text: String::new(),
+            feature_flags: Vec::new(),
+            support: SusfsSupportMatrixModel::default(),
+            bundled_binary_ref: String::new(),
+            bundled_binary_version: String::new(),
+            bundled_binary_published_at: String::new(),
+            bundled_binary_path: String::new(),
+            installed_binary_path: String::new(),
+            runtime_module_id: "abk-susfs-control".into(),
+            runtime_module_dir: String::new(),
+            config_path: String::new(),
+            diagnostics: Vec::new(),
+        }
+    }
+}
+
+impl Default for SusfsPageState {
+    fn default() -> Self {
+        Self {
+            raw_snapshot: Value::Null,
+            raw_config: Value::Object(Default::default()),
+            config: SusfsConfigModel::default(),
+            status: SusfsRuntimeStatusModel::default(),
+            support: SusfsSupportMatrixModel::default(),
+            root_granted: true,
+            error: None,
+            action_output: String::new(),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -470,15 +828,12 @@ fn build_ui(app: &adw::Application) {
     let runtime_output = device_page.runtime_output;
     let root_output = device_page.root_output;
     let susfs_output = device_page.susfs_output;
-    let susfs_editor = device_page.susfs_editor;
     let session_summary = device_page.session_summary;
     let runtime_summary = device_page.runtime_summary;
     let root_summary = device_page.root_summary;
     let susfs_summary = device_page.susfs_summary;
-    let root_summary_caption = device_page.root_summary_caption;
-    let root_manage_button = device_page.root_manage_button.clone();
+    let root_hub_status = device_page.root_hub_status;
     let root_page_count = device_page.root_page_count;
-    let root_search_entry = device_page.root_search_entry.clone();
     let root_system_switch = device_page.root_system_switch.clone();
     let root_list = device_page.root_list;
     let root_detail_title = device_page.root_detail_title;
@@ -488,114 +843,30 @@ fn build_ui(app: &adw::Application) {
     let root_detail_status = device_page.root_detail_status;
     let root_detail_json = device_page.root_detail_json;
     let root_detail_switch = device_page.root_detail_switch.clone();
-    let module_list = device_page.module_list;
+    let modules_hub_status = device_page.modules_hub_status;
+    let module_groups_summary = device_page.module_groups_summary;
+    let module_groups_list = device_page.module_groups_list;
+    let module_standard_summary = device_page.module_standard_summary;
+    let module_standard_list = device_page.module_standard_list;
+    let module_extension_summary = device_page.module_extension_summary;
+    let module_extension_list = device_page.module_extension_list;
+    let module_group_detail_title = device_page.module_group_detail_title;
+    let module_group_detail_summary = device_page.module_group_detail_summary;
+    let module_group_detail_actions = device_page.module_group_detail_actions;
+    let module_group_member_list = device_page.module_group_member_list;
+    let module_detail_title = device_page.module_detail_title;
+    let module_detail_summary = device_page.module_detail_summary;
+    let module_detail_actions = device_page.module_detail_actions;
+    let module_detail_json = device_page.module_detail_json;
+    let susfs_hub_status = device_page.susfs_hub_status;
+    let susfs_status_summary = device_page.susfs_status_summary;
+    let susfs_support_summary = device_page.susfs_support_summary;
+    let susfs_editor_host = device_page.susfs_editor_host;
+    let susfs_action_output = device_page.susfs_action_output;
     let interaction_sender = sender.clone();
     let root_state = device_page.root_state.clone();
-
-    {
-        let nav_stack = device_nav_stack.clone();
-        root_manage_button.connect_clicked(move |_| {
-            nav_stack.set_visible_child_name("root-grants");
-        });
-    }
-
-    {
-        let root_state = root_state.clone();
-        let root_list = root_list.clone();
-        let root_page_count = root_page_count.clone();
-        let root_summary_caption = root_summary_caption.clone();
-        let sender = interaction_sender.clone();
-        let port_entry = device_port_entry.clone();
-        root_search_entry.connect_search_changed(move |entry| {
-            root_state.borrow_mut().search_query = entry.text().to_string();
-            render_root_grant_page(
-                &root_state,
-                &root_list,
-                &root_page_count,
-                &root_summary_caption,
-                &sender,
-                &port_entry,
-                strings,
-            );
-        });
-    }
-
-    {
-        let root_state = root_state.clone();
-        let root_list = root_list.clone();
-        let root_page_count = root_page_count.clone();
-        let root_summary_caption = root_summary_caption.clone();
-        let sender = interaction_sender.clone();
-        let port_entry = device_port_entry.clone();
-        root_system_switch.connect_active_notify(move |switch| {
-            let active = switch.is_active();
-            let mut state = root_state.borrow_mut();
-            state.show_system_apps = active;
-            save_show_system_apps_pref(active);
-            drop(state);
-            render_root_grant_page(
-                &root_state,
-                &root_list,
-                &root_page_count,
-                &root_summary_caption,
-                &sender,
-                &port_entry,
-                strings,
-            );
-        });
-    }
-
-    {
-        let root_state = root_state.clone();
-        let nav_stack = device_nav_stack.clone();
-        let detail_title = root_detail_title.clone();
-        let detail_icon = root_detail_icon.clone();
-        let detail_package = root_detail_package.clone();
-        let detail_type = root_detail_type.clone();
-        let detail_status = root_detail_status.clone();
-        let detail_json = root_detail_json.clone();
-        let detail_switch = root_detail_switch.clone();
-        let sender = interaction_sender.clone();
-        let port_entry = device_port_entry.clone();
-        root_list.connect_row_activated(move |_list, row| {
-            let package = row.widget_name().to_string();
-            if package.is_empty() {
-                return;
-            }
-            root_state.borrow_mut().selected_package = Some(package.clone());
-            render_root_grant_detail(
-                &root_state,
-                &package,
-                &detail_title,
-                &detail_icon,
-                &detail_package,
-                &detail_type,
-                &detail_status,
-                &detail_json,
-                &detail_switch,
-                &sender,
-                &port_entry,
-                strings,
-            );
-            nav_stack.set_visible_child_name("root-grant-detail");
-        });
-    }
-
-    {
-        let sender = interaction_sender.clone();
-        let port_entry = device_port_entry.clone();
-        root_detail_switch.connect_active_notify(move |switch| {
-            let package = switch.widget_name().to_string();
-            if package.is_empty() {
-                return;
-            }
-            spawn_agent_sync_call(parse_port(&port_entry.text()), sender.clone(), {
-                let package = package.clone();
-                let active = switch.is_active();
-                move |client| client.set_root_grant(&package, active)
-            });
-        });
-    }
+    let module_state = device_page.module_state.clone();
+    let susfs_state = device_page.susfs_state.clone();
 
     glib::timeout_add_local(Duration::from_millis(100), move || {
         while let Ok(message) = receiver.try_recv() {
@@ -617,13 +888,30 @@ fn build_ui(app: &adw::Application) {
                     let runtime_text = summarize_runtime(&value);
                     runtime_summary.set_text(&runtime_text);
                     overview_runtime_status.set_text(&runtime_text);
-                    render_module_rows(
-                        &module_list,
-                        &value,
+                    update_module_page_state(&module_state, &value);
+                    render_module_page(
+                        &module_state,
+                        &module_groups_summary,
+                        &module_groups_list,
+                        &module_standard_summary,
+                        &module_standard_list,
+                        &module_extension_summary,
+                        &module_extension_list,
+                        &module_group_detail_title,
+                        &module_group_detail_summary,
+                        &module_group_detail_actions,
+                        &module_group_member_list,
+                        &module_detail_title,
+                        &module_detail_summary,
+                        &module_detail_actions,
+                        &module_detail_json,
+                        &device_nav_stack,
                         &interaction_sender,
                         &device_port_entry,
                         strings,
                     );
+                    modules_hub_status
+                        .set_text(&module_hub_summary(&module_state.borrow(), strings));
                 }
                 UiMessage::RootSnapshot(value) => {
                     if let Ok(text) = pretty_json_value(&value) {
@@ -639,7 +927,7 @@ fn build_ui(app: &adw::Application) {
                         &root_state,
                         &root_list,
                         &root_page_count,
-                        &root_summary_caption,
+                        &root_hub_status,
                         &interaction_sender,
                         &device_port_entry,
                         strings,
@@ -652,7 +940,7 @@ fn build_ui(app: &adw::Application) {
                         bytes,
                         &root_list,
                         &root_page_count,
-                        &root_summary_caption,
+                        &root_hub_status,
                         &interaction_sender,
                         &device_port_entry,
                         strings,
@@ -687,11 +975,18 @@ fn build_ui(app: &adw::Application) {
                     let susfs_text = summarize_susfs(&value);
                     susfs_summary.set_text(&susfs_text);
                     overview_susfs_status.set_text(&susfs_text);
-                    if let Some(config) = value.get("config") {
-                        if let Ok(text) = pretty_json_value(config) {
-                            susfs_editor.set_text(&text);
-                        }
-                    }
+                    update_susfs_page_state(&susfs_state, &value);
+                    render_susfs_page(
+                        &susfs_state,
+                        &susfs_status_summary,
+                        &susfs_support_summary,
+                        &susfs_editor_host,
+                        strings,
+                    );
+                    susfs_hub_status.set_text(&susfs_hub_summary(&susfs_state.borrow(), strings));
+                }
+                UiMessage::SusfsActionOutput(text) => {
+                    susfs_action_output.set_text(&text);
                 }
             }
         }
@@ -724,15 +1019,12 @@ struct DevicePage {
     runtime_output: gtk::TextBuffer,
     root_output: gtk::TextBuffer,
     susfs_output: gtk::TextBuffer,
-    susfs_editor: gtk::TextBuffer,
     session_summary: gtk::Label,
     runtime_summary: gtk::Label,
     root_summary: gtk::Label,
     susfs_summary: gtk::Label,
-    root_summary_caption: gtk::Label,
-    root_manage_button: gtk::Button,
+    root_hub_status: gtk::Label,
     root_page_count: gtk::Label,
-    root_search_entry: gtk::SearchEntry,
     root_system_switch: gtk::Switch,
     root_list: gtk::ListBox,
     root_detail_title: gtk::Label,
@@ -742,8 +1034,29 @@ struct DevicePage {
     root_detail_status: gtk::Label,
     root_detail_json: gtk::TextBuffer,
     root_detail_switch: gtk::Switch,
-    module_list: gtk::ListBox,
+    modules_hub_status: gtk::Label,
+    module_groups_summary: gtk::Label,
+    module_groups_list: gtk::ListBox,
+    module_standard_summary: gtk::Label,
+    module_standard_list: gtk::ListBox,
+    module_extension_summary: gtk::Label,
+    module_extension_list: gtk::ListBox,
+    module_group_detail_title: gtk::Label,
+    module_group_detail_summary: gtk::Label,
+    module_group_detail_actions: gtk::Box,
+    module_group_member_list: gtk::ListBox,
+    module_detail_title: gtk::Label,
+    module_detail_summary: gtk::Label,
+    module_detail_actions: gtk::Box,
+    module_detail_json: gtk::TextBuffer,
+    susfs_hub_status: gtk::Label,
+    susfs_status_summary: gtk::Label,
+    susfs_support_summary: gtk::Label,
+    susfs_editor_host: gtk::Box,
+    susfs_action_output: gtk::TextBuffer,
     root_state: Rc<RefCell<RootGrantPageState>>,
+    module_state: Rc<RefCell<ModulePageState>>,
+    susfs_state: Rc<RefCell<SusfsPageState>>,
 }
 
 fn build_navigation_rail(stack: &gtk::Stack, strings: Strings) -> gtk::Box {
@@ -1205,12 +1518,15 @@ fn build_device_page(sender: &Sender<UiMessage>, strings: Strings) -> DevicePage
         show_system_apps: prefs.show_system_apps.unwrap_or(false),
         ..RootGrantPageState::default()
     }));
+    let module_state = Rc::new(RefCell::new(ModulePageState::default()));
+    let susfs_state = Rc::new(RefCell::new(SusfsPageState::default()));
 
     let grants_card = surface_card(strings.grants_title, strings.grants_body);
-    let root_summary_caption = gtk::Label::new(Some(strings.grants_summary_hidden_system));
-    root_summary_caption.set_xalign(0.0);
-    root_summary_caption.add_css_class("list-row-subtitle");
-    grants_card.append(&root_summary_caption);
+    let root_hub_status = gtk::Label::new(Some(strings.grants_summary_hidden_system));
+    root_hub_status.set_xalign(0.0);
+    root_hub_status.set_wrap(true);
+    root_hub_status.add_css_class("list-row-subtitle");
+    grants_card.append(&root_hub_status);
 
     let root_manage_button = gtk::Button::with_label(strings.grants_manage);
     root_manage_button.add_css_class("suggested-action");
@@ -1218,185 +1534,50 @@ fn build_device_page(sender: &Sender<UiMessage>, strings: Strings) -> DevicePage
     grants_card.append(&root_manage_button);
 
     let modules_card = surface_card(strings.modules_title, strings.modules_body);
-    let module_list = gtk::ListBox::new();
-    module_list.add_css_class("plain-list");
-    let module_scroll = new_scroller(&module_list);
-    module_scroll.set_min_content_height(230);
-    modules_card.append(&module_scroll);
+    let modules_hub_status = gtk::Label::new(Some(localized_text(
+        strings,
+        "分组、普通模块和扩展模块会拆到独立页面。",
+        "Grouped, standard, and extension modules now live on a dedicated page.",
+    )));
+    modules_hub_status.set_xalign(0.0);
+    modules_hub_status.set_wrap(true);
+    modules_hub_status.add_css_class("list-row-subtitle");
+    modules_card.append(&modules_hub_status);
+    let modules_manage_button =
+        gtk::Button::with_label(localized_text(strings, "打开模块页", "Open Modules Page"));
+    modules_manage_button.add_css_class("suggested-action");
+    modules_manage_button.add_css_class("pill");
+    modules_card.append(&modules_manage_button);
 
-    let install_card = surface_card(strings.install_title, strings.install_body);
-
-    let module_zip_entry = gtk::Entry::new();
-    module_zip_entry.set_hexpand(true);
-    module_zip_entry.set_placeholder_text(Some(strings.module_zip_placeholder));
-    module_zip_entry.add_css_class("material-entry");
-
-    let install_module = gtk::Button::with_label(strings.install_module);
-    install_module.add_css_class("pill");
-    install_module.add_css_class("tonal-button");
-    {
-        let sender = sender.clone();
-        let port_entry = port_entry.clone();
-        let module_zip_entry = module_zip_entry.clone();
-        install_module.connect_clicked(move |_| {
-            let path = module_zip_entry.text().to_string();
-            spawn_agent_task_call(
-                parse_port(&port_entry.text()),
-                sender.clone(),
-                move |client| client.install_module(&path),
-                false,
-                strings,
-            );
-        });
-    }
-
-    let module_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    module_row.append(&module_zip_entry);
-    module_row.append(&install_module);
-    install_card.append(&module_row);
-
-    let apk_entry = gtk::Entry::new();
-    apk_entry.set_hexpand(true);
-    apk_entry.set_placeholder_text(Some(strings.apk_placeholder));
-    apk_entry.add_css_class("material-entry");
-
-    let install_apk = gtk::Button::with_label(strings.install_apk);
-    install_apk.add_css_class("pill");
-    {
-        let sender = sender.clone();
-        let port_entry = port_entry.clone();
-        let apk_entry = apk_entry.clone();
-        install_apk.connect_clicked(move |_| {
-            let path = apk_entry.text().to_string();
-            spawn_agent_task_call(
-                parse_port(&port_entry.text()),
-                sender.clone(),
-                move |client| client.install_apk(&path),
-                false,
-                strings,
-            );
-        });
-    }
-
-    let apk_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    apk_row.append(&apk_entry);
-    apk_row.append(&install_apk);
-    install_card.append(&apk_row);
-
-    let image_entry = gtk::Entry::new();
-    image_entry.set_hexpand(true);
-    image_entry.set_placeholder_text(Some(strings.image_placeholder));
-    image_entry.add_css_class("material-entry");
-
-    let partition_entry = gtk::Entry::new();
-    partition_entry.set_width_chars(8);
-    partition_entry.set_text("boot");
-    partition_entry.set_placeholder_text(Some(strings.partition_placeholder));
-    partition_entry.add_css_class("material-entry");
-
-    let flash = gtk::Button::with_label(strings.flash_image);
-    flash.add_css_class("pill");
-    {
-        let sender = sender.clone();
-        let port_entry = port_entry.clone();
-        let image_entry = image_entry.clone();
-        let partition_entry = partition_entry.clone();
-        flash.connect_clicked(move |_| {
-            let image = image_entry.text().to_string();
-            let partition = partition_entry.text().to_string();
-            spawn_agent_task_call(
-                parse_port(&port_entry.text()),
-                sender.clone(),
-                move |client| client.flash_image(&image, &partition),
-                false,
-                strings,
-            );
-        });
-    }
-
-    let flash_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    flash_row.append(&image_entry);
-    flash_row.append(&partition_entry);
-    flash_row.append(&flash);
-    install_card.append(&flash_row);
-
-    let susfs_tools = surface_card(strings.susfs_tools_title, strings.susfs_tools_body);
-    let susfs_controls = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    let susfs_editor = new_text_buffer();
-
-    let load_susfs = gtk::Button::with_label(strings.load_susfs);
-    load_susfs.add_css_class("pill");
-    load_susfs.add_css_class("tonal-button");
-    {
-        let sender = sender.clone();
-        let port_entry = port_entry.clone();
-        load_susfs.connect_clicked(move |_| {
-            let sender = sender.clone();
-            let port = parse_port(&port_entry.text());
-            thread::spawn(move || {
-                let client = AgentClient::new("127.0.0.1", port);
-                match client.susfs_json() {
-                    Ok(value) => {
-                        let _ = sender.send(UiMessage::SusfsSnapshot(value));
-                    }
-                    Err(error) => {
-                        let _ = sender.send(UiMessage::ActivityLog(format!("{error:#}")));
-                    }
-                }
-            });
-        });
-    }
-
-    let apply_susfs = gtk::Button::with_label(strings.apply_susfs);
-    apply_susfs.add_css_class("pill");
-    {
-        let sender = sender.clone();
-        let port_entry = port_entry.clone();
-        let susfs_editor_clone = susfs_editor.clone();
-        apply_susfs.connect_clicked(move |_| {
-            let body = buffer_text(&susfs_editor_clone);
-            spawn_agent_task_call(
-                parse_port(&port_entry.text()),
-                sender.clone(),
-                move |client| client.apply_susfs_json(&body),
-                false,
-                strings,
-            );
-        });
-    }
-
-    let export = gtk::Button::with_label(strings.export_diagnostics);
-    export.add_css_class("pill");
-    export.add_css_class("tonal-button");
-    {
-        let sender = sender.clone();
-        let port_entry = port_entry.clone();
-        export.connect_clicked(move |_| {
-            spawn_agent_task_call(
-                parse_port(&port_entry.text()),
-                sender.clone(),
-                move |client| client.export_diagnostics(),
-                true,
-                strings,
-            );
-        });
-    }
-
-    susfs_controls.append(&load_susfs);
-    susfs_controls.append(&apply_susfs);
-    susfs_controls.append(&export);
-    susfs_tools.append(&susfs_controls);
-
-    let editor_view = new_text_view(&susfs_editor, true);
-    editor_view.add_css_class("console-pane");
-    let editor_scroll = new_scroller(&editor_view);
-    editor_scroll.set_min_content_height(240);
-    susfs_tools.append(&editor_scroll);
+    let susfs_card = surface_card(
+        strings.device_susfs,
+        localized_text(
+            strings,
+            "SUSFS 现在用结构化编辑器单独管理。",
+            "SUSFS now has its own structured editor page.",
+        ),
+    );
+    let susfs_hub_status = gtk::Label::new(Some(localized_text(
+        strings,
+        "支持矩阵、结构化配置和诊断输出会集中到 SUSFS 页面。",
+        "Support status, structured config, and diagnostics are consolidated on the SUSFS page.",
+    )));
+    susfs_hub_status.set_xalign(0.0);
+    susfs_hub_status.set_wrap(true);
+    susfs_hub_status.add_css_class("list-row-subtitle");
+    susfs_card.append(&susfs_hub_status);
+    let susfs_manage_button = gtk::Button::with_label(localized_text(
+        strings,
+        "打开 SUSFS 页面",
+        "Open SUSFS Page",
+    ));
+    susfs_manage_button.add_css_class("suggested-action");
+    susfs_manage_button.add_css_class("pill");
+    susfs_card.append(&susfs_manage_button);
 
     ops_grid.attach(&grants_card, 0, 0, 1, 1);
     ops_grid.attach(&modules_card, 1, 0, 1, 1);
-    ops_grid.attach(&install_card, 0, 1, 1, 1);
-    ops_grid.attach(&susfs_tools, 1, 1, 1, 1);
+    ops_grid.attach(&susfs_card, 0, 1, 2, 1);
     body.append(&ops_grid);
 
     let activity = surface_card(strings.activity_title, strings.activity_body);
@@ -1521,6 +1702,638 @@ fn build_device_page(sender: &Sender<UiMessage>, strings: Strings) -> DevicePage
     profile_card.append(&root_detail_json_scroll);
     root_detail_body.append(&profile_card);
 
+    let (modules_page_container, modules_page_body) = new_page_shell();
+    let modules_header = hero_card(
+        strings.modules_title,
+        localized_text(strings, "模块工作区", "Module Workspace"),
+        localized_text(
+            strings,
+            "分组、普通模块、扩展模块以及安装导入动作全部集中在这里。",
+            "Groups, standard modules, extensions, and install/import actions are all centralized here.",
+        ),
+    );
+    let modules_back =
+        gtk::Button::with_label(localized_text(strings, "返回设备页", "Back to Device"));
+    modules_back.add_css_class("pill");
+    {
+        let nav_stack = nav_stack.clone();
+        modules_back.connect_clicked(move |_| {
+            nav_stack.set_visible_child_name("main");
+        });
+    }
+    modules_header.append(&modules_back);
+    modules_page_body.append(&modules_header);
+
+    let module_groups_card = surface_card(
+        localized_text(strings, "模块分组", "Module Groups"),
+        localized_text(
+            strings,
+            "有 group_id / group_name 的模块会先聚合在这里。",
+            "Modules with group metadata are aggregated here first.",
+        ),
+    );
+    let module_groups_summary = gtk::Label::new(Some("0"));
+    module_groups_summary.set_xalign(0.0);
+    module_groups_summary.add_css_class("list-row-subtitle");
+    module_groups_card.append(&module_groups_summary);
+    let module_groups_list = gtk::ListBox::new();
+    module_groups_list.add_css_class("plain-list");
+    let module_groups_scroll = new_scroller(&module_groups_list);
+    module_groups_scroll.set_min_content_height(220);
+    module_groups_card.append(&module_groups_scroll);
+    modules_page_body.append(&module_groups_card);
+
+    let module_standard_card = surface_card(
+        localized_text(strings, "模块", "Modules"),
+        localized_text(
+            strings,
+            "这里显示普通运行时模块，二级操作下沉到详情页。",
+            "Standalone runtime modules stay compact here and move secondary actions into details.",
+        ),
+    );
+    let module_standard_summary = gtk::Label::new(Some("0"));
+    module_standard_summary.set_xalign(0.0);
+    module_standard_summary.add_css_class("list-row-subtitle");
+    module_standard_card.append(&module_standard_summary);
+    let module_standard_list = gtk::ListBox::new();
+    module_standard_list.add_css_class("plain-list");
+    let module_standard_scroll = new_scroller(&module_standard_list);
+    module_standard_scroll.set_min_content_height(220);
+    module_standard_card.append(&module_standard_scroll);
+    modules_page_body.append(&module_standard_card);
+
+    let module_extension_card = surface_card(
+        localized_text(strings, "扩展模块", "Extensions"),
+        localized_text(
+            strings,
+            "扩展模块会把 companion app、设置入口和服务能力显式区分出来。",
+            "Extensions expose companion app, settings, and service affordances distinctly.",
+        ),
+    );
+    let module_extension_summary = gtk::Label::new(Some("0"));
+    module_extension_summary.set_xalign(0.0);
+    module_extension_summary.add_css_class("list-row-subtitle");
+    module_extension_card.append(&module_extension_summary);
+    let module_extension_list = gtk::ListBox::new();
+    module_extension_list.add_css_class("plain-list");
+    let module_extension_scroll = new_scroller(&module_extension_list);
+    module_extension_scroll.set_min_content_height(220);
+    module_extension_card.append(&module_extension_scroll);
+    modules_page_body.append(&module_extension_card);
+
+    let install_card = surface_card(
+        localized_text(strings, "安装 / 导入", "Install / Import"),
+        localized_text(
+            strings,
+            "模块 ZIP、APK 和设备路径动作都集中在这个入口。",
+            "Module ZIPs, APKs, and device-path actions are centralized here.",
+        ),
+    );
+    let module_zip_entry = gtk::Entry::new();
+    module_zip_entry.set_hexpand(true);
+    module_zip_entry.set_placeholder_text(Some(strings.module_zip_placeholder));
+    module_zip_entry.add_css_class("material-entry");
+    let install_module = gtk::Button::with_label(strings.install_module);
+    install_module.add_css_class("pill");
+    install_module.add_css_class("tonal-button");
+    {
+        let sender = sender.clone();
+        let port_entry = port_entry.clone();
+        let module_zip_entry = module_zip_entry.clone();
+        install_module.connect_clicked(move |_| {
+            let path = module_zip_entry.text().to_string();
+            spawn_agent_task_call(
+                parse_port(&port_entry.text()),
+                sender.clone(),
+                move |client| client.install_module(&path),
+                false,
+                strings,
+            );
+        });
+    }
+    let module_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    module_row.append(&module_zip_entry);
+    module_row.append(&install_module);
+    install_card.append(&module_row);
+
+    let apk_entry = gtk::Entry::new();
+    apk_entry.set_hexpand(true);
+    apk_entry.set_placeholder_text(Some(strings.apk_placeholder));
+    apk_entry.add_css_class("material-entry");
+    let install_apk = gtk::Button::with_label(strings.install_apk);
+    install_apk.add_css_class("pill");
+    {
+        let sender = sender.clone();
+        let port_entry = port_entry.clone();
+        let apk_entry = apk_entry.clone();
+        install_apk.connect_clicked(move |_| {
+            let path = apk_entry.text().to_string();
+            spawn_agent_task_call(
+                parse_port(&port_entry.text()),
+                sender.clone(),
+                move |client| client.install_apk(&path),
+                false,
+                strings,
+            );
+        });
+    }
+    let apk_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    apk_row.append(&apk_entry);
+    apk_row.append(&install_apk);
+    install_card.append(&apk_row);
+
+    let image_entry = gtk::Entry::new();
+    image_entry.set_hexpand(true);
+    image_entry.set_placeholder_text(Some(strings.image_placeholder));
+    image_entry.add_css_class("material-entry");
+    let partition_entry = gtk::Entry::new();
+    partition_entry.set_width_chars(8);
+    partition_entry.set_text("boot");
+    partition_entry.set_placeholder_text(Some(strings.partition_placeholder));
+    partition_entry.add_css_class("material-entry");
+    let flash = gtk::Button::with_label(strings.flash_image);
+    flash.add_css_class("pill");
+    {
+        let sender = sender.clone();
+        let port_entry = port_entry.clone();
+        let image_entry = image_entry.clone();
+        let partition_entry = partition_entry.clone();
+        flash.connect_clicked(move |_| {
+            let image = image_entry.text().to_string();
+            let partition = partition_entry.text().to_string();
+            spawn_agent_task_call(
+                parse_port(&port_entry.text()),
+                sender.clone(),
+                move |client| client.flash_image(&image, &partition),
+                false,
+                strings,
+            );
+        });
+    }
+    let flash_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    flash_row.append(&image_entry);
+    flash_row.append(&partition_entry);
+    flash_row.append(&flash);
+    install_card.append(&flash_row);
+    modules_page_body.append(&install_card);
+
+    let (module_group_detail_container, module_group_detail_body) = new_page_shell();
+    let module_group_detail_header = hero_card(
+        localized_text(strings, "模块分组", "Module Group"),
+        localized_text(strings, "分组详情", "Group Details"),
+        localized_text(
+            strings,
+            "分组级操作会按稳定顺序路由到各成员模块。",
+            "Group-level actions route through member modules in a deterministic order.",
+        ),
+    );
+    let module_group_detail_back =
+        gtk::Button::with_label(localized_text(strings, "返回模块页", "Back to Modules"));
+    module_group_detail_back.add_css_class("pill");
+    {
+        let nav_stack = nav_stack.clone();
+        module_group_detail_back.connect_clicked(move |_| {
+            nav_stack.set_visible_child_name("modules");
+        });
+    }
+    module_group_detail_header.append(&module_group_detail_back);
+    module_group_detail_body.append(&module_group_detail_header);
+
+    let module_group_detail_card = surface_card(
+        localized_text(strings, "分组摘要", "Group Summary"),
+        localized_text(
+            strings,
+            "启用、禁用、卸载、Action 和 WebUI 都从这里触发。",
+            "Enable, disable, uninstall, action, and WebUI entry all live here.",
+        ),
+    );
+    let module_group_detail_title = gtk::Label::new(Some("-"));
+    module_group_detail_title.set_xalign(0.0);
+    module_group_detail_title.add_css_class("card-title");
+    let module_group_detail_summary = gtk::Label::new(Some("-"));
+    module_group_detail_summary.set_xalign(0.0);
+    module_group_detail_summary.set_wrap(true);
+    module_group_detail_summary.add_css_class("list-row-subtitle");
+    let module_group_detail_actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    module_group_detail_actions.set_halign(gtk::Align::Start);
+    module_group_detail_card.append(&module_group_detail_title);
+    module_group_detail_card.append(&module_group_detail_summary);
+    module_group_detail_card.append(&module_group_detail_actions);
+    module_group_detail_body.append(&module_group_detail_card);
+
+    let module_group_members_card = surface_card(
+        localized_text(strings, "成员模块", "Member Modules"),
+        localized_text(
+            strings,
+            "成员列表保持紧凑，深入操作继续进入单模块详情页。",
+            "Members stay compact here and defer deeper controls to the module detail page.",
+        ),
+    );
+    let module_group_member_list = gtk::ListBox::new();
+    module_group_member_list.add_css_class("plain-list");
+    let module_group_member_scroll = new_scroller(&module_group_member_list);
+    module_group_member_scroll.set_min_content_height(360);
+    module_group_members_card.append(&module_group_member_scroll);
+    module_group_detail_body.append(&module_group_members_card);
+
+    let (module_detail_container, module_detail_body) = new_page_shell();
+    let module_detail_header = hero_card(
+        strings.modules_title,
+        localized_text(strings, "模块详情", "Module Details"),
+        localized_text(
+            strings,
+            "常见动作放在详情页里，列表本身只保留紧凑摘要。",
+            "The list stays compact while the detail page owns the heavier actions.",
+        ),
+    );
+    let module_detail_back =
+        gtk::Button::with_label(localized_text(strings, "返回模块页", "Back to Modules"));
+    module_detail_back.add_css_class("pill");
+    {
+        let nav_stack = nav_stack.clone();
+        module_detail_back.connect_clicked(move |_| {
+            nav_stack.set_visible_child_name("modules");
+        });
+    }
+    module_detail_header.append(&module_detail_back);
+    module_detail_body.append(&module_detail_header);
+
+    let module_detail_card = surface_card(
+        localized_text(strings, "模块状态", "Module State"),
+        localized_text(
+            strings,
+            "这里展示元数据、运行状态和所有可执行操作。",
+            "Metadata, runtime state, and all supported actions are exposed here.",
+        ),
+    );
+    let module_detail_title = gtk::Label::new(Some("-"));
+    module_detail_title.set_xalign(0.0);
+    module_detail_title.add_css_class("card-title");
+    let module_detail_summary = gtk::Label::new(Some("-"));
+    module_detail_summary.set_xalign(0.0);
+    module_detail_summary.set_wrap(true);
+    module_detail_summary.add_css_class("list-row-subtitle");
+    let module_detail_actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    module_detail_actions.set_halign(gtk::Align::Start);
+    module_detail_card.append(&module_detail_title);
+    module_detail_card.append(&module_detail_summary);
+    module_detail_card.append(&module_detail_actions);
+    module_detail_body.append(&module_detail_card);
+
+    let module_detail_json_card = surface_card(
+        localized_text(strings, "原始模块 JSON", "Raw Module JSON"),
+        localized_text(
+            strings,
+            "保留原始数据作为兜底和排障信息。",
+            "Raw JSON remains available as a fallback and debugging view.",
+        ),
+    );
+    let module_detail_json = new_text_buffer();
+    let module_detail_json_view = new_text_view(&module_detail_json, false);
+    module_detail_json_view.add_css_class("console-pane");
+    let module_detail_json_scroll = new_scroller(&module_detail_json_view);
+    module_detail_json_scroll.set_min_content_height(340);
+    module_detail_json_card.append(&module_detail_json_scroll);
+    module_detail_body.append(&module_detail_json_card);
+
+    let (susfs_page_container, susfs_page_body) = new_page_shell();
+    let susfs_page_header = hero_card(
+        strings.device_susfs,
+        localized_text(strings, "SUSFS 工作区", "SUSFS Workspace"),
+        localized_text(
+            strings,
+            "支持矩阵、结构化配置、应用输出和原始 JSON 都在一个独立页面里。",
+            "Support state, structured config, apply output, and raw JSON all live on a dedicated page.",
+        ),
+    );
+    let susfs_page_back =
+        gtk::Button::with_label(localized_text(strings, "返回设备页", "Back to Device"));
+    susfs_page_back.add_css_class("pill");
+    {
+        let nav_stack = nav_stack.clone();
+        susfs_page_back.connect_clicked(move |_| {
+            nav_stack.set_visible_child_name("main");
+        });
+    }
+    susfs_page_header.append(&susfs_page_back);
+    susfs_page_body.append(&susfs_page_header);
+
+    let susfs_runtime_card = surface_card(
+        localized_text(strings, "运行状态 / 支持矩阵", "Runtime Status / Support Matrix"),
+        localized_text(
+            strings,
+            "不支持的控件会被显式禁用，避免把整个页面变成盲写 JSON。",
+            "Unsupported controls are disabled explicitly so the page stops feeling like blind JSON editing.",
+        ),
+    );
+    let susfs_status_summary = gtk::Label::new(Some("-"));
+    susfs_status_summary.set_xalign(0.0);
+    susfs_status_summary.set_wrap(true);
+    susfs_status_summary.add_css_class("card-title");
+    let susfs_support_summary = gtk::Label::new(Some("-"));
+    susfs_support_summary.set_xalign(0.0);
+    susfs_support_summary.set_wrap(true);
+    susfs_support_summary.add_css_class("list-row-subtitle");
+    let susfs_controls = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let load_susfs = gtk::Button::with_label(localized_text(strings, "重新加载", "Reload"));
+    load_susfs.add_css_class("pill");
+    load_susfs.add_css_class("tonal-button");
+    {
+        let sender = sender.clone();
+        let port_entry = port_entry.clone();
+        load_susfs.connect_clicked(move |_| {
+            let sender = sender.clone();
+            let port = parse_port(&port_entry.text());
+            thread::spawn(move || {
+                let client = AgentClient::new("127.0.0.1", port);
+                match client.susfs_json() {
+                    Ok(value) => {
+                        let _ = sender.send(UiMessage::SusfsSnapshot(value));
+                    }
+                    Err(error) => {
+                        let _ = sender.send(UiMessage::ActivityLog(format!("{error:#}")));
+                    }
+                }
+            });
+        });
+    }
+    let apply_susfs = gtk::Button::with_label(strings.apply_susfs);
+    apply_susfs.add_css_class("pill");
+    {
+        let sender = sender.clone();
+        let port_entry = port_entry.clone();
+        let susfs_state = susfs_state.clone();
+        apply_susfs.connect_clicked(move |_| {
+            if let Ok(body) = build_susfs_apply_body(&susfs_state) {
+                spawn_agent_susfs_task_call(
+                    parse_port(&port_entry.text()),
+                    sender.clone(),
+                    move |client| client.apply_susfs_json(&body),
+                    strings,
+                );
+            } else {
+                let _ = sender.send(UiMessage::ActivityLog(
+                    localized_text(
+                        strings,
+                        "SUSFS 结构化配置无法序列化。",
+                        "The structured SUSFS configuration could not be serialized.",
+                    )
+                    .to_string(),
+                ));
+            }
+        });
+    }
+    let export = gtk::Button::with_label(strings.export_diagnostics);
+    export.add_css_class("pill");
+    export.add_css_class("tonal-button");
+    {
+        let sender = sender.clone();
+        let port_entry = port_entry.clone();
+        export.connect_clicked(move |_| {
+            spawn_agent_susfs_task_call(
+                parse_port(&port_entry.text()),
+                sender.clone(),
+                move |client| client.export_diagnostics(),
+                strings,
+            );
+        });
+    }
+    susfs_controls.append(&load_susfs);
+    susfs_controls.append(&apply_susfs);
+    susfs_controls.append(&export);
+    susfs_runtime_card.append(&susfs_status_summary);
+    susfs_runtime_card.append(&susfs_support_summary);
+    susfs_runtime_card.append(&susfs_controls);
+    susfs_page_body.append(&susfs_runtime_card);
+
+    let susfs_editor_card = surface_card(
+        localized_text(strings, "结构化配置编辑器", "Structured Config Editor"),
+        localized_text(
+            strings,
+            "标量字段、预设开关和各类列表都可直接编辑。",
+            "Scalar fields, presets, and list-based rules are all editable directly.",
+        ),
+    );
+    let susfs_editor_host = gtk::Box::new(gtk::Orientation::Vertical, 16);
+    susfs_editor_card.append(&susfs_editor_host);
+    susfs_page_body.append(&susfs_editor_card);
+
+    let susfs_action_card = surface_card(
+        localized_text(strings, "应用 / 诊断输出", "Apply / Diagnostics Output"),
+        localized_text(
+            strings,
+            "最近一次应用或导出诊断的输出会保留在这里。",
+            "The latest apply or diagnostics-export output is preserved here.",
+        ),
+    );
+    let susfs_action_output = new_text_buffer();
+    let susfs_action_view = new_text_view(&susfs_action_output, false);
+    susfs_action_view.add_css_class("console-pane");
+    let susfs_action_scroll = new_scroller(&susfs_action_view);
+    susfs_action_scroll.set_min_content_height(220);
+    susfs_action_card.append(&susfs_action_scroll);
+    susfs_page_body.append(&susfs_action_card);
+
+    let susfs_raw_card = surface_card(
+        localized_text(strings, "原始 SUSFS JSON", "Raw SUSFS JSON"),
+        localized_text(
+            strings,
+            "高级排障仍可直接回看 agent 返回的原始数据。",
+            "Raw agent data remains visible for advanced troubleshooting.",
+        ),
+    );
+    let susfs_raw_view = new_text_view(&susfs_output, false);
+    susfs_raw_view.add_css_class("console-pane");
+    let susfs_raw_scroll = new_scroller(&susfs_raw_view);
+    susfs_raw_scroll.set_min_content_height(300);
+    susfs_raw_card.append(&susfs_raw_scroll);
+    susfs_page_body.append(&susfs_raw_card);
+
+    {
+        let nav_stack = nav_stack.clone();
+        let root_state = root_state.clone();
+        let root_list = root_list.clone();
+        let root_page_count = root_page_count.clone();
+        let root_hub_status = root_hub_status.clone();
+        let sender = sender.clone();
+        let port_entry = port_entry.clone();
+        root_manage_button.connect_clicked(move |_| {
+            sort_root_entries(&mut root_state.borrow_mut().entries);
+            render_root_grant_page(
+                &root_state,
+                &root_list,
+                &root_page_count,
+                &root_hub_status,
+                &sender,
+                &port_entry,
+                strings,
+            );
+            nav_stack.set_visible_child_name("root-grants");
+        });
+    }
+
+    {
+        let root_state = root_state.clone();
+        let root_list = root_list.clone();
+        let root_page_count = root_page_count.clone();
+        let root_hub_status = root_hub_status.clone();
+        let sender = sender.clone();
+        let port_entry = port_entry.clone();
+        root_search_entry.connect_search_changed(move |entry| {
+            root_state.borrow_mut().search_query = entry.text().to_string();
+            render_root_grant_page(
+                &root_state,
+                &root_list,
+                &root_page_count,
+                &root_hub_status,
+                &sender,
+                &port_entry,
+                strings,
+            );
+        });
+    }
+
+    {
+        let root_state = root_state.clone();
+        let root_list = root_list.clone();
+        let root_page_count = root_page_count.clone();
+        let root_hub_status = root_hub_status.clone();
+        let sender = sender.clone();
+        let port_entry = port_entry.clone();
+        root_system_switch.connect_active_notify(move |switch| {
+            let active = switch.is_active();
+            let mut state = root_state.borrow_mut();
+            state.show_system_apps = active;
+            save_show_system_apps_pref(active);
+            sort_root_entries(&mut state.entries);
+            drop(state);
+            render_root_grant_page(
+                &root_state,
+                &root_list,
+                &root_page_count,
+                &root_hub_status,
+                &sender,
+                &port_entry,
+                strings,
+            );
+        });
+    }
+
+    {
+        let root_state = root_state.clone();
+        let nav_stack = nav_stack.clone();
+        let detail_title = root_detail_title.clone();
+        let detail_icon = root_detail_icon.clone();
+        let detail_package = root_detail_package.clone();
+        let detail_type = root_detail_type.clone();
+        let detail_status = root_detail_status.clone();
+        let detail_json = root_detail_json.clone();
+        let detail_switch = root_detail_switch.clone();
+        let sender = sender.clone();
+        let port_entry = port_entry.clone();
+        root_list.connect_row_activated(move |_list, row| {
+            let package = row.widget_name().to_string();
+            if package.is_empty() {
+                return;
+            }
+            root_state.borrow_mut().selected_package = Some(package.clone());
+            render_root_grant_detail(
+                &root_state,
+                &package,
+                &detail_title,
+                &detail_icon,
+                &detail_package,
+                &detail_type,
+                &detail_status,
+                &detail_json,
+                &detail_switch,
+                &sender,
+                &port_entry,
+                strings,
+            );
+            nav_stack.set_visible_child_name("root-grant-detail");
+        });
+    }
+
+    {
+        let sender = sender.clone();
+        let port_entry = port_entry.clone();
+        root_detail_switch.connect_active_notify(move |switch| {
+            let package = switch.widget_name().to_string();
+            if package.is_empty() {
+                return;
+            }
+            spawn_agent_sync_call(parse_port(&port_entry.text()), sender.clone(), {
+                let package = package.clone();
+                let active = switch.is_active();
+                move |client| client.set_root_grant(&package, active)
+            });
+        });
+    }
+
+    {
+        let nav_stack = nav_stack.clone();
+        let module_state = module_state.clone();
+        let sender = sender.clone();
+        let port_entry = port_entry.clone();
+        let module_groups_summary = module_groups_summary.clone();
+        let module_groups_list = module_groups_list.clone();
+        let module_standard_summary = module_standard_summary.clone();
+        let module_standard_list = module_standard_list.clone();
+        let module_extension_summary = module_extension_summary.clone();
+        let module_extension_list = module_extension_list.clone();
+        let group_detail_title = module_group_detail_title.clone();
+        let group_detail_summary = module_group_detail_summary.clone();
+        let group_detail_actions = module_group_detail_actions.clone();
+        let group_member_list = module_group_member_list.clone();
+        let detail_title = module_detail_title.clone();
+        let detail_summary = module_detail_summary.clone();
+        let detail_actions = module_detail_actions.clone();
+        let detail_json = module_detail_json.clone();
+        modules_manage_button.connect_clicked(move |_| {
+            render_module_page(
+                &module_state,
+                &module_groups_summary,
+                &module_groups_list,
+                &module_standard_summary,
+                &module_standard_list,
+                &module_extension_summary,
+                &module_extension_list,
+                &group_detail_title,
+                &group_detail_summary,
+                &group_detail_actions,
+                &group_member_list,
+                &detail_title,
+                &detail_summary,
+                &detail_actions,
+                &detail_json,
+                &nav_stack,
+                &sender,
+                &port_entry,
+                strings,
+            );
+            nav_stack.set_visible_child_name("modules");
+        });
+    }
+
+    {
+        let nav_stack = nav_stack.clone();
+        let susfs_state = susfs_state.clone();
+        let status_summary = susfs_status_summary.clone();
+        let support_summary = susfs_support_summary.clone();
+        let editor_host = susfs_editor_host.clone();
+        susfs_manage_button.connect_clicked(move |_| {
+            render_susfs_page(
+                &susfs_state,
+                &status_summary,
+                &support_summary,
+                &editor_host,
+                strings,
+            );
+            nav_stack.set_visible_child_name("susfs");
+        });
+    }
+
     nav_stack.add_titled(&main_container, Some("main"), strings.device_title);
     nav_stack.add_titled(
         &root_page_container,
@@ -1532,6 +2345,22 @@ fn build_device_page(sender: &Sender<UiMessage>, strings: Strings) -> DevicePage
         Some("root-grant-detail"),
         strings.grants_detail_title,
     );
+    nav_stack.add_titled(
+        &modules_page_container,
+        Some("modules"),
+        localized_text(strings, "模块页", "Modules"),
+    );
+    nav_stack.add_titled(
+        &module_group_detail_container,
+        Some("module-group-detail"),
+        localized_text(strings, "模块分组详情", "Module Group Detail"),
+    );
+    nav_stack.add_titled(
+        &module_detail_container,
+        Some("module-detail"),
+        localized_text(strings, "模块详情", "Module Detail"),
+    );
+    nav_stack.add_titled(&susfs_page_container, Some("susfs"), strings.device_susfs);
     nav_stack.set_visible_child_name("main");
 
     DevicePage {
@@ -1543,15 +2372,12 @@ fn build_device_page(sender: &Sender<UiMessage>, strings: Strings) -> DevicePage
         runtime_output,
         root_output,
         susfs_output,
-        susfs_editor,
         session_summary: session_summary.1,
         runtime_summary: runtime_summary.1,
         root_summary: root_summary.1,
         susfs_summary: susfs_summary.1,
-        root_summary_caption,
-        root_manage_button,
+        root_hub_status,
         root_page_count,
-        root_search_entry,
         root_system_switch,
         root_list,
         root_detail_title,
@@ -1561,8 +2387,29 @@ fn build_device_page(sender: &Sender<UiMessage>, strings: Strings) -> DevicePage
         root_detail_status,
         root_detail_json,
         root_detail_switch,
-        module_list,
+        modules_hub_status,
+        module_groups_summary,
+        module_groups_list,
+        module_standard_summary,
+        module_standard_list,
+        module_extension_summary,
+        module_extension_list,
+        module_group_detail_title,
+        module_group_detail_summary,
+        module_group_detail_actions,
+        module_group_member_list,
+        module_detail_title,
+        module_detail_summary,
+        module_detail_actions,
+        module_detail_json,
+        susfs_hub_status,
+        susfs_status_summary,
+        susfs_support_summary,
+        susfs_editor_host,
+        susfs_action_output,
         root_state,
+        module_state,
+        susfs_state,
     }
 }
 
@@ -1724,6 +2571,130 @@ fn spawn_agent_task_call<F>(
     });
 }
 
+fn spawn_agent_sequence_call<F>(port: u16, sender: Sender<UiMessage>, call: F, strings: Strings)
+where
+    F: FnOnce(AgentClient, Strings) -> anyhow::Result<String> + Send + 'static,
+{
+    thread::spawn(move || {
+        let client = AgentClient::new("127.0.0.1", port);
+        let message = match call(client.clone(), strings) {
+            Ok(text) => {
+                refresh_agent(client, &sender);
+                text
+            }
+            Err(error) => format!("{error:#}"),
+        };
+        let _ = sender.send(UiMessage::ActivityLog(message));
+    });
+}
+
+fn spawn_agent_susfs_task_call<F>(port: u16, sender: Sender<UiMessage>, call: F, strings: Strings)
+where
+    F: FnOnce(AgentClient) -> anyhow::Result<agent::TaskSnapshot> + Send + 'static,
+{
+    thread::spawn(move || {
+        let client = AgentClient::new("127.0.0.1", port);
+        match call(client.clone()) {
+            Ok(task) => {
+                let _ = sender.send(UiMessage::ActivityLog(format!(
+                    "{} {} ({})",
+                    strings.log_task_queued, task.id, task.kind
+                )));
+                match client.poll_task(&task.id, Duration::from_secs(300)) {
+                    Ok(final_task) => {
+                        let mut lines = vec![format!(
+                            "{} {} -> {}{}",
+                            strings.log_task_result,
+                            final_task.id,
+                            final_task.state,
+                            final_task
+                                .message
+                                .as_deref()
+                                .map(|m| format!(" ({m})"))
+                                .unwrap_or_default()
+                        )];
+                        if !final_task.output.is_empty() {
+                            lines.push(final_task.output.join("\n"));
+                        }
+                        if final_task.kind == "diagnostics.export" {
+                            match client.download_task_file(
+                                &final_task.id,
+                                &AgentClient::default_download_dir(),
+                            ) {
+                                Ok(path) => lines.push(format!(
+                                    "{} {}",
+                                    strings.log_downloaded,
+                                    path.display()
+                                )),
+                                Err(error) => lines
+                                    .push(format!("{}: {error:#}", strings.log_download_failed)),
+                            }
+                        }
+                        let text = lines.join("\n\n");
+                        let _ = sender.send(UiMessage::SusfsActionOutput(text.clone()));
+                        let _ = sender.send(UiMessage::ActivityLog(text));
+                        refresh_agent(client, &sender);
+                    }
+                    Err(error) => {
+                        let text = format!("{error:#}");
+                        let _ = sender.send(UiMessage::SusfsActionOutput(text.clone()));
+                        let _ = sender.send(UiMessage::ActivityLog(text));
+                    }
+                }
+            }
+            Err(error) => {
+                let text = format!("{error:#}");
+                let _ = sender.send(UiMessage::SusfsActionOutput(text.clone()));
+                let _ = sender.send(UiMessage::ActivityLog(text));
+            }
+        }
+    });
+}
+
+fn spawn_module_webui_helper<F>(
+    port: u16,
+    module_id: impl Into<String>,
+    module_name: impl Into<String>,
+    on_error: F,
+) where
+    F: Fn(String) + Send + 'static,
+{
+    let module_id = module_id.into();
+    let module_name = module_name.into();
+    thread::spawn(move || {
+        let result = (|| -> anyhow::Result<()> {
+            let current =
+                std::env::current_exe().context("failed to resolve current executable")?;
+            let helper_name = if cfg!(windows) {
+                "abk-webui.exe"
+            } else {
+                "abk-webui"
+            };
+            let helper_path = current.with_file_name(helper_name);
+            if !helper_path.exists() {
+                return Err(anyhow::anyhow!(
+                    "module webui helper missing: {}",
+                    helper_path.display()
+                ));
+            }
+            Command::new(&helper_path)
+                .arg("--port")
+                .arg(port.to_string())
+                .arg("--module-id")
+                .arg(&module_id)
+                .arg("--module-name")
+                .arg(&module_name)
+                .spawn()
+                .with_context(|| format!("failed to launch {}", helper_path.display()))?;
+            Ok(())
+        })();
+
+        if let Err(error) = result {
+            on_error(format!("{error:#}"));
+        }
+    });
+}
+
 fn current_strings() -> Strings {
     let locale = [
         std::env::var("LC_ALL").ok(),
@@ -1740,6 +2711,14 @@ fn current_strings() -> Strings {
         ZH
     } else {
         EN
+    }
+}
+
+fn localized_text(strings: Strings, zh: &'static str, en: &'static str) -> &'static str {
+    if strings.app_title == ZH.app_title {
+        zh
+    } else {
+        en
     }
 }
 
@@ -2026,11 +3005,16 @@ fn render_root_grant_page(
         filtered.len(),
         total
     ));
-    summary_label.set_text(if state.borrow().show_system_apps {
-        strings.grants_summary_showing_system
-    } else {
-        strings.grants_summary_hidden_system
-    });
+    summary_label.set_text(&format!(
+        "{} allowed · {} total · {}",
+        allowed_total,
+        total,
+        if state.borrow().show_system_apps {
+            strings.grants_summary_showing_system
+        } else {
+            strings.grants_summary_hidden_system
+        }
+    ));
 
     if filtered.is_empty() {
         append_placeholder_row(list, "No apps match the current filters");
@@ -2100,18 +3084,24 @@ fn render_root_grant_detail(
     strings: Strings,
 ) {
     let package = package.trim();
-    let guard = state.borrow();
-    let Some(entry) = guard
-        .entries
-        .iter()
-        .find(|entry| entry.package_name == package)
-    else {
-        title_label.set_text("Unknown app");
-        package_label.set_text(package);
-        type_label.set_text("-");
-        status_label.set_text("-");
-        json_buffer.set_text("{}");
-        return;
+    let (entry, cached_icon) = {
+        let guard = state.borrow();
+        let Some(entry) = guard
+            .entries
+            .iter()
+            .find(|entry| entry.package_name == package)
+        else {
+            title_label.set_text("Unknown app");
+            package_label.set_text(package);
+            type_label.set_text("-");
+            status_label.set_text("-");
+            json_buffer.set_text("{}");
+            return;
+        };
+        (
+            entry.clone(),
+            guard.icon_cache.get(&entry.package_name).cloned(),
+        )
     };
 
     title_label.set_text(&entry.label);
@@ -2144,7 +3134,7 @@ fn render_root_grant_detail(
     switch.set_active(entry.allow_su);
     switch.set_widget_name(&entry.package_name);
 
-    if let Some(bytes) = guard.icon_cache.get(&entry.package_name) {
+    if let Some(bytes) = cached_icon {
         if let Ok(pixbuf) = Pixbuf::from_read(Cursor::new(bytes.clone())) {
             icon.set_from_pixbuf(Some(&pixbuf));
             icon.set_pixel_size(48);
@@ -2183,7 +3173,7 @@ fn handle_root_icon_loaded(
 
 fn filtered_root_entries(state: &RootGrantPageState) -> Vec<RootGrantEntry> {
     let query = state.search_query.trim().to_lowercase();
-    state
+    let mut filtered = state
         .entries
         .iter()
         .filter(|entry| state.show_system_apps || !entry.is_system_app)
@@ -2193,7 +3183,9 @@ fn filtered_root_entries(state: &RootGrantPageState) -> Vec<RootGrantEntry> {
                 || entry.package_name.to_lowercase().contains(&query)
         })
         .cloned()
-        .collect()
+        .collect::<Vec<_>>();
+    sort_root_entries(&mut filtered);
+    filtered
 }
 
 fn sort_root_entries(entries: &mut [RootGrantEntry]) {
@@ -2206,55 +3198,275 @@ fn sort_root_entries(entries: &mut [RootGrantEntry]) {
     });
 }
 
-fn render_module_rows(
-    list: &gtk::ListBox,
-    value: &Value,
+fn update_module_page_state(state: &Rc<RefCell<ModulePageState>>, value: &Value) {
+    let modules = runtime_module_records(value, &["modules"])
+        .into_iter()
+        .filter_map(|raw| parse_runtime_module_entry(raw, ModuleListKind::Standard))
+        .collect::<Vec<_>>();
+    let extension_modules = runtime_module_records(value, &["extension_modules"])
+        .into_iter()
+        .filter_map(|raw| parse_runtime_module_entry(raw, ModuleListKind::Extension))
+        .collect::<Vec<_>>();
+    let groups = build_module_groups(&modules, &extension_modules);
+
+    let mut guard = state.borrow_mut();
+    guard.modules = modules;
+    guard.extension_modules = extension_modules;
+    guard.groups = groups;
+    guard.raw_runtime = Some(value.clone());
+
+    if guard
+        .selected_module
+        .as_deref()
+        .map(|id| guard.find_module(id).is_none())
+        .unwrap_or(false)
+    {
+        guard.selected_module = None;
+    }
+    if guard
+        .selected_group
+        .as_deref()
+        .map(|key| guard.find_group(key).is_none())
+        .unwrap_or(false)
+    {
+        guard.selected_group = None;
+    }
+}
+
+fn render_module_page(
+    state: &Rc<RefCell<ModulePageState>>,
+    groups_summary: &gtk::Label,
+    groups_list: &gtk::ListBox,
+    standard_summary: &gtk::Label,
+    standard_list: &gtk::ListBox,
+    extension_summary: &gtk::Label,
+    extension_list: &gtk::ListBox,
+    group_detail_title: &gtk::Label,
+    group_detail_summary: &gtk::Label,
+    group_detail_actions: &gtk::Box,
+    group_member_list: &gtk::ListBox,
+    detail_title: &gtk::Label,
+    detail_summary: &gtk::Label,
+    detail_actions: &gtk::Box,
+    detail_json: &gtk::TextBuffer,
+    nav_stack: &gtk::Stack,
     sender: &Sender<UiMessage>,
     port_entry: &gtk::Entry,
     strings: Strings,
 ) {
-    clear_list_box(list);
-    let diagnostic =
-        json_str_any_recursive(value, &["managerDiagnostic", "manager_diagnostic", "error"]);
-    let modules = find_array_of_objects(value, is_runtime_module_record);
+    clear_list_box(groups_list);
+    clear_list_box(standard_list);
+    clear_list_box(extension_list);
+
+    let snapshot = state.borrow();
+    let grouped_member_count = snapshot
+        .groups
+        .iter()
+        .map(|group| group.members.len())
+        .sum::<usize>();
+    groups_summary.set_text(&format!(
+        "{} groups · {} members",
+        snapshot.groups.len(),
+        grouped_member_count
+    ));
+    let standalone_modules = snapshot
+        .modules
+        .iter()
+        .filter(|module| module_group_key(module).is_empty())
+        .cloned()
+        .collect::<Vec<_>>();
+    let standalone_extensions = snapshot
+        .extension_modules
+        .iter()
+        .filter(|module| module_group_key(module).is_empty())
+        .cloned()
+        .collect::<Vec<_>>();
+    standard_summary.set_text(&format!(
+        "{} standalone · {} grouped · {} total",
+        standalone_modules.len(),
+        snapshot
+            .modules
+            .len()
+            .saturating_sub(standalone_modules.len()),
+        snapshot.modules.len()
+    ));
+    extension_summary.set_text(&format!(
+        "{} standalone · {} grouped · {} total",
+        standalone_extensions.len(),
+        snapshot
+            .extension_modules
+            .len()
+            .saturating_sub(standalone_extensions.len()),
+        snapshot.extension_modules.len()
+    ));
+
+    if snapshot.groups.is_empty() {
+        append_placeholder_row(
+            groups_list,
+            localized_text(
+                strings,
+                "当前运行态没有可聚合的模块分组。",
+                "The current runtime snapshot does not expose any module groups.",
+            ),
+        );
+    } else {
+        for group in snapshot.groups.iter().cloned() {
+            let row = gtk::ListBoxRow::new();
+            let shell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+            shell.add_css_class("list-row-shell");
+            set_margin_all(&shell, 8);
+
+            let icon = module_icon_widget(group.members.first().expect("group member"));
+            shell.append(&icon);
+
+            let text = gtk::Box::new(gtk::Orientation::Vertical, 4);
+            text.set_hexpand(true);
+            let title = gtk::Label::new(Some(&group_display_name(&group)));
+            title.set_xalign(0.0);
+            title.add_css_class("list-row-title");
+            let subtitle = gtk::Label::new(Some(&group_summary_line(&group)));
+            subtitle.set_xalign(0.0);
+            subtitle.set_wrap(true);
+            subtitle.add_css_class("list-row-subtitle");
+            text.append(&title);
+            text.append(&subtitle);
+
+            let open_button =
+                gtk::Button::with_label(localized_text(strings, "打开分组", "Open Group"));
+            open_button.add_css_class("pill");
+            open_button.add_css_class("tonal-button");
+            {
+                let state = state.clone();
+                let nav_stack = nav_stack.clone();
+                let group_detail_title = group_detail_title.clone();
+                let group_detail_summary = group_detail_summary.clone();
+                let group_detail_actions = group_detail_actions.clone();
+                let group_member_list = group_member_list.clone();
+                let detail_title = detail_title.clone();
+                let detail_summary = detail_summary.clone();
+                let detail_actions = detail_actions.clone();
+                let detail_json = detail_json.clone();
+                let sender = sender.clone();
+                let port_entry = port_entry.clone();
+                let group_key = group.key.clone();
+                open_button.connect_clicked(move |_| {
+                    state.borrow_mut().selected_group = Some(group_key.clone());
+                    render_module_group_detail(
+                        &state,
+                        &group_key,
+                        &group_detail_title,
+                        &group_detail_summary,
+                        &group_detail_actions,
+                        &group_member_list,
+                        &detail_title,
+                        &detail_summary,
+                        &detail_actions,
+                        &detail_json,
+                        &nav_stack,
+                        &sender,
+                        &port_entry,
+                        strings,
+                    );
+                    nav_stack.set_visible_child_name("module-group-detail");
+                });
+            }
+
+            shell.append(&text);
+            shell.append(&open_button);
+            row.set_child(Some(&shell));
+            groups_list.append(&row);
+        }
+    }
+
+    render_module_rows_for_section(
+        standard_list,
+        &standalone_modules,
+        state,
+        detail_title,
+        detail_summary,
+        detail_actions,
+        detail_json,
+        nav_stack,
+        sender,
+        port_entry,
+        strings,
+    );
+    render_module_rows_for_section(
+        extension_list,
+        &standalone_extensions,
+        state,
+        detail_title,
+        detail_summary,
+        detail_actions,
+        detail_json,
+        nav_stack,
+        sender,
+        port_entry,
+        strings,
+    );
+
+    if let Some(selected_group) = snapshot.selected_group.clone() {
+        drop(snapshot);
+        render_module_group_detail(
+            state,
+            &selected_group,
+            group_detail_title,
+            group_detail_summary,
+            group_detail_actions,
+            group_member_list,
+            detail_title,
+            detail_summary,
+            detail_actions,
+            detail_json,
+            nav_stack,
+            sender,
+            port_entry,
+            strings,
+        );
+        return;
+    }
+    if let Some(selected_module) = snapshot.selected_module.clone() {
+        drop(snapshot);
+        render_module_detail(
+            state,
+            &selected_module,
+            detail_title,
+            detail_summary,
+            detail_actions,
+            detail_json,
+            sender,
+            port_entry,
+            strings,
+        );
+    }
+}
+
+fn render_module_rows_for_section(
+    list: &gtk::ListBox,
+    modules: &[RuntimeModuleEntry],
+    state: &Rc<RefCell<ModulePageState>>,
+    detail_title: &gtk::Label,
+    detail_summary: &gtk::Label,
+    detail_actions: &gtk::Box,
+    detail_json: &gtk::TextBuffer,
+    nav_stack: &gtk::Stack,
+    sender: &Sender<UiMessage>,
+    port_entry: &gtk::Entry,
+    strings: Strings,
+) {
     if modules.is_empty() {
         append_placeholder_row(
             list,
-            &payload_keys_message(
-                value,
-                diagnostic.unwrap_or("No runtime modules reported by the device"),
+            localized_text(
+                strings,
+                "当前没有条目。",
+                "No items reported in this section.",
             ),
         );
         return;
     }
 
-    for module in modules.into_iter().take(20) {
-        let module_id = json_str_any_recursive(&module, &["id"])
-            .unwrap_or("")
-            .to_string();
-        if module_id.is_empty() {
-            continue;
-        }
-        let name = json_str_any_recursive(&module, &["name"])
-            .unwrap_or(&module_id)
-            .to_string();
-        let source = json_str_any_recursive(&module, &["source"]).unwrap_or("runtime");
-        let enabled = module
-            .get("enabled")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let action_supported = module
-            .get("actionSupported")
-            .or_else(|| module.get("action_supported"))
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let uninstall_supported = module
-            .get("type")
-            .and_then(Value::as_str)
-            .map(|kind| kind == "standard")
-            .unwrap_or(false)
-            || source.contains("ksud");
-
+    for module in modules.iter().cloned() {
         let row = gtk::ListBoxRow::new();
         let shell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         shell.add_css_class("list-row-shell");
@@ -2265,11 +3477,12 @@ fn render_module_rows(
 
         let text = gtk::Box::new(gtk::Orientation::Vertical, 4);
         text.set_hexpand(true);
-        let title = gtk::Label::new(Some(&name));
+        let title = gtk::Label::new(Some(&module_display_name(&module)));
         title.set_xalign(0.0);
         title.add_css_class("list-row-title");
-        let subtitle = gtk::Label::new(Some(&format!("{module_id} · {source}")));
+        let subtitle = gtk::Label::new(Some(&module_compact_summary(&module)));
         subtitle.set_xalign(0.0);
+        subtitle.set_wrap(true);
         subtitle.add_css_class("list-row-subtitle");
         text.append(&title);
         text.append(&subtitle);
@@ -2278,13 +3491,14 @@ fn render_module_rows(
         actions.add_css_class("inline-actions");
 
         let toggle = gtk::Switch::new();
-        toggle.set_active(enabled);
+        toggle.set_active(module.enabled);
+        toggle.set_sensitive(module_can_toggle(&module));
         toggle.set_valign(gtk::Align::Center);
         toggle.add_css_class("compact-switch");
         {
             let sender = sender.clone();
             let port_entry = port_entry.clone();
-            let module_id = module_id.clone();
+            let module_id = module.id.clone();
             toggle.connect_active_notify(move |switch| {
                 spawn_agent_sync_call(parse_port(&port_entry.text()), sender.clone(), {
                     let module_id = module_id.clone();
@@ -2295,46 +3509,36 @@ fn render_module_rows(
         }
         actions.append(&toggle);
 
-        if uninstall_supported {
-            let uninstall = gtk::Button::with_label(strings.uninstall_module);
-            uninstall.add_css_class("pill");
-            {
-                let sender = sender.clone();
-                let port_entry = port_entry.clone();
-                let module_id = module_id.clone();
-                uninstall.connect_clicked(move |_| {
-                    spawn_agent_sync_call(parse_port(&port_entry.text()), sender.clone(), {
-                        let module_id = module_id.clone();
-                        move |client| client.set_module_pending_uninstall(&module_id, true)
-                    });
-                });
-            }
-            actions.append(&uninstall);
+        let details = gtk::Button::with_label(localized_text(strings, "详情", "Details"));
+        details.add_css_class("pill");
+        details.add_css_class("tonal-button");
+        {
+            let state = state.clone();
+            let detail_title = detail_title.clone();
+            let detail_summary = detail_summary.clone();
+            let detail_actions = detail_actions.clone();
+            let detail_json = detail_json.clone();
+            let nav_stack = nav_stack.clone();
+            let sender = sender.clone();
+            let port_entry = port_entry.clone();
+            let module_id = module.id.clone();
+            details.connect_clicked(move |_| {
+                state.borrow_mut().selected_module = Some(module_id.clone());
+                render_module_detail(
+                    &state,
+                    &module_id,
+                    &detail_title,
+                    &detail_summary,
+                    &detail_actions,
+                    &detail_json,
+                    &sender,
+                    &port_entry,
+                    strings,
+                );
+                nav_stack.set_visible_child_name("module-detail");
+            });
         }
-
-        if action_supported {
-            let action = gtk::Button::with_label(strings.run_action);
-            action.add_css_class("pill");
-            action.add_css_class("tonal-button");
-            {
-                let sender = sender.clone();
-                let port_entry = port_entry.clone();
-                let module_id = module_id.clone();
-                action.connect_clicked(move |_| {
-                    spawn_agent_task_call(
-                        parse_port(&port_entry.text()),
-                        sender.clone(),
-                        {
-                            let module_id = module_id.clone();
-                            move |client| client.run_module_action(&module_id)
-                        },
-                        false,
-                        strings,
-                    );
-                });
-            }
-            actions.append(&action);
-        }
+        actions.append(&details);
 
         shell.append(&text);
         shell.append(&actions);
@@ -2343,9 +3547,2288 @@ fn render_module_rows(
     }
 }
 
+fn render_module_group_detail(
+    state: &Rc<RefCell<ModulePageState>>,
+    group_key: &str,
+    title_label: &gtk::Label,
+    summary_label: &gtk::Label,
+    actions_box: &gtk::Box,
+    member_list: &gtk::ListBox,
+    detail_title: &gtk::Label,
+    detail_summary: &gtk::Label,
+    detail_actions: &gtk::Box,
+    detail_json: &gtk::TextBuffer,
+    nav_stack: &gtk::Stack,
+    sender: &Sender<UiMessage>,
+    port_entry: &gtk::Entry,
+    strings: Strings,
+) {
+    clear_box(actions_box);
+    clear_list_box(member_list);
+
+    let Some(group) = state.borrow().find_group(group_key).cloned() else {
+        title_label.set_text(localized_text(strings, "分组不存在", "Group not found"));
+        summary_label.set_text(localized_text(
+            strings,
+            "当前运行态刷新后已经找不到这个模块分组。",
+            "This module group is no longer present in the refreshed runtime snapshot.",
+        ));
+        append_placeholder_row(
+            member_list,
+            localized_text(strings, "没有可显示的成员。", "No members to display."),
+        );
+        return;
+    };
+
+    title_label.set_text(&group_display_name(&group));
+    summary_label.set_text(&group_summary_line(&group));
+
+    let ordered_members = deterministic_group_members(&group);
+    let controllable = ordered_members
+        .iter()
+        .filter(|module| module_can_toggle(module))
+        .cloned()
+        .collect::<Vec<_>>();
+    let uninstallable = ordered_members
+        .iter()
+        .filter(|module| module_can_uninstall(module))
+        .cloned()
+        .collect::<Vec<_>>();
+    let actionable = ordered_members
+        .iter()
+        .filter(|module| module_can_run_action(module))
+        .cloned()
+        .collect::<Vec<_>>();
+    let webui_target = select_group_webui_target(&group);
+
+    if !controllable.is_empty() {
+        let enable_all = gtk::Button::with_label(localized_text(strings, "全部启用", "Enable All"));
+        enable_all.add_css_class("pill");
+        {
+            let sender = sender.clone();
+            let port_entry = port_entry.clone();
+            let modules = controllable.clone();
+            enable_all.connect_clicked(move |_| {
+                let modules = modules.clone();
+                spawn_agent_sequence_call(
+                    parse_port(&port_entry.text()),
+                    sender.clone(),
+                    move |client, _strings| {
+                        let mut lines = Vec::new();
+                        for module in &modules {
+                            let result = client.set_module_enabled(&module.id, true)?;
+                            lines.push(format!(
+                                "{}: {}",
+                                module_display_name(module),
+                                result.trim()
+                            ));
+                        }
+                        Ok(lines.join("\n"))
+                    },
+                    strings,
+                );
+            });
+        }
+        actions_box.append(&enable_all);
+
+        let disable_all =
+            gtk::Button::with_label(localized_text(strings, "全部禁用", "Disable All"));
+        disable_all.add_css_class("pill");
+        disable_all.add_css_class("tonal-button");
+        {
+            let sender = sender.clone();
+            let port_entry = port_entry.clone();
+            let modules = controllable.clone();
+            disable_all.connect_clicked(move |_| {
+                let modules = modules.clone();
+                spawn_agent_sequence_call(
+                    parse_port(&port_entry.text()),
+                    sender.clone(),
+                    move |client, _strings| {
+                        let mut lines = Vec::new();
+                        for module in &modules {
+                            let result = client.set_module_enabled(&module.id, false)?;
+                            lines.push(format!(
+                                "{}: {}",
+                                module_display_name(module),
+                                result.trim()
+                            ));
+                        }
+                        Ok(lines.join("\n"))
+                    },
+                    strings,
+                );
+            });
+        }
+        actions_box.append(&disable_all);
+    }
+
+    if !uninstallable.is_empty() {
+        let uninstall =
+            gtk::Button::with_label(localized_text(strings, "全部标记卸载", "Uninstall All"));
+        uninstall.add_css_class("pill");
+        {
+            let sender = sender.clone();
+            let port_entry = port_entry.clone();
+            let modules = uninstallable.clone();
+            uninstall.connect_clicked(move |_| {
+                let modules = modules.clone();
+                spawn_agent_sequence_call(
+                    parse_port(&port_entry.text()),
+                    sender.clone(),
+                    move |client, _strings| {
+                        let mut lines = Vec::new();
+                        for module in &modules {
+                            let result = client.set_module_pending_uninstall(&module.id, true)?;
+                            lines.push(format!(
+                                "{}: {}",
+                                module_display_name(module),
+                                result.trim()
+                            ));
+                        }
+                        Ok(lines.join("\n"))
+                    },
+                    strings,
+                );
+            });
+        }
+        actions_box.append(&uninstall);
+    }
+
+    if !actionable.is_empty() {
+        let action = gtk::Button::with_label(localized_text(
+            strings,
+            "运行成员 Action",
+            "Run Member Actions",
+        ));
+        action.add_css_class("pill");
+        action.add_css_class("tonal-button");
+        {
+            let sender = sender.clone();
+            let port_entry = port_entry.clone();
+            let modules = actionable.clone();
+            action.connect_clicked(move |_| {
+                let modules = modules.clone();
+                spawn_agent_sequence_call(
+                    parse_port(&port_entry.text()),
+                    sender.clone(),
+                    move |client, strings| {
+                        let mut lines = Vec::new();
+                        for module in &modules {
+                            let task = client.run_module_action(&module.id)?;
+                            lines.push(format!(
+                                "{} {} ({})",
+                                strings.log_task_queued,
+                                task.id,
+                                module_display_name(module)
+                            ));
+                            let final_task =
+                                client.poll_task(&task.id, Duration::from_secs(300))?;
+                            lines.push(format!(
+                                "{} {} -> {}",
+                                strings.log_task_result, final_task.id, final_task.state
+                            ));
+                            if !final_task.output.is_empty() {
+                                lines.push(final_task.output.join("\n"));
+                            }
+                        }
+                        Ok(lines.join("\n\n"))
+                    },
+                    strings,
+                );
+            });
+        }
+        actions_box.append(&action);
+    }
+
+    if let Some(target) = webui_target {
+        let webui = gtk::Button::with_label(localized_text(strings, "打开 WebUI", "Open WebUI"));
+        webui.add_css_class("pill");
+        {
+            let sender = sender.clone();
+            let port_entry = port_entry.clone();
+            let target = target.clone();
+            webui.connect_clicked(move |_| {
+                let port = parse_port(&port_entry.text());
+                let sender = sender.clone();
+                spawn_module_webui_helper(
+                    port,
+                    target.id.clone(),
+                    module_display_name(&target),
+                    move |text| {
+                        let _ = sender.send(UiMessage::ActivityLog(text));
+                    },
+                );
+            });
+        }
+        actions_box.append(&webui);
+    }
+
+    for module in ordered_members {
+        let row = gtk::ListBoxRow::new();
+        let shell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        shell.add_css_class("list-row-shell");
+        set_margin_all(&shell, 8);
+
+        let icon = module_icon_widget(&module);
+        shell.append(&icon);
+
+        let text = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        text.set_hexpand(true);
+        let title = gtk::Label::new(Some(&module_display_name(&module)));
+        title.set_xalign(0.0);
+        title.add_css_class("list-row-title");
+        let subtitle = gtk::Label::new(Some(&module_compact_summary(&module)));
+        subtitle.set_xalign(0.0);
+        subtitle.set_wrap(true);
+        subtitle.add_css_class("list-row-subtitle");
+        text.append(&title);
+        text.append(&subtitle);
+
+        let details = gtk::Button::with_label(localized_text(strings, "详情", "Details"));
+        details.add_css_class("pill");
+        details.add_css_class("tonal-button");
+        {
+            let state = state.clone();
+            let detail_title = detail_title.clone();
+            let detail_summary = detail_summary.clone();
+            let detail_actions = detail_actions.clone();
+            let detail_json = detail_json.clone();
+            let nav_stack = nav_stack.clone();
+            let sender = sender.clone();
+            let port_entry = port_entry.clone();
+            let module_id = module.id.clone();
+            details.connect_clicked(move |_| {
+                state.borrow_mut().selected_module = Some(module_id.clone());
+                render_module_detail(
+                    &state,
+                    &module_id,
+                    &detail_title,
+                    &detail_summary,
+                    &detail_actions,
+                    &detail_json,
+                    &sender,
+                    &port_entry,
+                    strings,
+                );
+                nav_stack.set_visible_child_name("module-detail");
+            });
+        }
+
+        shell.append(&text);
+        shell.append(&details);
+        row.set_child(Some(&shell));
+        member_list.append(&row);
+    }
+}
+
+fn render_module_detail(
+    state: &Rc<RefCell<ModulePageState>>,
+    module_id: &str,
+    title_label: &gtk::Label,
+    summary_label: &gtk::Label,
+    actions_box: &gtk::Box,
+    json_buffer: &gtk::TextBuffer,
+    sender: &Sender<UiMessage>,
+    port_entry: &gtk::Entry,
+    strings: Strings,
+) {
+    clear_box(actions_box);
+    let Some(module) = state.borrow().find_module(module_id).cloned() else {
+        title_label.set_text(localized_text(strings, "模块不存在", "Module not found"));
+        summary_label.set_text(localized_text(
+            strings,
+            "刷新后的运行态里已经没有这个模块。",
+            "This module is no longer present in the refreshed runtime snapshot.",
+        ));
+        json_buffer.set_text("{}");
+        return;
+    };
+
+    title_label.set_text(&module_display_name(&module));
+    summary_label.set_text(&module_detail_summary_text(&module));
+    if let Ok(text) = pretty_json_value(&module.raw) {
+        json_buffer.set_text(&text);
+    }
+
+    let toggle = gtk::Switch::new();
+    toggle.set_active(module.enabled);
+    toggle.set_sensitive(module_can_toggle(&module));
+    toggle.set_valign(gtk::Align::Center);
+    {
+        let sender = sender.clone();
+        let port_entry = port_entry.clone();
+        let module_id = module.id.clone();
+        toggle.connect_active_notify(move |switch| {
+            spawn_agent_sync_call(parse_port(&port_entry.text()), sender.clone(), {
+                let module_id = module_id.clone();
+                let active = switch.is_active();
+                move |client| client.set_module_enabled(&module_id, active)
+            });
+        });
+    }
+    actions_box.append(&toggle);
+
+    if module_can_uninstall(&module) {
+        let uninstall = gtk::Button::with_label(strings.uninstall_module);
+        uninstall.add_css_class("pill");
+        {
+            let sender = sender.clone();
+            let port_entry = port_entry.clone();
+            let module_id = module.id.clone();
+            uninstall.connect_clicked(move |_| {
+                spawn_agent_sync_call(parse_port(&port_entry.text()), sender.clone(), {
+                    let module_id = module_id.clone();
+                    move |client| client.set_module_pending_uninstall(&module_id, true)
+                });
+            });
+        }
+        actions_box.append(&uninstall);
+    }
+
+    if module_can_run_action(&module) {
+        let action = gtk::Button::with_label(strings.run_action);
+        action.add_css_class("pill");
+        action.add_css_class("tonal-button");
+        {
+            let sender = sender.clone();
+            let port_entry = port_entry.clone();
+            let module_id = module.id.clone();
+            action.connect_clicked(move |_| {
+                spawn_agent_task_call(
+                    parse_port(&port_entry.text()),
+                    sender.clone(),
+                    {
+                        let module_id = module_id.clone();
+                        move |client| client.run_module_action(&module_id)
+                    },
+                    false,
+                    strings,
+                );
+            });
+        }
+        actions_box.append(&action);
+    }
+
+    if module.has_web_ui {
+        let webui = gtk::Button::with_label(localized_text(strings, "打开 WebUI", "Open WebUI"));
+        webui.add_css_class("pill");
+        {
+            let sender = sender.clone();
+            let port_entry = port_entry.clone();
+            let module = module.clone();
+            webui.connect_clicked(move |_| {
+                let port = parse_port(&port_entry.text());
+                let sender = sender.clone();
+                spawn_module_webui_helper(
+                    port,
+                    module.id.clone(),
+                    module_display_name(&module),
+                    move |text| {
+                        let _ = sender.send(UiMessage::ActivityLog(text));
+                    },
+                );
+            });
+        }
+        actions_box.append(&webui);
+    }
+}
+
 fn clear_list_box(list: &gtk::ListBox) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
+    }
+}
+
+fn clear_box(container: &gtk::Box) {
+    while let Some(child) = container.first_child() {
+        container.remove(&child);
+    }
+}
+
+impl ModulePageState {
+    fn find_module(&self, module_id: &str) -> Option<&RuntimeModuleEntry> {
+        self.modules
+            .iter()
+            .chain(self.extension_modules.iter())
+            .find(|module| module.id == module_id)
+    }
+
+    fn find_group(&self, group_key: &str) -> Option<&ModuleGroupEntry> {
+        self.groups.iter().find(|group| group.key == group_key)
+    }
+}
+
+fn runtime_module_records(value: &Value, keys: &[&str]) -> Vec<Value> {
+    find_named_array_recursive(value, keys)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(is_runtime_module_record)
+        .collect()
+}
+
+fn find_named_array_recursive<'a>(value: &'a Value, keys: &[&str]) -> Option<Vec<Value>> {
+    match value {
+        Value::Object(map) => {
+            for key in keys {
+                if let Some(items) = map.get(*key).and_then(Value::as_array) {
+                    return Some(items.clone());
+                }
+            }
+            map.values()
+                .find_map(|nested| find_named_array_recursive(nested, keys))
+        }
+        Value::Array(items) => items
+            .iter()
+            .find_map(|nested| find_named_array_recursive(nested, keys)),
+        _ => None,
+    }
+}
+
+fn parse_runtime_module_entry(raw: Value, list_kind: ModuleListKind) -> Option<RuntimeModuleEntry> {
+    let id = json_str_any_recursive(&raw, &["id"])?.trim().to_string();
+    if id.is_empty() {
+        return None;
+    }
+    Some(RuntimeModuleEntry {
+        id: id.clone(),
+        name: json_str_any_recursive(&raw, &["name"])
+            .unwrap_or(&id)
+            .trim()
+            .to_string(),
+        author: json_str_any_recursive(&raw, &["author"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        type_name: json_str_any_recursive(&raw, &["type"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        version: json_str_any_recursive(&raw, &["version"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        description: json_str_any_recursive(&raw, &["description"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        repo_url: json_str_any_recursive(&raw, &["repo_url", "repoUrl"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        entry_kind: json_str_any_recursive(&raw, &["entry_kind", "entryKind"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        source: json_str_any_recursive(&raw, &["source"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        extension_id: json_str_any_recursive(&raw, &["extension_id", "extensionId"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        companion_package: json_str_any_recursive(&raw, &["companion_package", "companionPackage"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        companion_display_name: json_str_any_recursive(
+            &raw,
+            &["companion_display_name", "companionDisplayName"],
+        )
+        .unwrap_or("")
+        .trim()
+        .to_string(),
+        service_activity: json_str_any_recursive(&raw, &["service_activity", "serviceActivity"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        module_dir: json_str_any_recursive(&raw, &["module_dir", "moduleDir"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        web_root: json_str_any_recursive(&raw, &["web_root", "webRoot"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        readonly: json_bool_opt_recursive(&raw, &["readonly"]).unwrap_or(false),
+        controllable: json_bool_opt_recursive(&raw, &["controllable"]).unwrap_or(false),
+        enabled: json_bool_opt_recursive(&raw, &["enabled"]).unwrap_or(false),
+        update: json_bool_opt_recursive(&raw, &["update"]).unwrap_or(false),
+        remove: json_bool_opt_recursive(&raw, &["remove"]).unwrap_or(false),
+        has_web_ui: json_bool_opt_recursive(&raw, &["has_web_ui", "hasWebUi"]).unwrap_or(false),
+        has_action_script: json_bool_opt_recursive(&raw, &["has_action_script", "hasActionScript"])
+            .unwrap_or(false),
+        action_supported: json_bool_opt_recursive(&raw, &["action_supported", "actionSupported"])
+            .unwrap_or(false),
+        requires_companion_app: json_bool_opt_recursive(
+            &raw,
+            &["requires_companion_app", "requiresCompanionApp"],
+        )
+        .unwrap_or(false),
+        settings_supported: json_bool_opt_recursive(
+            &raw,
+            &["settings_supported", "settingsSupported"],
+        )
+        .unwrap_or(false),
+        per_app_supported: json_bool_opt_recursive(&raw, &["per_app_supported", "perAppSupported"])
+            .unwrap_or(false),
+        group_id: json_str_any_recursive(&raw, &["group_id", "groupId"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        group_name: json_str_any_recursive(&raw, &["group_name", "groupName"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        group_role: json_str_any_recursive(&raw, &["group_role", "groupRole"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        group_description: json_str_any_recursive(&raw, &["group_description", "groupDescription"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        group_repo_url: json_str_any_recursive(&raw, &["group_repo_url", "groupRepoUrl"])
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        list_kind,
+        raw,
+    })
+}
+
+fn build_module_groups(
+    modules: &[RuntimeModuleEntry],
+    extension_modules: &[RuntimeModuleEntry],
+) -> Vec<ModuleGroupEntry> {
+    let mut grouped: HashMap<String, Vec<RuntimeModuleEntry>> = HashMap::new();
+    for module in modules.iter().chain(extension_modules.iter()) {
+        let key = module_group_key(module);
+        if key.is_empty() {
+            continue;
+        }
+        grouped.entry(key).or_default().push(module.clone());
+    }
+
+    let mut groups = grouped
+        .into_iter()
+        .map(|(key, mut members)| {
+            members.sort_by(|left, right| {
+                module_display_name(left)
+                    .to_lowercase()
+                    .cmp(&module_display_name(right).to_lowercase())
+                    .then_with(|| left.id.cmp(&right.id))
+            });
+            let first = members
+                .first()
+                .cloned()
+                .unwrap_or_else(|| RuntimeModuleEntry {
+                    id: key.clone(),
+                    name: key.clone(),
+                    author: String::new(),
+                    type_name: String::new(),
+                    version: String::new(),
+                    description: String::new(),
+                    repo_url: String::new(),
+                    entry_kind: String::new(),
+                    source: String::new(),
+                    extension_id: String::new(),
+                    companion_package: String::new(),
+                    companion_display_name: String::new(),
+                    service_activity: String::new(),
+                    module_dir: String::new(),
+                    web_root: String::new(),
+                    readonly: false,
+                    controllable: false,
+                    enabled: false,
+                    update: false,
+                    remove: false,
+                    has_web_ui: false,
+                    has_action_script: false,
+                    action_supported: false,
+                    requires_companion_app: false,
+                    settings_supported: false,
+                    per_app_supported: false,
+                    group_id: String::new(),
+                    group_name: String::new(),
+                    group_role: String::new(),
+                    group_description: String::new(),
+                    group_repo_url: String::new(),
+                    list_kind: ModuleListKind::Standard,
+                    raw: Value::Null,
+                });
+            ModuleGroupEntry {
+                key,
+                name: first.group_name.clone(),
+                role: first.group_role.clone(),
+                description: first.group_description.clone(),
+                members,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    groups.sort_by(|left, right| {
+        group_display_name(left)
+            .to_lowercase()
+            .cmp(&group_display_name(right).to_lowercase())
+            .then_with(|| left.key.cmp(&right.key))
+    });
+    groups
+}
+
+fn module_group_key(module: &RuntimeModuleEntry) -> String {
+    if !module.group_repo_url.is_empty() {
+        format!("repo:{}", module.group_repo_url.to_lowercase())
+    } else if !module.group_id.is_empty() {
+        format!("id:{}", module.group_id.to_lowercase())
+    } else if !module.group_name.is_empty() {
+        format!("name:{}", module.group_name.to_lowercase())
+    } else {
+        String::new()
+    }
+}
+
+fn module_display_name(module: &RuntimeModuleEntry) -> String {
+    if module.name.trim().is_empty() {
+        module.id.clone()
+    } else {
+        module.name.clone()
+    }
+}
+
+fn module_hub_summary(state: &ModulePageState, strings: Strings) -> String {
+    if state.modules.is_empty() && state.extension_modules.is_empty() {
+        return localized_text(
+            strings,
+            "还没有运行态模块快照。",
+            "No runtime module snapshot has been loaded yet.",
+        )
+        .to_string();
+    }
+    format!(
+        "{} groups · {} modules · {} extensions",
+        state.groups.len(),
+        state.modules.len(),
+        state.extension_modules.len()
+    )
+}
+
+fn module_compact_summary(module: &RuntimeModuleEntry) -> String {
+    let mut traits = Vec::new();
+    if module.update {
+        traits.push("update");
+    }
+    if module.remove {
+        traits.push("pending uninstall");
+    }
+    if module.has_web_ui {
+        traits.push("WebUI");
+    }
+    if module.requires_companion_app {
+        traits.push("companion");
+    }
+    if module.settings_supported {
+        traits.push("settings");
+    }
+    if module.per_app_supported {
+        traits.push("per-app");
+    }
+    let mut base = format!(
+        "{} · {} · {}",
+        module.id,
+        if module.source.is_empty() {
+            "runtime"
+        } else {
+            module.source.as_str()
+        },
+        if module.enabled {
+            "enabled"
+        } else {
+            "disabled"
+        }
+    );
+    if !traits.is_empty() {
+        base.push_str(" · ");
+        base.push_str(&traits.join(", "));
+    }
+    base
+}
+
+fn module_detail_summary_text(module: &RuntimeModuleEntry) -> String {
+    let mut lines = vec![
+        format!("id: {}", module.id),
+        format!("type: {}", module_normalized_type(module)),
+        format!(
+            "source: {}",
+            if module.source.is_empty() {
+                "runtime"
+            } else {
+                &module.source
+            }
+        ),
+        format!(
+            "state: {}",
+            if module.enabled {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        ),
+    ];
+    if !module.version.is_empty() {
+        lines.push(format!("version: {}", module.version));
+    }
+    if !module.author.is_empty() {
+        lines.push(format!("author: {}", module.author));
+    }
+    if !module.description.is_empty() {
+        lines.push(module.description.clone());
+    }
+    if !module.group_name.is_empty() {
+        lines.push(format!(
+            "group: {}",
+            group_display_name(&ModuleGroupEntry {
+                key: module_group_key(module),
+                name: module.group_name.clone(),
+                role: module.group_role.clone(),
+                description: module.group_description.clone(),
+                members: vec![module.clone()],
+            })
+        ));
+    }
+    if !module.companion_package.is_empty() {
+        lines.push(format!("companion: {}", module.companion_package));
+    }
+    if !module.service_activity.is_empty() {
+        lines.push(format!("service: {}", module.service_activity));
+    }
+    if !module.web_root.is_empty() {
+        lines.push(format!("web root: {}", module.web_root));
+    }
+    lines.join("\n")
+}
+
+fn group_display_name(group: &ModuleGroupEntry) -> String {
+    if !group.name.trim().is_empty() {
+        group.name.clone()
+    } else {
+        group
+            .key
+            .split_once(':')
+            .map(|(_, value)| value.to_string())
+            .unwrap_or_else(|| group.key.clone())
+    }
+}
+
+fn group_summary_line(group: &ModuleGroupEntry) -> String {
+    let enabled = group.members.iter().filter(|module| module.enabled).count();
+    let webui = group
+        .members
+        .iter()
+        .filter(|module| module.has_web_ui)
+        .count();
+    let action = group
+        .members
+        .iter()
+        .filter(|module| module_can_run_action(module))
+        .count();
+    let role = if group.role.is_empty() {
+        "group".to_string()
+    } else {
+        group.role.clone()
+    };
+    let description = if group.description.is_empty() {
+        String::new()
+    } else {
+        format!(" · {}", group.description)
+    };
+    format!(
+        "{} · {} members · {} enabled · {} action-capable · {} WebUI{}",
+        role,
+        group.members.len(),
+        enabled,
+        action,
+        webui,
+        description
+    )
+}
+
+fn deterministic_group_members(group: &ModuleGroupEntry) -> Vec<RuntimeModuleEntry> {
+    let mut members = group.members.clone();
+    members.sort_by(|left, right| {
+        group_role_priority(&left.group_role)
+            .cmp(&group_role_priority(&right.group_role))
+            .then_with(|| right.enabled.cmp(&left.enabled))
+            .then_with(|| {
+                module_display_name(left)
+                    .to_lowercase()
+                    .cmp(&module_display_name(right).to_lowercase())
+            })
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    members
+}
+
+fn select_group_webui_target(group: &ModuleGroupEntry) -> Option<RuntimeModuleEntry> {
+    deterministic_group_members(group)
+        .into_iter()
+        .find(|module| module.has_web_ui)
+}
+
+fn group_role_priority(role: &str) -> usize {
+    match role.trim().to_lowercase().as_str() {
+        "primary" | "manager" | "main" | "base" => 0,
+        "core" => 1,
+        "extension" | "addon" => 2,
+        _ => 9,
+    }
+}
+
+fn module_normalized_type(module: &RuntimeModuleEntry) -> &str {
+    if !module.type_name.is_empty() {
+        module.type_name.as_str()
+    } else if module.source.split(',').any(|part| part.trim() == "ksud") {
+        "standard"
+    } else if module.source.split(',').any(|part| part.trim() == "kpm") {
+        "kpm"
+    } else {
+        "builtin"
+    }
+}
+
+fn module_can_toggle(module: &RuntimeModuleEntry) -> bool {
+    module.controllable && !module.readonly && !module.id.is_empty()
+}
+
+fn module_can_uninstall(module: &RuntimeModuleEntry) -> bool {
+    !module.readonly
+        && (module_normalized_type(module) == "standard" || module.source.contains("ksud"))
+}
+
+fn module_can_run_action(module: &RuntimeModuleEntry) -> bool {
+    module.action_supported || module.has_action_script
+}
+
+fn default_susfs_legit_mounts() -> Vec<String> {
+    [
+        "/system",
+        "/system_ext",
+        "/vendor",
+        "/odm",
+        "/product",
+        "/system_dlkm",
+        "/vendor_dlkm",
+        "/odm_dlkm",
+        "/apex",
+        "/system/app",
+        "/system/priv-app",
+        "/system/lib",
+        "/system/lib64",
+        "/vendor/app",
+        "/vendor/priv-app",
+        "/vendor/lib",
+        "/vendor/lib64",
+        "/product/app",
+        "/product/priv-app",
+        "/product/lib",
+        "/product/lib64",
+        "/system_ext/app",
+        "/system_ext/priv-app",
+        "/system_ext/lib",
+        "/system_ext/lib64",
+        "/data",
+        "/cache",
+        "/metadata",
+        "/persist",
+        "/mnt",
+        "/storage",
+        "/debug_ramdisk",
+        "/dev",
+        "/proc",
+        "/sys",
+        "/sys/fs/cgroup",
+        "/my_product",
+        "/my_engineering",
+        "/my_company",
+        "/my_carrier",
+        "/my_region",
+        "/my_heytap",
+        "/my_stock",
+        "/my_preload",
+        "/my_bigball",
+        "/my_manifest",
+    ]
+    .into_iter()
+    .map(ToString::to_string)
+    .collect()
+}
+
+fn update_susfs_page_state(state: &Rc<RefCell<SusfsPageState>>, value: &Value) {
+    let previous_output = state.borrow().action_output.clone();
+    let raw_config = value
+        .get("config")
+        .cloned()
+        .unwrap_or_else(|| Value::Object(Default::default()));
+    let parsed_config =
+        serde_json::from_value::<SusfsConfigModel>(raw_config.clone()).unwrap_or_default();
+    let status = value
+        .get("status")
+        .cloned()
+        .and_then(|item| serde_json::from_value::<SusfsRuntimeStatusModel>(item).ok())
+        .unwrap_or_default();
+    let mut guard = state.borrow_mut();
+    guard.raw_snapshot = value.clone();
+    guard.raw_config = raw_config;
+    guard.config = normalize_susfs_config_model(parsed_config);
+    guard.status = status.clone();
+    guard.support = status.support.clone();
+    guard.root_granted =
+        json_bool_opt_recursive(value, &["rootGranted", "root_granted"]).unwrap_or(true);
+    guard.error = json_str_any_recursive(value, &["error"]).map(ToString::to_string);
+    guard.action_output = previous_output;
+}
+
+fn susfs_hub_summary(state: &SusfsPageState, strings: Strings) -> String {
+    if !state.root_granted {
+        return localized_text(
+            strings,
+            "设备未授予 Root。",
+            "Root is not granted on the device.",
+        )
+        .to_string();
+    }
+    if let Some(error) = state.error.as_deref() {
+        return error.to_string();
+    }
+    format!(
+        "{} · kernel {} · {} path rules · {} redirects",
+        if state.status.available {
+            localized_text(strings, "可用", "available")
+        } else {
+            localized_text(strings, "不可用", "unavailable")
+        },
+        if state.status.kernel_version.is_empty() {
+            "unknown"
+        } else {
+            state.status.kernel_version.as_str()
+        },
+        state.config.path_rules.len(),
+        state.config.open_redirects.len()
+    )
+}
+
+fn build_susfs_apply_body(state: &Rc<RefCell<SusfsPageState>>) -> anyhow::Result<String> {
+    let guard = state.borrow();
+    let normalized = normalize_susfs_config_model(guard.config.clone());
+    let overrides = serde_json::to_value(&normalized)?;
+    let mut merged = if guard.raw_config.is_object() {
+        guard.raw_config.clone()
+    } else {
+        Value::Object(Default::default())
+    };
+    merge_json_values(&mut merged, overrides);
+    Ok(serde_json::to_string_pretty(&merged)?)
+}
+
+fn merge_json_values(base: &mut Value, override_value: Value) {
+    match (base, override_value) {
+        (Value::Object(base_map), Value::Object(override_map)) => {
+            for (key, value) in override_map {
+                if let Some(existing) = base_map.get_mut(&key) {
+                    merge_json_values(existing, value);
+                } else {
+                    base_map.insert(key, value);
+                }
+            }
+        }
+        (base_slot, value) => {
+            *base_slot = value;
+        }
+    }
+}
+
+fn normalize_susfs_config_model(config: SusfsConfigModel) -> SusfsConfigModel {
+    let mut normalized = config;
+    normalized.schema_version = normalized.schema_version.max(1);
+    normalized.hide_sus_mounts_mode =
+        normalize_hide_sus_mounts_mode(&normalized.hide_sus_mounts_mode);
+    normalized.spoof_uname_stage = normalize_spoof_uname_stage(&normalized.spoof_uname_stage);
+    normalized.uname_value = blank_to_default(&normalized.uname_value, "default");
+    normalized.build_time_value = blank_to_default(&normalized.build_time_value, "default");
+    normalized.sdcard_root_path = blank_to_default(&normalized.sdcard_root_path, "/sdcard");
+    normalized.android_data_root_path =
+        blank_to_default(&normalized.android_data_root_path, "/sdcard/Android/data");
+    normalized.path_rules = normalized
+        .path_rules
+        .into_iter()
+        .filter_map(|rule| {
+            let path = rule.path.trim().to_string();
+            if path.is_empty() {
+                None
+            } else {
+                Some(SusfsPathRuleModel {
+                    path,
+                    max_tries: rule.max_tries,
+                })
+            }
+        })
+        .collect();
+    normalized.loop_path_rules = normalized
+        .loop_path_rules
+        .into_iter()
+        .filter_map(|rule| {
+            let path = rule.path.trim().to_string();
+            if path.is_empty() {
+                None
+            } else {
+                Some(SusfsPathRuleModel {
+                    path,
+                    max_tries: rule.max_tries,
+                })
+            }
+        })
+        .collect();
+    normalized.maps = normalize_string_list(normalized.maps);
+    normalized.mounts = normalize_string_list(normalized.mounts);
+    normalized.try_umounts = normalize_string_list(normalized.try_umounts);
+    normalized.legit_mounts = {
+        let mounts = normalize_string_list(normalized.legit_mounts);
+        if mounts.is_empty() {
+            default_susfs_legit_mounts()
+        } else {
+            mounts
+        }
+    };
+    normalized.open_redirects = normalized
+        .open_redirects
+        .into_iter()
+        .filter_map(|rule| {
+            let original_path = rule.original_path.trim().to_string();
+            let redirected_path = rule.redirected_path.trim().to_string();
+            if original_path.is_empty() || redirected_path.is_empty() {
+                None
+            } else {
+                Some(SusfsOpenRedirectRuleModel {
+                    original_path,
+                    redirected_path,
+                    stage: normalize_open_redirect_stage(&rule.stage),
+                    uid_scheme: rule.uid_scheme.map(|value| value.clamp(0, 4)),
+                })
+            }
+        })
+        .collect();
+    normalized.kstat_entries = normalized
+        .kstat_entries
+        .into_iter()
+        .filter_map(|entry| {
+            let path = entry.path.trim().to_string();
+            if path.is_empty() {
+                None
+            } else {
+                Some(SusfsKstatEntryModel { path, ..entry })
+            }
+        })
+        .collect();
+    normalized.presets.hide_custom_rom_level = normalized.presets.hide_custom_rom_level.clamp(0, 5);
+    normalized.presets.emulate_vold_app_data_mode =
+        normalized.presets.emulate_vold_app_data_mode.clamp(0, 2);
+    normalized
+}
+
+fn normalize_hide_sus_mounts_mode(value: &str) -> String {
+    match value.trim().to_lowercase().as_str() {
+        "all" => "all".into(),
+        "non_su" => "non_su".into(),
+        _ => "off".into(),
+    }
+}
+
+fn normalize_spoof_uname_stage(value: &str) -> String {
+    match value.trim().to_lowercase().as_str() {
+        "post_fs_data" => "post_fs_data".into(),
+        "boot_completed" => "boot_completed".into(),
+        _ => "off".into(),
+    }
+}
+
+fn normalize_open_redirect_stage(value: &str) -> String {
+    match value.trim().to_lowercase().as_str() {
+        "service" | "1" => "service".into(),
+        _ => "boot_completed".into(),
+    }
+}
+
+fn blank_to_default(value: &str, fallback: &str) -> String {
+    let clean = value.trim();
+    if clean.is_empty() {
+        fallback.to_string()
+    } else {
+        clean.to_string()
+    }
+}
+
+fn normalize_string_list(values: Vec<String>) -> Vec<String> {
+    values
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect()
+}
+
+fn render_susfs_page(
+    state: &Rc<RefCell<SusfsPageState>>,
+    status_label: &gtk::Label,
+    support_label: &gtk::Label,
+    editor_host: &gtk::Box,
+    strings: Strings,
+) {
+    let snapshot = state.borrow().clone();
+    status_label.set_text(&susfs_hub_summary(&snapshot, strings));
+    support_label.set_text(&susfs_support_summary(&snapshot.support, strings));
+    clear_box(editor_host);
+
+    let editable = snapshot.root_granted;
+
+    let core_card = surface_card(
+        localized_text(strings, "核心开关与路径", "Core Flags and Paths"),
+        localized_text(
+            strings,
+            "标量开关、枚举和核心路径都在这里编辑。",
+            "Scalar toggles, enums, and root paths are edited here.",
+        ),
+    );
+    append_switch_row(
+        &core_card,
+        localized_text(strings, "自动回放", "Auto replay"),
+        snapshot.config.auto_replay_enabled,
+        editable,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.auto_replay_enabled = value
+        },
+    );
+    append_switch_row(
+        &core_card,
+        localized_text(strings, "日志开关", "Log enabled"),
+        snapshot.config.log_enabled,
+        editable && snapshot.support.log,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.log_enabled = value
+        },
+    );
+    append_switch_row(
+        &core_card,
+        localized_text(strings, "AVC spoofing", "AVC spoofing"),
+        snapshot.config.avc_log_spoofing,
+        editable && snapshot.support.avc_log_spoofing,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.avc_log_spoofing = value
+        },
+    );
+    append_combo_row(
+        &core_card,
+        localized_text(strings, "隐藏挂载模式", "Hide mounts mode"),
+        &[("off", "off"), ("all", "all"), ("non_su", "non_su")],
+        &snapshot.config.hide_sus_mounts_mode,
+        editable
+            && (snapshot.support.hide_sus_mounts_for_all
+                || snapshot.support.hide_sus_mounts_for_non_su),
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.hide_sus_mounts_mode = value
+        },
+    );
+    append_combo_row(
+        &core_card,
+        localized_text(strings, "Spoof uname 阶段", "Spoof uname stage"),
+        &[
+            ("off", "off"),
+            ("post_fs_data", "post_fs_data"),
+            ("boot_completed", "boot_completed"),
+        ],
+        &snapshot.config.spoof_uname_stage,
+        editable && snapshot.support.set_uname,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.spoof_uname_stage = value
+        },
+    );
+    append_entry_row(
+        &core_card,
+        localized_text(strings, "uname 值", "uname value"),
+        &snapshot.config.uname_value,
+        editable && snapshot.support.set_uname,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.uname_value = value
+        },
+    );
+    append_entry_row(
+        &core_card,
+        localized_text(strings, "build time 值", "build time value"),
+        &snapshot.config.build_time_value,
+        editable && snapshot.support.set_uname,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.build_time_value = value
+        },
+    );
+    append_entry_row(
+        &core_card,
+        localized_text(strings, "sdcard 根路径", "sdcard root path"),
+        &snapshot.config.sdcard_root_path,
+        editable && snapshot.support.sdcard_root_path,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.sdcard_root_path = value
+        },
+    );
+    append_entry_row(
+        &core_card,
+        localized_text(strings, "Android/data 根路径", "Android/data root path"),
+        &snapshot.config.android_data_root_path,
+        editable && snapshot.support.android_data_root_path,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.android_data_root_path = value
+        },
+    );
+    editor_host.append(&core_card);
+
+    let presets_card = surface_card(
+        localized_text(strings, "预设与兼容选项", "Presets and Compatibility"),
+        localized_text(
+            strings,
+            "预设布尔项和整数枚举在这一组统一配置。",
+            "Preset booleans and integer enums are configured together here.",
+        ),
+    );
+    append_entry_row(
+        &presets_card,
+        localized_text(strings, "Hide custom ROM level", "Hide custom ROM level"),
+        &snapshot.presets_hide_custom_rom_level_text(),
+        editable,
+        {
+            let state = state.clone();
+            move |value| {
+                if let Ok(parsed) = value.trim().parse::<i64>() {
+                    state.borrow_mut().config.presets.hide_custom_rom_level = parsed.clamp(0, 5);
+                }
+            }
+        },
+    );
+    append_switch_row(
+        &presets_card,
+        localized_text(strings, "Hide vendor sepolicy", "Hide vendor sepolicy"),
+        snapshot.config.presets.hide_vendor_sepolicy,
+        editable && snapshot.support.hide_vendor_sepolicy_preset,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.presets.hide_vendor_sepolicy = value
+        },
+    );
+    append_switch_row(
+        &presets_card,
+        localized_text(strings, "Hide compat matrix", "Hide compat matrix"),
+        snapshot.config.presets.hide_compat_matrix,
+        editable && snapshot.support.hide_compat_matrix_preset,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.presets.hide_compat_matrix = value
+        },
+    );
+    append_switch_row(
+        &presets_card,
+        localized_text(strings, "Hide GApps", "Hide GApps"),
+        snapshot.config.presets.hide_gapps,
+        editable && snapshot.support.hide_gapps_preset,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.presets.hide_gapps = value
+        },
+    );
+    append_switch_row(
+        &presets_card,
+        localized_text(strings, "Hide ReVanced", "Hide ReVanced"),
+        snapshot.config.presets.hide_revanced,
+        editable && snapshot.support.hide_revanced_preset,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.presets.hide_revanced = value
+        },
+    );
+    append_switch_row(
+        &presets_card,
+        localized_text(strings, "Spoof cmdline", "Spoof cmdline"),
+        snapshot.config.presets.spoof_cmdline,
+        editable && snapshot.support.spoof_cmdline_preset,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.presets.spoof_cmdline = value
+        },
+    );
+    append_switch_row(
+        &presets_card,
+        localized_text(strings, "Hide loops", "Hide loops"),
+        snapshot.config.presets.hide_loops,
+        editable && snapshot.support.hide_loops_preset,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.presets.hide_loops = value
+        },
+    );
+    append_switch_row(
+        &presets_card,
+        localized_text(strings, "Force hide LSPosed", "Force hide LSPosed"),
+        snapshot.config.presets.force_hide_lsposed,
+        editable && snapshot.support.force_hide_lsposed_preset,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.presets.force_hide_lsposed = value
+        },
+    );
+    append_switch_row(
+        &presets_card,
+        localized_text(strings, "Auto tryUmount", "Auto tryUmount"),
+        snapshot.config.presets.auto_try_umount,
+        editable && snapshot.support.auto_try_umount_preset,
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.presets.auto_try_umount = value
+        },
+    );
+    append_switch_row(
+        &presets_card,
+        localized_text(strings, "Skip legit mounts", "Skip legit mounts"),
+        snapshot.config.presets.skip_legit_mounts,
+        editable && (snapshot.support.try_umount || snapshot.support.ksud_kernel_umount_fallback),
+        {
+            let state = state.clone();
+            move |value| state.borrow_mut().config.presets.skip_legit_mounts = value
+        },
+    );
+    append_entry_row(
+        &presets_card,
+        localized_text(
+            strings,
+            "Emulate vold app-data mode",
+            "Emulate vold app-data mode",
+        ),
+        &snapshot.emulate_vold_mode_text(),
+        editable,
+        {
+            let state = state.clone();
+            move |value| {
+                if let Ok(parsed) = value.trim().parse::<i64>() {
+                    state.borrow_mut().config.presets.emulate_vold_app_data_mode =
+                        parsed.clamp(0, 2);
+                }
+            }
+        },
+    );
+    append_switch_row(
+        &presets_card,
+        localized_text(
+            strings,
+            "Zygote iso-service umount",
+            "Zygote iso-service umount",
+        ),
+        snapshot.config.presets.umount_for_zygote_iso_service,
+        editable && snapshot.support.umount_for_zygote_iso_service,
+        {
+            let state = state.clone();
+            move |value| {
+                state
+                    .borrow_mut()
+                    .config
+                    .presets
+                    .umount_for_zygote_iso_service = value
+            }
+        },
+    );
+    editor_host.append(&presets_card);
+
+    append_path_rules_editor(
+        editor_host,
+        state,
+        status_label,
+        support_label,
+        localized_text(strings, "Path Rules", "Path Rules"),
+        localized_text(
+            strings,
+            "普通路径规则，支持路径与可选的重试次数。",
+            "Standard path rules with path and optional retry count.",
+        ),
+        "path_rules",
+        editable && snapshot.support.sus_path,
+        strings,
+    );
+    append_path_rules_editor(
+        editor_host,
+        state,
+        status_label,
+        support_label,
+        localized_text(strings, "Loop Path Rules", "Loop Path Rules"),
+        localized_text(
+            strings,
+            "Loop 路径规则只在 runtime support 明确支持时可编辑。",
+            "Loop path rules are editable only when runtime support exposes them.",
+        ),
+        "loop_path_rules",
+        editable && snapshot.support.sus_path_loop,
+        strings,
+    );
+
+    append_string_list_editor(
+        editor_host,
+        state,
+        localized_text(strings, "Maps", "Maps"),
+        localized_text(strings, "每行一个 map 规则。", "One map rule per line."),
+        "maps",
+        editable && snapshot.support.sus_map,
+        strings,
+    );
+    append_string_list_editor(
+        editor_host,
+        state,
+        localized_text(strings, "Mounts", "Mounts"),
+        localized_text(strings, "每行一个 mount 规则。", "One mount rule per line."),
+        "mounts",
+        editable && snapshot.support.sus_mount,
+        strings,
+    );
+    append_string_list_editor(
+        editor_host,
+        state,
+        localized_text(strings, "TryUmounts", "TryUmounts"),
+        localized_text(
+            strings,
+            "每行一个 tryUmount 项。",
+            "One tryUmount item per line.",
+        ),
+        "try_umounts",
+        editable && snapshot.support.try_umount,
+        strings,
+    );
+    append_string_list_editor(
+        editor_host,
+        state,
+        localized_text(strings, "LegitMounts", "LegitMounts"),
+        localized_text(
+            strings,
+            "每行一个合法挂载路径。",
+            "One legit mount path per line.",
+        ),
+        "legit_mounts",
+        editable && (snapshot.support.try_umount || snapshot.support.ksud_kernel_umount_fallback),
+        strings,
+    );
+
+    append_open_redirects_editor(
+        editor_host,
+        state,
+        status_label,
+        support_label,
+        editable && snapshot.support.open_redirect,
+        strings,
+    );
+    append_kstat_editor(
+        editor_host,
+        state,
+        status_label,
+        support_label,
+        editable && (snapshot.support.static_kstat || snapshot.support.dynamic_kstat),
+        strings,
+    );
+}
+
+fn susfs_support_summary(support: &SusfsSupportMatrixModel, strings: Strings) -> String {
+    let mut parts = Vec::new();
+    if support.sus_path {
+        parts.push(localized_text(strings, "path", "path"));
+    }
+    if support.sus_path_loop {
+        parts.push(localized_text(strings, "loop", "loop"));
+    }
+    if support.sus_map {
+        parts.push("map");
+    }
+    if support.sus_mount {
+        parts.push("mount");
+    }
+    if support.try_umount {
+        parts.push("tryUmount");
+    }
+    if support.open_redirect {
+        parts.push("redirect");
+    }
+    if support.static_kstat || support.dynamic_kstat {
+        parts.push("kstat");
+    }
+    if support.set_uname {
+        parts.push("uname");
+    }
+    if parts.is_empty() {
+        localized_text(
+            strings,
+            "没有报告可写的 SUSFS 功能位。",
+            "No writable SUSFS capabilities were reported.",
+        )
+        .to_string()
+    } else {
+        format!(
+            "{}: {}",
+            localized_text(strings, "支持项", "Supported"),
+            parts.join(", ")
+        )
+    }
+}
+
+fn append_switch_row<F>(
+    card: &gtk::Box,
+    label_text: &str,
+    active: bool,
+    sensitive: bool,
+    on_change: F,
+) where
+    F: Fn(bool) + 'static,
+{
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let label = gtk::Label::new(Some(label_text));
+    label.set_xalign(0.0);
+    label.set_hexpand(true);
+    let switch = gtk::Switch::new();
+    switch.set_active(active);
+    switch.set_sensitive(sensitive);
+    switch.connect_active_notify(move |widget| on_change(widget.is_active()));
+    row.append(&label);
+    row.append(&switch);
+    card.append(&row);
+}
+
+fn append_entry_row<F>(
+    card: &gtk::Box,
+    label_text: &str,
+    value: &str,
+    sensitive: bool,
+    on_change: F,
+) where
+    F: Fn(String) + 'static,
+{
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let label = gtk::Label::new(Some(label_text));
+    label.set_xalign(0.0);
+    label.set_hexpand(true);
+    let entry = gtk::Entry::new();
+    entry.set_hexpand(true);
+    entry.set_text(value);
+    entry.set_sensitive(sensitive);
+    entry.add_css_class("material-entry");
+    entry.connect_changed(move |widget| on_change(widget.text().to_string()));
+    row.append(&label);
+    row.append(&entry);
+    card.append(&row);
+}
+
+fn append_combo_row<F>(
+    card: &gtk::Box,
+    label_text: &str,
+    options: &[(&str, &str)],
+    active_id: &str,
+    sensitive: bool,
+    on_change: F,
+) where
+    F: Fn(String) + 'static,
+{
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let label = gtk::Label::new(Some(label_text));
+    label.set_xalign(0.0);
+    label.set_hexpand(true);
+    let combo = gtk::ComboBoxText::new();
+    combo.set_sensitive(sensitive);
+    for (id, text) in options {
+        combo.append(Some(id), text);
+    }
+    combo.set_active_id(Some(active_id));
+    combo.connect_changed(move |widget| {
+        if let Some(id) = widget.active_id() {
+            on_change(id.to_string());
+        }
+    });
+    row.append(&label);
+    row.append(&combo);
+    card.append(&row);
+}
+
+fn append_path_rules_editor(
+    editor_host: &gtk::Box,
+    state: &Rc<RefCell<SusfsPageState>>,
+    status_label: &gtk::Label,
+    support_label: &gtk::Label,
+    title: &str,
+    body: &str,
+    field_id: &'static str,
+    sensitive: bool,
+    strings: Strings,
+) {
+    let card = surface_card(title, body);
+    let add = gtk::Button::with_label(localized_text(strings, "添加条目", "Add Entry"));
+    add.add_css_class("pill");
+    add.set_sensitive(sensitive);
+    {
+        let state = state.clone();
+        let status_label = status_label.clone();
+        let support_label = support_label.clone();
+        let editor_host = editor_host.clone();
+        add.connect_clicked(move |_| {
+            with_susfs_path_rules_mut(&state, field_id, |rules| {
+                rules.push(SusfsPathRuleModel::default());
+            });
+            render_susfs_page(&state, &status_label, &support_label, &editor_host, strings);
+        });
+    }
+    card.append(&add);
+
+    let rules = {
+        let guard = state.borrow();
+        match field_id {
+            "loop_path_rules" => guard.config.loop_path_rules.clone(),
+            _ => guard.config.path_rules.clone(),
+        }
+    };
+    if rules.is_empty() {
+        let placeholder = gtk::Label::new(Some(localized_text(
+            strings,
+            "当前没有条目。",
+            "No entries configured.",
+        )));
+        placeholder.set_xalign(0.0);
+        placeholder.add_css_class("list-row-subtitle");
+        card.append(&placeholder);
+    } else {
+        for (index, rule) in rules.into_iter().enumerate() {
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            let path = gtk::Entry::new();
+            path.set_hexpand(true);
+            path.set_text(&rule.path);
+            path.set_sensitive(sensitive);
+            path.add_css_class("material-entry");
+            {
+                let state = state.clone();
+                path.connect_changed(move |widget| {
+                    with_susfs_path_rules_mut(&state, field_id, |rules| {
+                        if let Some(item) = rules.get_mut(index) {
+                            item.path = widget.text().to_string();
+                        }
+                    });
+                });
+            }
+            let max = gtk::Entry::new();
+            max.set_width_chars(8);
+            max.set_text(
+                &rule
+                    .max_tries
+                    .map(|value| value.to_string())
+                    .unwrap_or_default(),
+            );
+            max.set_sensitive(sensitive);
+            max.add_css_class("material-entry");
+            {
+                let state = state.clone();
+                max.connect_changed(move |widget| {
+                    with_susfs_path_rules_mut(&state, field_id, |rules| {
+                        if let Some(item) = rules.get_mut(index) {
+                            let value = widget.text().trim().to_string();
+                            item.max_tries = if value.is_empty() {
+                                None
+                            } else {
+                                value.parse::<i64>().ok()
+                            };
+                        }
+                    });
+                });
+            }
+            let remove = gtk::Button::with_label(localized_text(strings, "删除", "Remove"));
+            remove.add_css_class("pill");
+            remove.set_sensitive(sensitive);
+            {
+                let state = state.clone();
+                let status_label = status_label.clone();
+                let support_label = support_label.clone();
+                let editor_host = editor_host.clone();
+                remove.connect_clicked(move |_| {
+                    with_susfs_path_rules_mut(&state, field_id, |rules| {
+                        if index < rules.len() {
+                            rules.remove(index);
+                        }
+                    });
+                    render_susfs_page(&state, &status_label, &support_label, &editor_host, strings);
+                });
+            }
+            row.append(&path);
+            row.append(&max);
+            row.append(&remove);
+            card.append(&row);
+        }
+    }
+    editor_host.append(&card);
+}
+
+fn append_string_list_editor(
+    editor_host: &gtk::Box,
+    state: &Rc<RefCell<SusfsPageState>>,
+    title: &str,
+    body: &str,
+    field_id: &'static str,
+    sensitive: bool,
+    strings: Strings,
+) {
+    let card = surface_card(title, body);
+    let buffer = new_text_buffer();
+    buffer.set_text(&susfs_string_list_text(state, field_id));
+    buffer.connect_changed({
+        let state = state.clone();
+        move |buffer| update_susfs_string_list(state.clone(), field_id, buffer_text(buffer))
+    });
+    let view = new_text_view(&buffer, true);
+    view.set_sensitive(sensitive);
+    view.add_css_class("console-pane");
+    let scroll = new_scroller(&view);
+    scroll.set_min_content_height(120);
+    card.append(&scroll);
+    card.append(&gtk::Label::new(Some(localized_text(
+        strings,
+        "每行一个条目，空行会被忽略。",
+        "One item per line. Blank lines are ignored.",
+    ))));
+    editor_host.append(&card);
+}
+
+fn append_open_redirects_editor(
+    editor_host: &gtk::Box,
+    state: &Rc<RefCell<SusfsPageState>>,
+    status_label: &gtk::Label,
+    support_label: &gtk::Label,
+    sensitive: bool,
+    strings: Strings,
+) {
+    let card = surface_card(
+        localized_text(strings, "Open Redirects", "Open Redirects"),
+        localized_text(
+            strings,
+            "每条规则包含 original、redirected、stage 和可选 uid_scheme。",
+            "Each rule carries original, redirected, stage, and optional uid_scheme.",
+        ),
+    );
+    let add = gtk::Button::with_label(localized_text(strings, "添加条目", "Add Entry"));
+    add.add_css_class("pill");
+    add.set_sensitive(sensitive);
+    {
+        let state = state.clone();
+        let status_label = status_label.clone();
+        let support_label = support_label.clone();
+        let editor_host = editor_host.clone();
+        add.connect_clicked(move |_| {
+            state
+                .borrow_mut()
+                .config
+                .open_redirects
+                .push(SusfsOpenRedirectRuleModel::default());
+            render_susfs_page(&state, &status_label, &support_label, &editor_host, strings);
+        });
+    }
+    card.append(&add);
+    let items = state.borrow().config.open_redirects.clone();
+    if items.is_empty() {
+        append_label_to_card(
+            &card,
+            localized_text(strings, "当前没有条目。", "No entries configured."),
+        );
+    } else {
+        for (index, item) in items.into_iter().enumerate() {
+            let row = gtk::Box::new(gtk::Orientation::Vertical, 8);
+            let original = gtk::Entry::new();
+            original.set_text(&item.original_path);
+            original.set_sensitive(sensitive);
+            original.add_css_class("material-entry");
+            {
+                let state = state.clone();
+                original.connect_changed(move |widget| {
+                    if let Some(rule) = state.borrow_mut().config.open_redirects.get_mut(index) {
+                        rule.original_path = widget.text().to_string();
+                    }
+                });
+            }
+            row.append(&labeled_inline_widget(
+                localized_text(strings, "Original", "Original"),
+                &original,
+            ));
+            let redirected = gtk::Entry::new();
+            redirected.set_text(&item.redirected_path);
+            redirected.set_sensitive(sensitive);
+            redirected.add_css_class("material-entry");
+            {
+                let state = state.clone();
+                redirected.connect_changed(move |widget| {
+                    if let Some(rule) = state.borrow_mut().config.open_redirects.get_mut(index) {
+                        rule.redirected_path = widget.text().to_string();
+                    }
+                });
+            }
+            row.append(&labeled_inline_widget(
+                localized_text(strings, "Redirected", "Redirected"),
+                &redirected,
+            ));
+            let stage = gtk::ComboBoxText::new();
+            stage.append(Some("boot_completed"), "boot_completed");
+            stage.append(Some("service"), "service");
+            stage.set_active_id(Some(&item.stage));
+            stage.set_sensitive(sensitive);
+            {
+                let state = state.clone();
+                stage.connect_changed(move |widget| {
+                    if let Some(rule) = state.borrow_mut().config.open_redirects.get_mut(index) {
+                        if let Some(id) = widget.active_id() {
+                            rule.stage = id.to_string();
+                        }
+                    }
+                });
+            }
+            row.append(&labeled_inline_widget(
+                localized_text(strings, "Stage", "Stage"),
+                &stage,
+            ));
+            let uid = gtk::Entry::new();
+            uid.set_text(
+                &item
+                    .uid_scheme
+                    .map(|value| value.to_string())
+                    .unwrap_or_default(),
+            );
+            uid.set_sensitive(sensitive);
+            uid.add_css_class("material-entry");
+            {
+                let state = state.clone();
+                uid.connect_changed(move |widget| {
+                    if let Some(rule) = state.borrow_mut().config.open_redirects.get_mut(index) {
+                        let value = widget.text().trim().to_string();
+                        rule.uid_scheme = if value.is_empty() {
+                            None
+                        } else {
+                            value.parse::<i64>().ok()
+                        };
+                    }
+                });
+            }
+            row.append(&labeled_inline_widget(
+                localized_text(strings, "uid_scheme", "uid_scheme"),
+                &uid,
+            ));
+            let remove = gtk::Button::with_label(localized_text(strings, "删除", "Remove"));
+            remove.add_css_class("pill");
+            remove.set_sensitive(sensitive);
+            {
+                let state = state.clone();
+                let status_label = status_label.clone();
+                let support_label = support_label.clone();
+                let editor_host = editor_host.clone();
+                remove.connect_clicked(move |_| {
+                    if index < state.borrow().config.open_redirects.len() {
+                        state.borrow_mut().config.open_redirects.remove(index);
+                    }
+                    render_susfs_page(&state, &status_label, &support_label, &editor_host, strings);
+                });
+            }
+            row.append(&remove);
+            card.append(&row);
+        }
+    }
+    editor_host.append(&card);
+}
+
+fn append_kstat_editor(
+    editor_host: &gtk::Box,
+    state: &Rc<RefCell<SusfsPageState>>,
+    status_label: &gtk::Label,
+    support_label: &gtk::Label,
+    sensitive: bool,
+    strings: Strings,
+) {
+    let card = surface_card(
+        localized_text(strings, "Kstat Entries", "Kstat Entries"),
+        localized_text(
+            strings,
+            "每个条目都保留 path 与各个 stat 字段的结构化输入。",
+            "Each entry keeps structured inputs for path plus all stat fields.",
+        ),
+    );
+    let add = gtk::Button::with_label(localized_text(strings, "添加条目", "Add Entry"));
+    add.add_css_class("pill");
+    add.set_sensitive(sensitive);
+    {
+        let state = state.clone();
+        let status_label = status_label.clone();
+        let support_label = support_label.clone();
+        let editor_host = editor_host.clone();
+        add.connect_clicked(move |_| {
+            state
+                .borrow_mut()
+                .config
+                .kstat_entries
+                .push(SusfsKstatEntryModel::default());
+            render_susfs_page(&state, &status_label, &support_label, &editor_host, strings);
+        });
+    }
+    card.append(&add);
+    let items = state.borrow().config.kstat_entries.clone();
+    if items.is_empty() {
+        append_label_to_card(
+            &card,
+            localized_text(strings, "当前没有条目。", "No entries configured."),
+        );
+    } else {
+        for (index, item) in items.into_iter().enumerate() {
+            let section = gtk::Box::new(gtk::Orientation::Vertical, 8);
+            let path = gtk::Entry::new();
+            path.set_text(&item.path);
+            path.set_sensitive(sensitive);
+            path.add_css_class("material-entry");
+            {
+                let state = state.clone();
+                path.connect_changed(move |widget| {
+                    if let Some(entry) = state.borrow_mut().config.kstat_entries.get_mut(index) {
+                        entry.path = widget.text().to_string();
+                    }
+                });
+            }
+            section.append(&labeled_inline_widget(
+                localized_text(strings, "Path", "Path"),
+                &path,
+            ));
+            let grid = gtk::Grid::new();
+            grid.set_column_spacing(10);
+            grid.set_row_spacing(10);
+            append_kstat_field(
+                &grid,
+                0,
+                0,
+                localized_text(strings, "ino", "ino"),
+                &item.ino,
+                sensitive,
+                {
+                    let state = state.clone();
+                    move |value| {
+                        if let Some(entry) = state.borrow_mut().config.kstat_entries.get_mut(index)
+                        {
+                            entry.ino = value;
+                        }
+                    }
+                },
+            );
+            append_kstat_field(
+                &grid,
+                1,
+                0,
+                localized_text(strings, "dev", "dev"),
+                &item.dev,
+                sensitive,
+                {
+                    let state = state.clone();
+                    move |value| {
+                        if let Some(entry) = state.borrow_mut().config.kstat_entries.get_mut(index)
+                        {
+                            entry.dev = value;
+                        }
+                    }
+                },
+            );
+            append_kstat_field(
+                &grid,
+                0,
+                1,
+                localized_text(strings, "nlink", "nlink"),
+                &item.nlink,
+                sensitive,
+                {
+                    let state = state.clone();
+                    move |value| {
+                        if let Some(entry) = state.borrow_mut().config.kstat_entries.get_mut(index)
+                        {
+                            entry.nlink = value;
+                        }
+                    }
+                },
+            );
+            append_kstat_field(
+                &grid,
+                1,
+                1,
+                localized_text(strings, "size", "size"),
+                &item.size,
+                sensitive,
+                {
+                    let state = state.clone();
+                    move |value| {
+                        if let Some(entry) = state.borrow_mut().config.kstat_entries.get_mut(index)
+                        {
+                            entry.size = value;
+                        }
+                    }
+                },
+            );
+            append_kstat_field(
+                &grid,
+                0,
+                2,
+                localized_text(strings, "atime", "atime"),
+                &item.atime,
+                sensitive,
+                {
+                    let state = state.clone();
+                    move |value| {
+                        if let Some(entry) = state.borrow_mut().config.kstat_entries.get_mut(index)
+                        {
+                            entry.atime = value;
+                        }
+                    }
+                },
+            );
+            append_kstat_field(
+                &grid,
+                1,
+                2,
+                localized_text(strings, "atime_nsec", "atime_nsec"),
+                &item.atime_nsec,
+                sensitive,
+                {
+                    let state = state.clone();
+                    move |value| {
+                        if let Some(entry) = state.borrow_mut().config.kstat_entries.get_mut(index)
+                        {
+                            entry.atime_nsec = value;
+                        }
+                    }
+                },
+            );
+            append_kstat_field(
+                &grid,
+                0,
+                3,
+                localized_text(strings, "mtime", "mtime"),
+                &item.mtime,
+                sensitive,
+                {
+                    let state = state.clone();
+                    move |value| {
+                        if let Some(entry) = state.borrow_mut().config.kstat_entries.get_mut(index)
+                        {
+                            entry.mtime = value;
+                        }
+                    }
+                },
+            );
+            append_kstat_field(
+                &grid,
+                1,
+                3,
+                localized_text(strings, "mtime_nsec", "mtime_nsec"),
+                &item.mtime_nsec,
+                sensitive,
+                {
+                    let state = state.clone();
+                    move |value| {
+                        if let Some(entry) = state.borrow_mut().config.kstat_entries.get_mut(index)
+                        {
+                            entry.mtime_nsec = value;
+                        }
+                    }
+                },
+            );
+            append_kstat_field(
+                &grid,
+                0,
+                4,
+                localized_text(strings, "ctime", "ctime"),
+                &item.ctime,
+                sensitive,
+                {
+                    let state = state.clone();
+                    move |value| {
+                        if let Some(entry) = state.borrow_mut().config.kstat_entries.get_mut(index)
+                        {
+                            entry.ctime = value;
+                        }
+                    }
+                },
+            );
+            append_kstat_field(
+                &grid,
+                1,
+                4,
+                localized_text(strings, "ctime_nsec", "ctime_nsec"),
+                &item.ctime_nsec,
+                sensitive,
+                {
+                    let state = state.clone();
+                    move |value| {
+                        if let Some(entry) = state.borrow_mut().config.kstat_entries.get_mut(index)
+                        {
+                            entry.ctime_nsec = value;
+                        }
+                    }
+                },
+            );
+            append_kstat_field(
+                &grid,
+                0,
+                5,
+                localized_text(strings, "blocks", "blocks"),
+                &item.blocks,
+                sensitive,
+                {
+                    let state = state.clone();
+                    move |value| {
+                        if let Some(entry) = state.borrow_mut().config.kstat_entries.get_mut(index)
+                        {
+                            entry.blocks = value;
+                        }
+                    }
+                },
+            );
+            append_kstat_field(
+                &grid,
+                1,
+                5,
+                localized_text(strings, "blksize", "blksize"),
+                &item.blksize,
+                sensitive,
+                {
+                    let state = state.clone();
+                    move |value| {
+                        if let Some(entry) = state.borrow_mut().config.kstat_entries.get_mut(index)
+                        {
+                            entry.blksize = value;
+                        }
+                    }
+                },
+            );
+            section.append(&grid);
+            let remove = gtk::Button::with_label(localized_text(strings, "删除", "Remove"));
+            remove.add_css_class("pill");
+            remove.set_sensitive(sensitive);
+            {
+                let state = state.clone();
+                let status_label = status_label.clone();
+                let support_label = support_label.clone();
+                let editor_host = editor_host.clone();
+                remove.connect_clicked(move |_| {
+                    if index < state.borrow().config.kstat_entries.len() {
+                        state.borrow_mut().config.kstat_entries.remove(index);
+                    }
+                    render_susfs_page(&state, &status_label, &support_label, &editor_host, strings);
+                });
+            }
+            section.append(&remove);
+            card.append(&section);
+        }
+    }
+    editor_host.append(&card);
+}
+
+fn append_kstat_field<F>(
+    grid: &gtk::Grid,
+    column: i32,
+    row: i32,
+    label_text: &str,
+    value: &str,
+    sensitive: bool,
+    on_change: F,
+) where
+    F: Fn(String) + 'static,
+{
+    let cell = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    let label = gtk::Label::new(Some(label_text));
+    label.set_xalign(0.0);
+    let entry = gtk::Entry::new();
+    entry.set_text(value);
+    entry.set_sensitive(sensitive);
+    entry.add_css_class("material-entry");
+    entry.connect_changed(move |widget| on_change(widget.text().to_string()));
+    cell.append(&label);
+    cell.append(&entry);
+    grid.attach(&cell, column, row, 1, 1);
+}
+
+fn labeled_inline_widget(label_text: &str, widget: &impl IsA<gtk::Widget>) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    let label = gtk::Label::new(Some(label_text));
+    label.set_xalign(0.0);
+    row.append(&label);
+    row.append(widget);
+    row
+}
+
+fn append_label_to_card(card: &gtk::Box, text: &str) {
+    let label = gtk::Label::new(Some(text));
+    label.set_xalign(0.0);
+    label.set_wrap(true);
+    label.add_css_class("list-row-subtitle");
+    card.append(&label);
+}
+
+fn with_susfs_path_rules_mut<F>(state: &Rc<RefCell<SusfsPageState>>, field_id: &str, update: F)
+where
+    F: FnOnce(&mut Vec<SusfsPathRuleModel>),
+{
+    let mut guard = state.borrow_mut();
+    match field_id {
+        "loop_path_rules" => update(&mut guard.config.loop_path_rules),
+        _ => update(&mut guard.config.path_rules),
+    }
+}
+
+fn susfs_string_list_text(state: &Rc<RefCell<SusfsPageState>>, field_id: &str) -> String {
+    let guard = state.borrow();
+    let values = match field_id {
+        "mounts" => &guard.config.mounts,
+        "try_umounts" => &guard.config.try_umounts,
+        "legit_mounts" => &guard.config.legit_mounts,
+        _ => &guard.config.maps,
+    };
+    values.join("\n")
+}
+
+fn update_susfs_string_list(state: Rc<RefCell<SusfsPageState>>, field_id: &str, raw: String) {
+    let values = raw
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let mut guard = state.borrow_mut();
+    match field_id {
+        "mounts" => guard.config.mounts = values,
+        "try_umounts" => guard.config.try_umounts = values,
+        "legit_mounts" => guard.config.legit_mounts = values,
+        _ => guard.config.maps = values,
+    }
+}
+
+trait SusfsSnapshotText {
+    fn presets_hide_custom_rom_level_text(&self) -> String;
+    fn emulate_vold_mode_text(&self) -> String;
+}
+
+impl SusfsSnapshotText for SusfsPageState {
+    fn presets_hide_custom_rom_level_text(&self) -> String {
+        self.config.presets.hide_custom_rom_level.to_string()
+    }
+
+    fn emulate_vold_mode_text(&self) -> String {
+        self.config.presets.emulate_vold_app_data_mode.to_string()
     }
 }
 
@@ -2374,7 +5857,11 @@ fn root_grant_icon_widget(
     if package_name.trim().is_empty() {
         return image;
     }
-    if let Some(bytes) = state.borrow().icon_cache.get(package_name) {
+    let cached = {
+        let guard = state.borrow();
+        guard.icon_cache.get(package_name).cloned()
+    };
+    if let Some(bytes) = cached {
         if let Ok(pixbuf) = Pixbuf::from_read(Cursor::new(bytes.clone())) {
             image.set_from_pixbuf(Some(&pixbuf));
             image.set_pixel_size(28);
@@ -2411,13 +5898,14 @@ fn trigger_root_icon_fetch(
     });
 }
 
-fn module_icon_widget(module: &Value) -> gtk::Image {
-    let source = json_str_any_recursive(module, &["source"]).unwrap_or("");
-    let icon_name = if source.contains("abk") {
+fn module_icon_widget(module: &RuntimeModuleEntry) -> gtk::Image {
+    let icon_name = if module.source.contains("abk") {
         "applications-system-symbolic"
-    } else if source.contains("ksud") {
+    } else if module.list_kind == ModuleListKind::Extension {
+        "application-x-addon-symbolic"
+    } else if module.source.contains("ksud") {
         "extension-symbolic"
-    } else if source.contains("kpm") {
+    } else if module.source.contains("kpm") {
         "preferences-system-symbolic"
     } else {
         "application-x-executable-symbolic"
@@ -2813,3 +6301,148 @@ const APP_CSS: &str = r#"
   padding: 6px 12px;
 }
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn filtered_root_entries_match_package_and_sort_granted_first() {
+        let state = RootGrantPageState {
+            entries: vec![
+                RootGrantEntry {
+                    package_name: "com.example.beta".into(),
+                    label: "Beta".into(),
+                    is_system_app: false,
+                    allow_su: false,
+                    raw: Value::Null,
+                },
+                RootGrantEntry {
+                    package_name: "com.example.alpha".into(),
+                    label: "Alpha".into(),
+                    is_system_app: false,
+                    allow_su: true,
+                    raw: Value::Null,
+                },
+            ],
+            search_query: "example".into(),
+            show_system_apps: false,
+            selected_package: None,
+            icon_cache: HashMap::new(),
+            icon_inflight: HashSet::new(),
+        };
+
+        let filtered = filtered_root_entries(&state);
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].package_name, "com.example.alpha");
+        assert_eq!(filtered[1].package_name, "com.example.beta");
+    }
+
+    #[test]
+    fn update_root_grant_state_preserves_existing_order() {
+        let state = Rc::new(RefCell::new(RootGrantPageState {
+            entries: vec![
+                RootGrantEntry {
+                    package_name: "b.pkg".into(),
+                    label: "Beta".into(),
+                    is_system_app: false,
+                    allow_su: false,
+                    raw: json!({"packageName":"b.pkg","label":"Beta","profile":{"allowSu":false}}),
+                },
+                RootGrantEntry {
+                    package_name: "a.pkg".into(),
+                    label: "Alpha".into(),
+                    is_system_app: false,
+                    allow_su: true,
+                    raw: json!({"packageName":"a.pkg","label":"Alpha","profile":{"allowSu":true}}),
+                },
+            ],
+            ..RootGrantPageState::default()
+        }));
+
+        update_root_grant_state(
+            &state,
+            &json!({
+                "apps": [
+                    {"packageName":"a.pkg","label":"Alpha","profile":{"allowSu":false}},
+                    {"packageName":"b.pkg","label":"Beta","profile":{"allowSu":true}}
+                ]
+            }),
+        );
+
+        let guard = state.borrow();
+        assert_eq!(guard.entries[0].package_name, "b.pkg");
+        assert_eq!(guard.entries[1].package_name, "a.pkg");
+    }
+
+    #[test]
+    fn module_state_aggregates_groups_and_extensions() {
+        let state = Rc::new(RefCell::new(ModulePageState::default()));
+        update_module_page_state(
+            &state,
+            &json!({
+                "runtimeStatus": {
+                    "modules": [
+                        {
+                            "id": "core-a",
+                            "name": "Core A",
+                            "source": "abk",
+                            "enabled": true,
+                            "controllable": true,
+                            "group_id": "set-1",
+                            "group_name": "Suite",
+                            "group_role": "primary"
+                        }
+                    ],
+                    "extension_modules": [
+                        {
+                            "id": "ext-b",
+                            "name": "Ext B",
+                            "source": "ksud",
+                            "enabled": false,
+                            "controllable": true,
+                            "has_web_ui": true,
+                            "group_id": "set-1",
+                            "group_name": "Suite",
+                            "group_role": "addon"
+                        }
+                    ]
+                }
+            }),
+        );
+
+        let guard = state.borrow();
+        assert_eq!(guard.modules.len(), 1);
+        assert_eq!(guard.extension_modules.len(), 1);
+        assert_eq!(guard.groups.len(), 1);
+        assert_eq!(guard.groups[0].members.len(), 2);
+        assert_eq!(
+            select_group_webui_target(&guard.groups[0]).unwrap().id,
+            "ext-b"
+        );
+    }
+
+    #[test]
+    fn susfs_apply_body_preserves_unknown_fields() {
+        let state = Rc::new(RefCell::new(SusfsPageState {
+            raw_config: json!({
+                "schemaVersion": 1,
+                "customField": {"keep": true},
+                "presets": {"hideLoops": true, "customPresetField": 7}
+            }),
+            config: SusfsConfigModel {
+                uname_value: "new-kernel".into(),
+                ..SusfsConfigModel::default()
+            },
+            ..SusfsPageState::default()
+        }));
+
+        let body = build_susfs_apply_body(&state).unwrap();
+        let parsed: Value = serde_json::from_str(&body).unwrap();
+
+        assert_eq!(parsed["unameValue"], "new-kernel");
+        assert_eq!(parsed["customField"]["keep"], true);
+        assert_eq!(parsed["presets"]["customPresetField"], 7);
+    }
+}

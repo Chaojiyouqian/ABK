@@ -24,7 +24,11 @@ adb shell am start-foreground-service \
 - `GET /api/v1/session`
 - `GET /api/v1/runtime`
 - `GET /api/v1/root-grants`
+- `GET /api/v1/root-grants/{packageName}/icon`
 - `GET /api/v1/susfs`
+- `GET /api/v1/runtime/modules/{moduleId}/webui/files`
+- `GET /api/v1/runtime/modules/{moduleId}/webui/files/{relativePath...}`
+- `GET /api/v1/runtime/modules/{moduleId}/webui/module-info`
 - `GET /api/v1/tasks/{taskId}`
 - `GET /api/v1/tasks/{taskId}/download`
 
@@ -39,6 +43,10 @@ adb shell am start-foreground-service \
 - `POST /api/v1/runtime/modules/{moduleId}/pending-uninstall`
   - Body: `{ "pending": true|false }`
 - `POST /api/v1/runtime/modules/{moduleId}/action`
+- `POST /api/v1/runtime/modules/{moduleId}/webui/exec`
+  - Body: `{ "command": "sh line", "options": { "cwd": "...", "env": { "KEY": "VALUE" } } }`
+- `POST /api/v1/runtime/modules/{moduleId}/webui/spawn`
+  - Body: `{ "command": "binary", "args": ["--flag"], "options": { "cwd": "...", "env": { "KEY": "VALUE" } } }`
 - `POST /api/v1/install/module`
   - Body: `{ "zipPath": "/path/on/device" }`
 - `POST /api/v1/install/apk`

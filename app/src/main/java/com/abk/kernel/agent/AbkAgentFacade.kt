@@ -29,6 +29,8 @@ import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import java.io.ByteArrayOutputStream
+import org.json.JSONArray
+import org.json.JSONObject
 
 internal data class AbkAgentSessionResponse(
     @SerializedName("protocolVersion") val protocolVersion: String,
@@ -162,6 +164,69 @@ internal object AbkAgentFacade {
             if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) return null
             output.toByteArray()
         }
+    }
+
+    fun readRuntimeModuleWebResource(moduleId: String, relativePath: String?): ByteArray? {
+        val cleanModuleId = moduleId.trim()
+        if (!RootUtils.isSafeModuleIdForPath(cleanModuleId)) return null
+        val targetPath = relativePath?.trim().orEmpty().ifBlank { "index.html" }
+        return RootUtils.readModuleWebResource(cleanModuleId, targetPath)
+            ?: if (targetPath == "index.html") {
+                RootUtils.readModuleWebResource(cleanModuleId, "index.htm")
+            } else {
+                null
+            }
+    }
+
+    fun runtimeModuleWebInfoJson(moduleId: String): String {
+        val cleanModuleId = moduleId.trim()
+        if (!RootUtils.isSafeModuleIdForPath(cleanModuleId)) return "{}"
+        return RootUtils.moduleInfoJson(cleanModuleId)
+    }
+
+    fun executeRuntimeModuleWebCommand(
+        moduleId: String,
+        command: String,
+        optionsJson: String?,
+    ): RootUtils.ShellResult {
+        val moduleDir = moduleDirForWebUi(moduleId)
+            ?: return RootUtils.ShellResult(false, listOf("module webui unavailable"))
+        val cleanCommand = command.trim()
+        if (cleanCommand.isBlank()) {
+            return RootUtils.ShellResult(false, listOf("command missing"))
+        }
+        val finalCommand = commandWithOptions(cleanCommand, optionsJson, moduleDir)
+        return RootUtils.execRootCommandForWebUi(finalCommand, cwd = moduleDir)
+    }
+
+    fun spawnRuntimeModuleWebCommand(
+        moduleId: String,
+        command: String,
+        argsJson: String?,
+        optionsJson: String?,
+    ): RootUtils.ShellResult {
+        val moduleDir = moduleDirForWebUi(moduleId)
+            ?: return RootUtils.ShellResult(false, listOf("module webui unavailable"))
+        val cleanCommand = command.trim()
+        if (cleanCommand.isBlank()) {
+            return RootUtils.ShellResult(false, listOf("command missing"))
+        }
+        val argString = runCatching {
+            val array = JSONArray(argsJson ?: "[]")
+            buildString {
+                for (index in 0 until array.length()) {
+                    val item = array.optString(index)
+                    if (item.isBlank()) continue
+                    if (isNotEmpty()) append(' ')
+                    append(shellQuote(item))
+                }
+            }
+        }.getOrDefault("")
+        val baseCommand = listOf(cleanCommand, argString)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+        val finalCommand = commandWithOptions(baseCommand, optionsJson, moduleDir)
+        return RootUtils.execRootCommandForWebUi(finalCommand, cwd = moduleDir)
     }
 
     fun setRootGrantAllowed(
@@ -354,4 +419,44 @@ internal object AbkAgentFacade {
             Bitmap.createScaledBitmap(bitmap, sizePx, sizePx, true)
         }
     }
+
+    private fun moduleDirForWebUi(moduleId: String): String? {
+        val cleanModuleId = moduleId.trim()
+        if (!RootUtils.isSafeModuleIdForPath(cleanModuleId)) return null
+        return "/data/adb/modules/$cleanModuleId"
+    }
+
+    private fun commandWithOptions(
+        command: String,
+        optionsJson: String?,
+        moduleDir: String,
+    ): String {
+        if (optionsJson.isNullOrBlank()) return command
+        val options = runCatching { JSONObject(optionsJson) }.getOrNull() ?: return command
+        val prefix = buildString {
+            options.optJSONObject("env")?.let { env ->
+                val keys = env.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    append("export ")
+                    append(key)
+                    append("=")
+                    append(shellQuote(env.optString(key)))
+                    append('\n')
+                }
+            }
+            options.optString("cwd")
+                .takeIf { it.isNotBlank() }
+                ?.let { cwd ->
+                    append("cd ")
+                    append(shellQuote(cwd))
+                    append(" 2>/dev/null || exit 2\n")
+                }
+                ?: append("cd ${shellQuote(moduleDir)} 2>/dev/null || exit 2\n")
+        }
+        return prefix + command
+    }
+
+    private fun shellQuote(value: String): String =
+        "'${value.replace("'", "'\"'\"'")}'"
 }
