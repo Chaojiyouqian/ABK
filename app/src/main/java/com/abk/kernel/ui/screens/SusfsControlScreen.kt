@@ -340,8 +340,7 @@ internal fun SusfsControlScreen(
                     AbkSegmentedButtonOption(level, level.toString())
                 },
                 selected = hideCustomRomLevel,
-                onSelect = { hideCustomRomLevel = it },
-                equalWidth = false
+                onSelect = { hideCustomRomLevel = it }
             )
             SegmentedSetting(
                 title = stringResource(R.string.susfs_preset_emulate_vold_app_data),
@@ -351,8 +350,7 @@ internal fun SusfsControlScreen(
                     AbkSegmentedButtonOption(2, "sus_path_loop"),
                 ),
                 selected = emulateVoldAppDataMode,
-                onSelect = { emulateVoldAppDataMode = it },
-                equalWidth = false
+                onSelect = { emulateVoldAppDataMode = it }
             )
             ExpressiveSwitchItem(stringResource(R.string.susfs_toggle_hide_vendor_sepolicy), hideVendorSepolicy, { hideVendorSepolicy = it })
             ExpressiveSwitchItem(stringResource(R.string.susfs_toggle_hide_compat_matrix), hideCompatMatrix, { hideCompatMatrix = it })
