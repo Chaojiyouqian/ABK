@@ -1,4 +1,4 @@
-package com.abk.kernel.viewmodel
+﻿package com.abk.kernel.viewmodel
 
 import android.app.Application
 import androidx.annotation.StringRes
@@ -458,7 +458,16 @@ class RuntimeCoordinator(
                     )
                 }
             } else {
-                updateState { it.copy(abkRuntimeModuleActionId = null) }
+                updateState {
+                    it.copy(
+                        abkRuntimeModuleActionId = null,
+                        abkRuntimeStatus = it.abkRuntimeStatus?.copy(
+                            modules = it.abkRuntimeStatus.modules.map { mod ->
+                                if (mod.id == cleanId) mod.copy(enabled = enabled) else mod
+                            }
+                        )
+                    )
+                }
             }
         }
     }

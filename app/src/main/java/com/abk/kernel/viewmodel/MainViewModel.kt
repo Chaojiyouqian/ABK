@@ -1,4 +1,4 @@
-package com.abk.kernel.viewmodel
+﻿package com.abk.kernel.viewmodel
 
 import android.app.Application
 import androidx.annotation.VisibleForTesting
@@ -188,7 +188,7 @@ data class MainUiState(
     val customAccentColorArgb: Int? = null,
     val uiStyle: String = "material",
     val miuixBlurEnabled: Boolean = true,
-    val miuixFloatingBottomBarEnabled: Boolean = true,
+    val miuixFloatingBottomBarEnabled: Boolean = false,
     val miuixLiquidGlassEnabled: Boolean = true,
     val customBackgroundUri: String? = null,
     val backgroundImageEnabled: Boolean = false,

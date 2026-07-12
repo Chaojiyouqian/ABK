@@ -1,4 +1,4 @@
-package com.abk.kernel.miuix
+﻿package com.abk.kernel.miuix
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -762,12 +763,12 @@ private fun AbkMiuixMainScaffold(
                             else -> {
                                 BlurredBar(blurBackdrop, surfaceColor) {
                                     MiuixNavigationBar(
-                                        modifier = Modifier.fillMaxWidth(),
+                                        modifier = Modifier.fillMaxWidth().height(80.dp),
                                         color = if (blurBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface,
                                     ) {
                                         visibleTabs.forEach { tab ->
                                             MiuixNavigationBarItem(
-                                                modifier = Modifier.weight(1f),
+                                                modifier = Modifier.weight(1f).height(80.dp),
                                                 selected = activeTab == tab,
                                                 onClick = { if (!childPageVisible && tab in visibleTabs) selectedTab = tab },
                                                 enabled = !childPageVisible,

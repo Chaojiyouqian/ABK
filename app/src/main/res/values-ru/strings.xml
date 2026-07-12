@@ -1,4 +1,4 @@
-<resources>
+﻿<resources>
     <string name="app_name">AnyBase Kernel</string>
     <string name="app_full_name">AnyBase Kernel</string>
 
@@ -680,6 +680,7 @@
     <string name="settings_ui_opacity">Непрозрачность интерфейса</string>
     <string name="settings_ui_opacity_desc">При уменьшении карточки, верхняя и нижняя панели начинают пропускать фон.</string>
     <string name="settings_ui_style">Стиль интерфейса</string>
+    <string name="settings_ui_style_miuix_subtitle">Использовать язык дизайна Xiaomi HyperOS</string>
     <string name="settings_blur">Размытие</string>
     <string name="settings_floating_bottom_bar">Плавающая нижняя панель</string>
     <string name="settings_visual_effects">Визуальные эффекты</string>
@@ -1261,4 +1262,9 @@
 
     <!-- Search -->
     <string name="search_cancel">Отмена</string>
+
+    <!-- Sort options -->
+    <string name="sort_default">По умолчанию</string>
+    <string name="sort_name_asc">Имя А-Я</string>
+    <string name="sort_name_desc">Имя Я-А</string>
 </resources>

@@ -118,14 +118,28 @@ private data class GroupedApp(
     val anyCustom: Boolean,
 )
 
-private enum class SortOption(val label: String) {
-    NAME_ASC("名称 A-Z"),
-    NAME_DESC("名称 Z-A"),
-    UID_ASC("UID ↑"),
-    UID_DESC("UID ↓"),
+private enum class SortOption {
+    DEFAULT,
+    NAME_ASC,
+    NAME_DESC,
+    UID_ASC,
+    UID_DESC,
 }
 
-// ── Main screen ──
+@Composable
+private fun SortOption.toLabel(): String {
+    val labelRes = when (this) {
+        SortOption.DEFAULT -> R.string.sort_default
+        SortOption.NAME_ASC -> R.string.sort_name_asc
+        SortOption.NAME_DESC -> R.string.sort_name_desc
+        else -> null
+    }
+    return when (this) {
+        SortOption.UID_ASC -> "UID ↑"
+        SortOption.UID_DESC -> "UID ↓"
+        else -> if (labelRes != null) stringResource(labelRes) else ""
+    }
+}// ── Main screen ──
 
 @Composable
 fun RootAuthorizationScreenMiuix(
@@ -142,7 +156,7 @@ fun RootAuthorizationScreenMiuix(
     val query = searchStatus.searchText
 
     // Sort & filter state
-    var sortOption by remember { mutableStateOf(SortOption.NAME_ASC) }
+    var sortOption by remember { mutableStateOf(SortOption.DEFAULT) }
     var showSystemApps by rememberSaveable { mutableStateOf(false) }
     var showSortPopup by remember { mutableStateOf(false) }
     var showMorePopup by remember { mutableStateOf(false) }
@@ -188,6 +202,7 @@ fun RootAuthorizationScreenMiuix(
             }
             .sortedWith(
                 when (sortOption) {
+                    SortOption.DEFAULT -> compareByDescending<GroupedApp> { it.anyAllowSu }.thenBy { it.label.lowercase() }
                     SortOption.NAME_ASC -> compareBy { it.label.lowercase() }
                     SortOption.NAME_DESC -> compareByDescending { it.label.lowercase() }
                     SortOption.UID_ASC -> compareBy { it.uid }
@@ -250,7 +265,7 @@ fun RootAuthorizationScreenMiuix(
                                     ListPopupColumn {
                                         SortOption.entries.forEachIndexed { index, option ->
                                             DropdownImpl(
-                                                text = option.label,
+                                                text = option.toLabel(),
                                                 optionSize = SortOption.entries.size,
                                                 isSelected = option == sortOption,
                                                 index = index,

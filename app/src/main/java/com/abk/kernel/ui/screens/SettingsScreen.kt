@@ -1,4 +1,4 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+﻿@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 
 package com.abk.kernel.ui.screens
 
@@ -1418,15 +1418,49 @@ private fun ThemeSettingsScreen(
             .padding(horizontal = AbkScreenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        SettingsGroup(title = "UI 风格") {
-            ExpressiveSwitchItem(
+        SettingsGroup(title = stringResource(R.string.settings_ui_style)) {
+            var uiStyleExpanded by remember { mutableStateOf(false) }
+            val uiStyleOptions = remember { listOf("material", "miuix") }
+            val uiStyleLabels = remember {
+                mapOf("material" to "Material 3", "miuix" to "MIUIX")
+            }
+            val currentUiLabel = uiStyleLabels[uiStyle] ?: uiStyle
+            ExpressiveListItem(
                 title = "MIUIX",
-                subtitle = "使用小米 HyperOS 设计语言（试点）",
-                icon = Icons.Default.Style,
-                checked = uiStyle == "miuix",
-                onCheckedChange = { enabled ->
-                    onUiStyleChange(if (enabled) "miuix" else "material")
-                }
+                subtitle = stringResource(R.string.settings_ui_style_miuix_subtitle),
+                leadingIcon = Icons.Default.Style,
+                trailingContent = {
+                    Box {
+                        TextButton(
+                            onClick = { uiStyleExpanded = true },
+                            modifier = Modifier.offset(x = 8.dp)
+                        ) {
+                            Text(currentUiLabel)
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                        }
+                        DropdownMenu(
+                            expanded = uiStyleExpanded,
+                            onDismissRequest = { uiStyleExpanded = false }
+                        ) {
+                            uiStyleOptions.forEach { option ->
+                                val label = uiStyleLabels[option] ?: option
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    leadingIcon = {
+                                        if (option == uiStyle) {
+                                            Icon(Icons.Default.Check, contentDescription = null)
+                                        }
+                                    },
+                                    onClick = {
+                                        if (option != uiStyle) onUiStyleChange(option)
+                                        uiStyleExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                },
+                onClick = { uiStyleExpanded = true }
             )
         }
 

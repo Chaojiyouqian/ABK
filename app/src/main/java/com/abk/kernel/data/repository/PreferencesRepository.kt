@@ -187,7 +187,7 @@ class PreferencesRepository(private val context: Context) {
     val miuixColorStyle: Flow<String> = context.dataStore.data.map { it[KEY_MIUIX_COLOR_STYLE] ?: "TonalSpot" }
     val miuixColorSpec: Flow<String> = context.dataStore.data.map { it[KEY_MIUIX_COLOR_SPEC] ?: "Spec2021" }
     val miuixBlurEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_MIUIX_BLUR_ENABLED] ?: true }
-    val miuixFloatingBottomBarEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_MIUIX_FLOATING_BOTTOM_BAR_ENABLED] ?: true }
+    val miuixFloatingBottomBarEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_MIUIX_FLOATING_BOTTOM_BAR_ENABLED] ?: false }
     val miuixLiquidGlassEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_MIUIX_LIQUID_GLASS_ENABLED] ?: true }
 
     suspend fun saveToken(token: String) = context.dataStore.edit { it[KEY_ACCESS_TOKEN] = token }
