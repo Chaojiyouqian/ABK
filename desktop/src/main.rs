@@ -9,8 +9,14 @@ use crate::commands::{
 use adw::prelude::*;
 use gdk_pixbuf::Pixbuf;
 use gtk::{gdk, glib};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::io::Cursor;
+use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::Duration;
@@ -22,7 +28,32 @@ enum UiMessage {
     SessionSnapshot(Value),
     RuntimeSnapshot(Value),
     RootSnapshot(Value),
+    RootIconLoaded(String, Vec<u8>),
     SusfsSnapshot(Value),
+}
+
+#[derive(Debug, Clone)]
+struct RootGrantEntry {
+    package_name: String,
+    label: String,
+    is_system_app: bool,
+    allow_su: bool,
+    raw: Value,
+}
+
+#[derive(Debug, Default)]
+struct RootGrantPageState {
+    entries: Vec<RootGrantEntry>,
+    search_query: String,
+    show_system_apps: bool,
+    selected_package: Option<String>,
+    icon_cache: HashMap<String, Vec<u8>>,
+    icon_inflight: HashSet<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct DesktopPrefs {
+    show_system_apps: Option<bool>,
 }
 
 #[derive(Clone, Copy)]
@@ -95,6 +126,25 @@ struct Strings {
     device_susfs: &'static str,
     grants_title: &'static str,
     grants_body: &'static str,
+    grants_manage: &'static str,
+    grants_page_title: &'static str,
+    grants_page_body: &'static str,
+    grants_page_back: &'static str,
+    grants_search_placeholder: &'static str,
+    grants_show_system_apps: &'static str,
+    grants_detail_title: &'static str,
+    grants_detail_body: &'static str,
+    grants_detail_back: &'static str,
+    grants_detail_package: &'static str,
+    grants_detail_type: &'static str,
+    grants_detail_status: &'static str,
+    grants_detail_system: &'static str,
+    grants_detail_user: &'static str,
+    grants_detail_allow: &'static str,
+    grants_detail_revoke: &'static str,
+    grants_detail_profile_json: &'static str,
+    grants_summary_hidden_system: &'static str,
+    grants_summary_showing_system: &'static str,
     modules_title: &'static str,
     modules_body: &'static str,
     uninstall_module: &'static str,
@@ -195,6 +245,25 @@ const ZH: Strings = Strings {
     device_susfs: "SUSFS",
     grants_title: "Root 授权",
     grants_body: "按包名允许或撤销 Root 权限。",
+    grants_manage: "管理 544 个应用",
+    grants_page_title: "Root 授权管理",
+    grants_page_body: "搜索应用、切换系统应用显示，并从列表进入单应用详情页。",
+    grants_page_back: "返回设备页",
+    grants_search_placeholder: "搜索应用名或包名",
+    grants_show_system_apps: "显示系统应用",
+    grants_detail_title: "应用详情",
+    grants_detail_body: "保留快速授权切换，把 profile 细节和原始 JSON 下沉到详情页。",
+    grants_detail_back: "返回 Root 授权列表",
+    grants_detail_package: "包名",
+    grants_detail_type: "类型",
+    grants_detail_status: "当前授权",
+    grants_detail_system: "系统应用",
+    grants_detail_user: "用户应用",
+    grants_detail_allow: "允许 Root",
+    grants_detail_revoke: "撤销 Root",
+    grants_detail_profile_json: "Profile JSON",
+    grants_summary_hidden_system: "默认隐藏系统应用",
+    grants_summary_showing_system: "当前显示系统应用",
     modules_title: "运行时模块",
     modules_body: "启用、禁用、标记卸载或运行模块 action。",
     uninstall_module: "标记卸载",
@@ -295,6 +364,25 @@ const EN: Strings = Strings {
     device_susfs: "SUSFS",
     grants_title: "Root Grants",
     grants_body: "Allow or revoke root access by package name.",
+    grants_manage: "Manage 544 apps",
+    grants_page_title: "Root Grant Management",
+    grants_page_body: "Search apps, toggle system-app visibility, and open a dedicated detail page for each app.",
+    grants_page_back: "Back to Device",
+    grants_search_placeholder: "Search by app name or package",
+    grants_show_system_apps: "Show system apps",
+    grants_detail_title: "App Details",
+    grants_detail_body: "Keep fast grant toggles in the list and move profile detail plus raw JSON into a focused page.",
+    grants_detail_back: "Back to Root Grant List",
+    grants_detail_package: "Package",
+    grants_detail_type: "Type",
+    grants_detail_status: "Grant Status",
+    grants_detail_system: "System app",
+    grants_detail_user: "User app",
+    grants_detail_allow: "Allow Root",
+    grants_detail_revoke: "Revoke Root",
+    grants_detail_profile_json: "Profile JSON",
+    grants_summary_hidden_system: "System apps hidden by default",
+    grants_summary_showing_system: "Currently showing system apps",
     modules_title: "Runtime Modules",
     modules_body: "Enable, disable, mark uninstall, or run module actions.",
     uninstall_module: "Mark Uninstall",
@@ -377,6 +465,7 @@ fn build_ui(app: &adw::Application) {
     let build_output = build_page.output;
     let activity_output = device_page.activity_log;
     let device_port_entry = device_page.port_entry.clone();
+    let device_nav_stack = device_page.nav_stack.clone();
     let session_output = device_page.session_output;
     let runtime_output = device_page.runtime_output;
     let root_output = device_page.root_output;
@@ -386,9 +475,127 @@ fn build_ui(app: &adw::Application) {
     let runtime_summary = device_page.runtime_summary;
     let root_summary = device_page.root_summary;
     let susfs_summary = device_page.susfs_summary;
+    let root_summary_caption = device_page.root_summary_caption;
+    let root_manage_button = device_page.root_manage_button.clone();
+    let root_page_count = device_page.root_page_count;
+    let root_search_entry = device_page.root_search_entry.clone();
+    let root_system_switch = device_page.root_system_switch.clone();
     let root_list = device_page.root_list;
+    let root_detail_title = device_page.root_detail_title;
+    let root_detail_icon = device_page.root_detail_icon;
+    let root_detail_package = device_page.root_detail_package;
+    let root_detail_type = device_page.root_detail_type;
+    let root_detail_status = device_page.root_detail_status;
+    let root_detail_json = device_page.root_detail_json;
+    let root_detail_switch = device_page.root_detail_switch.clone();
     let module_list = device_page.module_list;
     let interaction_sender = sender.clone();
+    let root_state = device_page.root_state.clone();
+
+    {
+        let nav_stack = device_nav_stack.clone();
+        root_manage_button.connect_clicked(move |_| {
+            nav_stack.set_visible_child_name("root-grants");
+        });
+    }
+
+    {
+        let root_state = root_state.clone();
+        let root_list = root_list.clone();
+        let root_page_count = root_page_count.clone();
+        let root_summary_caption = root_summary_caption.clone();
+        let sender = interaction_sender.clone();
+        let port_entry = device_port_entry.clone();
+        root_search_entry.connect_search_changed(move |entry| {
+            root_state.borrow_mut().search_query = entry.text().to_string();
+            render_root_grant_page(
+                &root_state,
+                &root_list,
+                &root_page_count,
+                &root_summary_caption,
+                &sender,
+                &port_entry,
+                strings,
+            );
+        });
+    }
+
+    {
+        let root_state = root_state.clone();
+        let root_list = root_list.clone();
+        let root_page_count = root_page_count.clone();
+        let root_summary_caption = root_summary_caption.clone();
+        let sender = interaction_sender.clone();
+        let port_entry = device_port_entry.clone();
+        root_system_switch.connect_active_notify(move |switch| {
+            let active = switch.is_active();
+            let mut state = root_state.borrow_mut();
+            state.show_system_apps = active;
+            save_show_system_apps_pref(active);
+            drop(state);
+            render_root_grant_page(
+                &root_state,
+                &root_list,
+                &root_page_count,
+                &root_summary_caption,
+                &sender,
+                &port_entry,
+                strings,
+            );
+        });
+    }
+
+    {
+        let root_state = root_state.clone();
+        let nav_stack = device_nav_stack.clone();
+        let detail_title = root_detail_title.clone();
+        let detail_icon = root_detail_icon.clone();
+        let detail_package = root_detail_package.clone();
+        let detail_type = root_detail_type.clone();
+        let detail_status = root_detail_status.clone();
+        let detail_json = root_detail_json.clone();
+        let detail_switch = root_detail_switch.clone();
+        let sender = interaction_sender.clone();
+        let port_entry = device_port_entry.clone();
+        root_list.connect_row_activated(move |_list, row| {
+            let package = row.widget_name().to_string();
+            if package.is_empty() {
+                return;
+            }
+            root_state.borrow_mut().selected_package = Some(package.clone());
+            render_root_grant_detail(
+                &root_state,
+                &package,
+                &detail_title,
+                &detail_icon,
+                &detail_package,
+                &detail_type,
+                &detail_status,
+                &detail_json,
+                &detail_switch,
+                &sender,
+                &port_entry,
+                strings,
+            );
+            nav_stack.set_visible_child_name("root-grant-detail");
+        });
+    }
+
+    {
+        let sender = interaction_sender.clone();
+        let port_entry = device_port_entry.clone();
+        root_detail_switch.connect_active_notify(move |switch| {
+            let package = switch.widget_name().to_string();
+            if package.is_empty() {
+                return;
+            }
+            spawn_agent_sync_call(parse_port(&port_entry.text()), sender.clone(), {
+                let package = package.clone();
+                let active = switch.is_active();
+                move |client| client.set_root_grant(&package, active)
+            });
+        });
+    }
 
     glib::timeout_add_local(Duration::from_millis(100), move || {
         while let Ok(message) = receiver.try_recv() {
@@ -425,13 +632,53 @@ fn build_ui(app: &adw::Application) {
                     let root_text = summarize_root_grants(&value);
                     root_summary.set_text(&root_text);
                     overview_root_status.set_text(&root_text);
-                    render_root_grant_rows(
+                    update_root_grant_state(&root_state, &value);
+                    let show_system_apps = root_state.borrow().show_system_apps;
+                    root_system_switch.set_active(show_system_apps);
+                    render_root_grant_page(
+                        &root_state,
                         &root_list,
-                        &value,
+                        &root_page_count,
+                        &root_summary_caption,
                         &interaction_sender,
                         &device_port_entry,
                         strings,
                     );
+                }
+                UiMessage::RootIconLoaded(package_name, bytes) => {
+                    handle_root_icon_loaded(
+                        &root_state,
+                        &package_name,
+                        bytes,
+                        &root_list,
+                        &root_page_count,
+                        &root_summary_caption,
+                        &interaction_sender,
+                        &device_port_entry,
+                        strings,
+                    );
+                    if root_state
+                        .borrow()
+                        .selected_package
+                        .as_deref()
+                        .map(|selected| selected == package_name)
+                        .unwrap_or(false)
+                    {
+                        render_root_grant_detail(
+                            &root_state,
+                            &package_name,
+                            &root_detail_title,
+                            &root_detail_icon,
+                            &root_detail_package,
+                            &root_detail_type,
+                            &root_detail_status,
+                            &root_detail_json,
+                            &root_detail_switch,
+                            &interaction_sender,
+                            &device_port_entry,
+                            strings,
+                        );
+                    }
                 }
                 UiMessage::SusfsSnapshot(value) => {
                     if let Ok(text) = pretty_json_value(&value) {
@@ -469,9 +716,10 @@ struct BuildPage {
 }
 
 struct DevicePage {
-    container: gtk::ScrolledWindow,
+    container: gtk::Stack,
     activity_log: gtk::TextBuffer,
     port_entry: gtk::Entry,
+    nav_stack: gtk::Stack,
     session_output: gtk::TextBuffer,
     runtime_output: gtk::TextBuffer,
     root_output: gtk::TextBuffer,
@@ -481,8 +729,21 @@ struct DevicePage {
     runtime_summary: gtk::Label,
     root_summary: gtk::Label,
     susfs_summary: gtk::Label,
+    root_summary_caption: gtk::Label,
+    root_manage_button: gtk::Button,
+    root_page_count: gtk::Label,
+    root_search_entry: gtk::SearchEntry,
+    root_system_switch: gtk::Switch,
     root_list: gtk::ListBox,
+    root_detail_title: gtk::Label,
+    root_detail_icon: gtk::Image,
+    root_detail_package: gtk::Label,
+    root_detail_type: gtk::Label,
+    root_detail_status: gtk::Label,
+    root_detail_json: gtk::TextBuffer,
+    root_detail_switch: gtk::Switch,
     module_list: gtk::ListBox,
+    root_state: Rc<RefCell<RootGrantPageState>>,
 }
 
 fn build_navigation_rail(stack: &gtk::Stack, strings: Strings) -> gtk::Box {
@@ -784,7 +1045,12 @@ fn build_build_page(sender: &Sender<UiMessage>, strings: Strings) -> BuildPage {
 }
 
 fn build_device_page(sender: &Sender<UiMessage>, strings: Strings) -> DevicePage {
-    let (container, body) = new_page_shell();
+    let nav_stack = gtk::Stack::new();
+    nav_stack.set_hexpand(true);
+    nav_stack.set_vexpand(true);
+    nav_stack.set_transition_type(gtk::StackTransitionType::SlideLeftRight);
+
+    let (main_container, body) = new_page_shell();
     body.append(&hero_card(
         strings.device_kicker,
         strings.device_title,
@@ -934,12 +1200,22 @@ fn build_device_page(sender: &Sender<UiMessage>, strings: Strings) -> DevicePage
     ops_grid.set_row_spacing(16);
     ops_grid.set_column_homogeneous(true);
 
+    let prefs = load_desktop_prefs();
+    let root_state = Rc::new(RefCell::new(RootGrantPageState {
+        show_system_apps: prefs.show_system_apps.unwrap_or(false),
+        ..RootGrantPageState::default()
+    }));
+
     let grants_card = surface_card(strings.grants_title, strings.grants_body);
-    let root_list = gtk::ListBox::new();
-    root_list.add_css_class("plain-list");
-    let root_scroll = new_scroller(&root_list);
-    root_scroll.set_min_content_height(230);
-    grants_card.append(&root_scroll);
+    let root_summary_caption = gtk::Label::new(Some(strings.grants_summary_hidden_system));
+    root_summary_caption.set_xalign(0.0);
+    root_summary_caption.add_css_class("list-row-subtitle");
+    grants_card.append(&root_summary_caption);
+
+    let root_manage_button = gtk::Button::with_label(strings.grants_manage);
+    root_manage_button.add_css_class("suggested-action");
+    root_manage_button.add_css_class("pill");
+    grants_card.append(&root_manage_button);
 
     let modules_card = surface_card(strings.modules_title, strings.modules_body);
     let module_list = gtk::ListBox::new();
@@ -1132,10 +1408,137 @@ fn build_device_page(sender: &Sender<UiMessage>, strings: Strings) -> DevicePage
     activity.append(&activity_scroll);
     body.append(&activity);
 
+    let (root_page_container, root_page_body) = new_page_shell();
+    let root_page_header = hero_card(
+        strings.grants_title,
+        strings.grants_page_title,
+        strings.grants_page_body,
+    );
+    let root_page_back = gtk::Button::with_label(strings.grants_page_back);
+    root_page_back.add_css_class("pill");
+    {
+        let nav_stack = nav_stack.clone();
+        root_page_back.connect_clicked(move |_| {
+            nav_stack.set_visible_child_name("main");
+        });
+    }
+    root_page_header.append(&root_page_back);
+    root_page_body.append(&root_page_header);
+
+    let root_filter_card = surface_card(strings.grants_title, strings.grants_body);
+    let root_page_count = gtk::Label::new(Some("0"));
+    root_page_count.set_xalign(0.0);
+    root_page_count.add_css_class("card-title");
+    root_filter_card.append(&root_page_count);
+
+    let root_search_entry = gtk::SearchEntry::new();
+    root_search_entry.set_placeholder_text(Some(strings.grants_search_placeholder));
+    root_search_entry.add_css_class("material-entry");
+
+    let root_system_switch = gtk::Switch::new();
+    root_system_switch.set_active(root_state.borrow().show_system_apps);
+    root_system_switch.set_valign(gtk::Align::Center);
+
+    let root_system_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let root_system_label = gtk::Label::new(Some(strings.grants_show_system_apps));
+    root_system_label.set_xalign(0.0);
+    root_system_label.set_hexpand(true);
+    root_system_row.append(&root_system_label);
+    root_system_row.append(&root_system_switch);
+
+    root_filter_card.append(&root_search_entry);
+    root_filter_card.append(&root_system_row);
+    root_page_body.append(&root_filter_card);
+
+    let root_list_card = surface_card(strings.grants_title, strings.grants_body);
+    let root_list = gtk::ListBox::new();
+    root_list.add_css_class("plain-list");
+    root_list.set_activate_on_single_click(true);
+    let root_scroll = new_scroller(&root_list);
+    root_scroll.set_min_content_height(520);
+    root_list_card.append(&root_scroll);
+    root_page_body.append(&root_list_card);
+
+    let (root_detail_container, root_detail_body) = new_page_shell();
+    let root_detail_header = hero_card(
+        strings.grants_title,
+        strings.grants_detail_title,
+        strings.grants_detail_body,
+    );
+    let root_detail_back = gtk::Button::with_label(strings.grants_detail_back);
+    root_detail_back.add_css_class("pill");
+    {
+        let nav_stack = nav_stack.clone();
+        root_detail_back.connect_clicked(move |_| {
+            nav_stack.set_visible_child_name("root-grants");
+        });
+    }
+    root_detail_header.append(&root_detail_back);
+    root_detail_body.append(&root_detail_header);
+
+    let root_detail_card = surface_card(strings.grants_detail_title, strings.grants_detail_body);
+    let detail_row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    let root_detail_icon = gtk::Image::from_icon_name("application-x-executable-symbolic");
+    root_detail_icon.add_css_class("detail-icon");
+    root_detail_icon.set_pixel_size(48);
+    detail_row.append(&root_detail_icon);
+
+    let detail_text = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    let root_detail_title = gtk::Label::new(Some("-"));
+    root_detail_title.set_xalign(0.0);
+    root_detail_title.add_css_class("card-title");
+    let root_detail_package = gtk::Label::new(Some("-"));
+    root_detail_package.set_xalign(0.0);
+    root_detail_package.add_css_class("list-row-subtitle");
+    let root_detail_type = gtk::Label::new(Some("-"));
+    root_detail_type.set_xalign(0.0);
+    root_detail_type.add_css_class("list-row-subtitle");
+    let root_detail_status = gtk::Label::new(Some("-"));
+    root_detail_status.set_xalign(0.0);
+    root_detail_status.add_css_class("list-row-subtitle");
+    detail_text.append(&root_detail_title);
+    detail_text.append(&root_detail_package);
+    detail_text.append(&root_detail_type);
+    detail_text.append(&root_detail_status);
+    detail_row.append(&detail_text);
+
+    let root_detail_switch = gtk::Switch::new();
+    root_detail_switch.set_valign(gtk::Align::Center);
+    detail_row.append(&root_detail_switch);
+
+    root_detail_card.append(&detail_row);
+    root_detail_body.append(&root_detail_card);
+
+    let profile_card = surface_card(
+        strings.grants_detail_profile_json,
+        strings.grants_detail_body,
+    );
+    let root_detail_json = new_text_buffer();
+    let root_detail_json_view = new_text_view(&root_detail_json, false);
+    root_detail_json_view.add_css_class("console-pane");
+    let root_detail_json_scroll = new_scroller(&root_detail_json_view);
+    root_detail_json_scroll.set_min_content_height(360);
+    profile_card.append(&root_detail_json_scroll);
+    root_detail_body.append(&profile_card);
+
+    nav_stack.add_titled(&main_container, Some("main"), strings.device_title);
+    nav_stack.add_titled(
+        &root_page_container,
+        Some("root-grants"),
+        strings.grants_page_title,
+    );
+    nav_stack.add_titled(
+        &root_detail_container,
+        Some("root-grant-detail"),
+        strings.grants_detail_title,
+    );
+    nav_stack.set_visible_child_name("main");
+
     DevicePage {
-        container,
+        container: nav_stack.clone(),
         activity_log,
         port_entry,
+        nav_stack,
         session_output,
         runtime_output,
         root_output,
@@ -1145,8 +1548,21 @@ fn build_device_page(sender: &Sender<UiMessage>, strings: Strings) -> DevicePage
         runtime_summary: runtime_summary.1,
         root_summary: root_summary.1,
         susfs_summary: susfs_summary.1,
+        root_summary_caption,
+        root_manage_button,
+        root_page_count,
+        root_search_entry,
+        root_system_switch,
         root_list,
+        root_detail_title,
+        root_detail_icon,
+        root_detail_package,
+        root_detail_type,
+        root_detail_status,
+        root_detail_json,
+        root_detail_switch,
         module_list,
+        root_state,
     }
 }
 
@@ -1530,70 +1946,129 @@ fn summarize_susfs(value: &Value) -> String {
     )
 }
 
-fn render_root_grant_rows(
-    list: &gtk::ListBox,
-    value: &Value,
-    sender: &Sender<UiMessage>,
-    port_entry: &gtk::Entry,
-    _strings: Strings,
-) {
-    clear_list_box(list);
-    let root = json_bool_opt_recursive(value, &["rootGranted", "root_granted"]);
-    let diagnostic =
-        json_str_any_recursive(value, &["managerDiagnostic", "manager_diagnostic", "error"]);
-    let apps = find_array_of_objects(value, is_root_grant_record);
-    if apps.is_empty() {
-        let message = match root {
-            Some(false) => "Root not granted on device",
-            _ => diagnostic.unwrap_or("No root grant entries reported"),
-        };
-        append_placeholder_row(list, &payload_keys_message(value, message));
+fn update_root_grant_state(state: &Rc<RefCell<RootGrantPageState>>, value: &Value) {
+    let fresh = find_array_of_objects(value, is_root_grant_record)
+        .into_iter()
+        .filter_map(|app| {
+            let package = json_str_any_recursive(&app, &["packageName", "package_name"])?;
+            let label = json_str_any_recursive(&app, &["label"]).unwrap_or(package);
+            let allow_su = app
+                .get("profile")
+                .and_then(|v| v.get("allowSu"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            Some(RootGrantEntry {
+                package_name: package.to_string(),
+                label: label.to_string(),
+                is_system_app: app
+                    .get("isSystemApp")
+                    .or_else(|| app.get("is_system_app"))
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                allow_su,
+                raw: app,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let mut guard = state.borrow_mut();
+    if guard.entries.is_empty() {
+        guard.entries = fresh;
+        sort_root_entries(&mut guard.entries);
         return;
     }
 
-    for app in apps.into_iter().take(20) {
-        let package = json_str_any_recursive(&app, &["packageName", "package_name"])
-            .unwrap_or("")
-            .to_string();
-        if package.is_empty() {
-            continue;
-        }
-        let label = json_str_any_recursive(&app, &["label"])
-            .unwrap_or(&package)
-            .to_string();
-        let allowed = app
-            .get("profile")
-            .and_then(|v| v.get("allowSu"))
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
+    let old_order: Vec<String> = guard
+        .entries
+        .iter()
+        .map(|entry| entry.package_name.clone())
+        .collect();
+    let mut by_package: HashMap<String, RootGrantEntry> = fresh
+        .into_iter()
+        .map(|entry| (entry.package_name.clone(), entry))
+        .collect();
 
+    let mut merged = Vec::new();
+    for package in old_order {
+        if let Some(entry) = by_package.remove(&package) {
+            merged.push(entry);
+        }
+    }
+
+    let mut remainder = by_package.into_values().collect::<Vec<_>>();
+    sort_root_entries(&mut remainder);
+    merged.extend(remainder);
+    guard.entries = merged;
+}
+
+fn render_root_grant_page(
+    state: &Rc<RefCell<RootGrantPageState>>,
+    list: &gtk::ListBox,
+    count_label: &gtk::Label,
+    summary_label: &gtk::Label,
+    sender: &Sender<UiMessage>,
+    port_entry: &gtk::Entry,
+    strings: Strings,
+) {
+    clear_list_box(list);
+
+    let filtered = filtered_root_entries(&state.borrow());
+    let total = state.borrow().entries.len();
+    let allowed_total = state
+        .borrow()
+        .entries
+        .iter()
+        .filter(|entry| entry.allow_su)
+        .count();
+    count_label.set_text(&format!(
+        "{} allowed · {} shown · {} total",
+        allowed_total,
+        filtered.len(),
+        total
+    ));
+    summary_label.set_text(if state.borrow().show_system_apps {
+        strings.grants_summary_showing_system
+    } else {
+        strings.grants_summary_hidden_system
+    });
+
+    if filtered.is_empty() {
+        append_placeholder_row(list, "No apps match the current filters");
+        return;
+    }
+
+    for entry in filtered {
         let row = gtk::ListBoxRow::new();
+        row.set_activatable(true);
+        row.set_selectable(false);
+        row.set_widget_name(&entry.package_name);
+
         let shell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         shell.add_css_class("list-row-shell");
         set_margin_all(&shell, 8);
 
-        let icon = root_grant_icon_widget(parse_port(&port_entry.text()), &package);
+        let icon = root_grant_icon_widget(state, sender, port_entry, &entry.package_name);
         shell.append(&icon);
 
         let text = gtk::Box::new(gtk::Orientation::Vertical, 4);
         text.set_hexpand(true);
-        let title = gtk::Label::new(Some(&label));
+        let title = gtk::Label::new(Some(&entry.label));
         title.set_xalign(0.0);
         title.add_css_class("list-row-title");
-        let subtitle = gtk::Label::new(Some(&package));
+        let subtitle = gtk::Label::new(Some(&entry.package_name));
         subtitle.set_xalign(0.0);
         subtitle.add_css_class("list-row-subtitle");
         text.append(&title);
         text.append(&subtitle);
 
         let toggle = gtk::Switch::new();
-        toggle.set_active(allowed);
+        toggle.set_active(entry.allow_su);
         toggle.set_valign(gtk::Align::Center);
         toggle.add_css_class("compact-switch");
         {
             let sender = sender.clone();
             let port_entry = port_entry.clone();
-            let package = package.clone();
+            let package = entry.package_name.clone();
             toggle.connect_active_notify(move |switch| {
                 spawn_agent_sync_call(parse_port(&port_entry.text()), sender.clone(), {
                     let package = package.clone();
@@ -1608,6 +2083,127 @@ fn render_root_grant_rows(
         row.set_child(Some(&shell));
         list.append(&row);
     }
+}
+
+fn render_root_grant_detail(
+    state: &Rc<RefCell<RootGrantPageState>>,
+    package: &str,
+    title_label: &gtk::Label,
+    icon: &gtk::Image,
+    package_label: &gtk::Label,
+    type_label: &gtk::Label,
+    status_label: &gtk::Label,
+    json_buffer: &gtk::TextBuffer,
+    switch: &gtk::Switch,
+    sender: &Sender<UiMessage>,
+    port_entry: &gtk::Entry,
+    strings: Strings,
+) {
+    let package = package.trim();
+    let guard = state.borrow();
+    let Some(entry) = guard
+        .entries
+        .iter()
+        .find(|entry| entry.package_name == package)
+    else {
+        title_label.set_text("Unknown app");
+        package_label.set_text(package);
+        type_label.set_text("-");
+        status_label.set_text("-");
+        json_buffer.set_text("{}");
+        return;
+    };
+
+    title_label.set_text(&entry.label);
+    package_label.set_text(&format!(
+        "{}: {}",
+        strings.grants_detail_package, entry.package_name
+    ));
+    type_label.set_text(&format!(
+        "{}: {}",
+        strings.grants_detail_type,
+        if entry.is_system_app {
+            strings.grants_detail_system
+        } else {
+            strings.grants_detail_user
+        }
+    ));
+    status_label.set_text(&format!(
+        "{}: {}",
+        strings.grants_detail_status,
+        if entry.allow_su {
+            strings.grants_detail_allow
+        } else {
+            strings.grants_detail_revoke
+        }
+    ));
+    if let Ok(text) = pretty_json_value(&entry.raw) {
+        json_buffer.set_text(&text);
+    }
+    switch.set_widget_name("");
+    switch.set_active(entry.allow_su);
+    switch.set_widget_name(&entry.package_name);
+
+    if let Some(bytes) = guard.icon_cache.get(&entry.package_name) {
+        if let Ok(pixbuf) = Pixbuf::from_read(Cursor::new(bytes.clone())) {
+            icon.set_from_pixbuf(Some(&pixbuf));
+            icon.set_pixel_size(48);
+        }
+    } else {
+        icon.set_icon_name(Some("application-x-executable-symbolic"));
+        trigger_root_icon_fetch(state, sender, port_entry, &entry.package_name);
+    }
+}
+
+fn handle_root_icon_loaded(
+    state: &Rc<RefCell<RootGrantPageState>>,
+    package_name: &str,
+    bytes: Vec<u8>,
+    list: &gtk::ListBox,
+    count_label: &gtk::Label,
+    summary_label: &gtk::Label,
+    sender: &Sender<UiMessage>,
+    port_entry: &gtk::Entry,
+    strings: Strings,
+) {
+    let mut guard = state.borrow_mut();
+    guard.icon_cache.insert(package_name.to_string(), bytes);
+    guard.icon_inflight.remove(package_name);
+    drop(guard);
+    render_root_grant_page(
+        state,
+        list,
+        count_label,
+        summary_label,
+        sender,
+        port_entry,
+        strings,
+    );
+}
+
+fn filtered_root_entries(state: &RootGrantPageState) -> Vec<RootGrantEntry> {
+    let query = state.search_query.trim().to_lowercase();
+    state
+        .entries
+        .iter()
+        .filter(|entry| state.show_system_apps || !entry.is_system_app)
+        .filter(|entry| {
+            query.is_empty()
+                || entry.label.to_lowercase().contains(&query)
+                || entry.package_name.to_lowercase().contains(&query)
+        })
+        .cloned()
+        .collect()
+}
+
+fn sort_root_entries(entries: &mut [RootGrantEntry]) {
+    entries.sort_by(|left, right| {
+        right
+            .allow_su
+            .cmp(&left.allow_su)
+            .then_with(|| left.label.to_lowercase().cmp(&right.label.to_lowercase()))
+            .then_with(|| left.package_name.cmp(&right.package_name))
+    });
 }
 
 fn render_module_rows(
@@ -1766,21 +2362,53 @@ fn append_placeholder_row(list: &gtk::ListBox, message: &str) {
     list.append(&row);
 }
 
-fn root_grant_icon_widget(port: u16, package_name: &str) -> gtk::Image {
+fn root_grant_icon_widget(
+    state: &Rc<RefCell<RootGrantPageState>>,
+    sender: &Sender<UiMessage>,
+    port_entry: &gtk::Entry,
+    package_name: &str,
+) -> gtk::Image {
     let image = gtk::Image::from_icon_name("application-x-executable-symbolic");
     image.add_css_class("list-icon");
     image.set_pixel_size(28);
     if package_name.trim().is_empty() {
         return image;
     }
-    let client = AgentClient::new("127.0.0.1", port);
-    if let Ok(bytes) = client.root_grant_icon_png(package_name) {
-        if let Ok(pixbuf) = Pixbuf::from_read(Cursor::new(bytes)) {
+    if let Some(bytes) = state.borrow().icon_cache.get(package_name) {
+        if let Ok(pixbuf) = Pixbuf::from_read(Cursor::new(bytes.clone())) {
             image.set_from_pixbuf(Some(&pixbuf));
             image.set_pixel_size(28);
         }
+    } else {
+        trigger_root_icon_fetch(state, sender, port_entry, package_name);
     }
     image
+}
+
+fn trigger_root_icon_fetch(
+    state: &Rc<RefCell<RootGrantPageState>>,
+    sender: &Sender<UiMessage>,
+    port_entry: &gtk::Entry,
+    package_name: &str,
+) {
+    let package = package_name.trim().to_string();
+    if package.is_empty() {
+        return;
+    }
+    {
+        let mut guard = state.borrow_mut();
+        if guard.icon_cache.contains_key(&package) || !guard.icon_inflight.insert(package.clone()) {
+            return;
+        }
+    }
+    let sender = sender.clone();
+    let port = parse_port(&port_entry.text());
+    thread::spawn(move || {
+        let client = AgentClient::new("127.0.0.1", port);
+        if let Ok(bytes) = client.root_grant_icon_png(&package) {
+            let _ = sender.send(UiMessage::RootIconLoaded(package, bytes));
+        }
+    });
 }
 
 fn module_icon_widget(module: &Value) -> gtk::Image {
@@ -1918,6 +2546,35 @@ fn top_level_keys(value: &Value) -> Vec<String> {
         Value::Object(map) => map.keys().cloned().collect(),
         Value::Array(items) if !items.is_empty() => vec![format!("array[{}]", items.len())],
         _ => Vec::new(),
+    }
+}
+
+fn desktop_prefs_path() -> PathBuf {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
+        .unwrap_or_else(|| PathBuf::from("."));
+    base.join("abk-desktop").join("prefs.json")
+}
+
+fn load_desktop_prefs() -> DesktopPrefs {
+    let path = desktop_prefs_path();
+    let raw = match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(_) => return DesktopPrefs::default(),
+    };
+    serde_json::from_str(&raw).unwrap_or_default()
+}
+
+fn save_show_system_apps_pref(show_system_apps: bool) {
+    let path = desktop_prefs_path();
+    let Some(parent) = path.parent() else { return };
+    let _ = fs::create_dir_all(parent);
+    let prefs = DesktopPrefs {
+        show_system_apps: Some(show_system_apps),
+    };
+    if let Ok(raw) = serde_json::to_string_pretty(&prefs) {
+        let _ = fs::write(path, raw);
     }
 }
 
