@@ -60,8 +60,8 @@ import com.abk.kernel.ui.component.liquid.innerShadow
 import com.abk.kernel.ui.component.liquid.lens
 import com.abk.kernel.ui.component.liquid.rememberCombinedBackdrop
 import com.abk.kernel.ui.component.liquid.vibrancy
-import com.abk.kernel.ui.component.miuix.animation.DampedDragAnimation
-import com.abk.kernel.ui.component.miuix.animation.InteractiveHighlight
+import com.abk.kernel.miuix.animation.DampedDragAnimation
+import com.abk.kernel.miuix.animation.InteractiveHighlight
 import com.abk.kernel.miuix.theme.isMiuixDarkTheme
 import top.yukonga.miuix.kmp.blur.Backdrop
 import top.yukonga.miuix.kmp.blur.blur

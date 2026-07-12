@@ -86,6 +86,4 @@ sealed interface Route : NavKey, Parcelable {
     @Parcelize
     @Serializable
     data class ModuleActionTerminal(val params: ModuleActionTerminalParams) : Route
-
-    // 以后可按需添加更多子页面 Route
 }
