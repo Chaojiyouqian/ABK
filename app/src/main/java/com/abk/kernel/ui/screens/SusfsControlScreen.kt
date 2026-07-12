@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -247,18 +246,18 @@ internal fun SusfsControlScreen(
             subtitle = "保存配置、刷新状态或恢复默认配置",
             icon = Icons.Default.Settings
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(
                     onClick = ::submit,
                     enabled = !state.susfsSaving,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(if (state.susfsSaving) "应用中..." else "应用配置")
                 }
                 TextButton(
                     onClick = onReset,
                     enabled = !state.susfsSaving,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("恢复默认")
                 }

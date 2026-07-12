@@ -385,7 +385,7 @@ fun renderSusfsActionScript(): String = """
     BASE=$SUSFS_ROOT_DIR
     BIN=$SUSFS_BINARY_PATH
     echo "ABK SUSFS Runtime"
-    echo "binary=$BIN"
+    echo "binary=§BIN"
     echo "config=$SUSFS_CONFIG_PATH"
     [ -x "§BIN" ] && "§BIN" show version 2>/dev/null || echo "version=unavailable"
     [ -x "§BIN" ] && "§BIN" show enabled_features 2>/dev/null || true
