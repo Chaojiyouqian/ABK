@@ -273,11 +273,6 @@ fun InstalledModulesScreen(
     val modules = remember(state.abkRuntimeStatus?.modules, query) {
         state.abkRuntimeStatus?.modules.orEmpty()
             .filter { it.matchesRuntimeModuleQuery(query) }
-            .sortedWith(
-                compareBy<AbkRuntimeModule> { it.typeOrder() }
-                    .thenBy { !it.enabled }
-                    .thenBy { it.displayName().lowercase() }
-            )
     }
     val groupedModules = remember(modules) { groupRuntimeModulesForDisplay(modules) }
 
