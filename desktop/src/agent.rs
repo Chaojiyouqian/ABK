@@ -42,20 +42,20 @@ impl AgentClient {
         self.get_pretty("/api/v1/health")
     }
 
-    pub fn session(&self) -> Result<String> {
-        self.get_pretty("/api/v1/session")
+    pub fn session_json(&self) -> Result<Value> {
+        self.get_json("/api/v1/session")
     }
 
-    pub fn runtime(&self) -> Result<String> {
-        self.get_pretty("/api/v1/runtime")
+    pub fn runtime_json(&self) -> Result<Value> {
+        self.get_json("/api/v1/runtime")
     }
 
-    pub fn root_grants(&self) -> Result<String> {
-        self.get_pretty("/api/v1/root-grants")
+    pub fn root_grants_json(&self) -> Result<Value> {
+        self.get_json("/api/v1/root-grants")
     }
 
-    pub fn susfs(&self) -> Result<String> {
-        self.get_pretty("/api/v1/susfs")
+    pub fn susfs_json(&self) -> Result<Value> {
+        self.get_json("/api/v1/susfs")
     }
 
     pub fn set_root_grant(&self, package_name: &str, allowed: bool) -> Result<String> {
@@ -168,6 +168,11 @@ impl AgentClient {
         pretty_json(&self.get_raw(path)?)
     }
 
+    fn get_json(&self, path: &str) -> Result<Value> {
+        let raw = self.get_raw(path)?;
+        serde_json::from_str(&raw).context("failed to parse response JSON")
+    }
+
     fn post_pretty(&self, path: &str, body: Value) -> Result<String> {
         pretty_json(&self.post_raw(path, body)?)
     }
@@ -213,6 +218,10 @@ fn handle_response(response: reqwest::blocking::Response) -> Result<String> {
 fn pretty_json(raw: &str) -> Result<String> {
     let value: Value = serde_json::from_str(raw).context("failed to parse response JSON")?;
     serde_json::to_string_pretty(&value).context("failed to pretty-print JSON")
+}
+
+pub fn pretty_json_value(value: &Value) -> Result<String> {
+    serde_json::to_string_pretty(value).context("failed to pretty-print JSON")
 }
 
 #[cfg(test)]

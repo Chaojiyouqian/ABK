@@ -1,267 +1,325 @@
 mod agent;
 mod commands;
 
-use crate::agent::AgentClient;
+use crate::agent::{pretty_json_value, AgentClient};
 use crate::commands::{
     build_adb_detect_command, build_adb_forward_command, build_adb_start_agent_command,
     build_adb_stop_agent_command, build_cli_command, run_command,
 };
 use adw::prelude::*;
+use gtk::{gdk, glib};
+use serde_json::Value;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
 enum UiMessage {
-    CliOutput(String),
-    DeviceLog(String),
-    ActionLog(String),
-    SessionJson(String),
-    RuntimeJson(String),
-    RootJson(String),
-    SusfsJson(String),
-    SusfsEditor(String),
+    BuildOutput(String),
+    ActivityLog(String),
+    SessionSnapshot(Value),
+    RuntimeSnapshot(Value),
+    RootSnapshot(Value),
+    SusfsSnapshot(Value),
 }
 
 #[derive(Clone, Copy)]
 struct Strings {
     app_title: &'static str,
     app_subtitle: &'static str,
-    page_cli: &'static str,
-    page_device: &'static str,
-    page_actions: &'static str,
-    cli_title: &'static str,
-    cli_description: &'static str,
-    cli_command_title: &'static str,
-    cli_command_description: &'static str,
-    cli_command_placeholder: &'static str,
-    cli_run: &'static str,
-    cli_output_title: &'static str,
-    cli_output_description: &'static str,
-    quick_login: &'static str,
-    quick_whoami: &'static str,
-    quick_fork: &'static str,
-    quick_sync: &'static str,
-    quick_list: &'static str,
-    quick_status: &'static str,
-    quick_artifacts: &'static str,
-    quick_build: &'static str,
+    nav_overview: &'static str,
+    nav_overview_desc: &'static str,
+    nav_build: &'static str,
+    nav_build_desc: &'static str,
+    nav_device: &'static str,
+    nav_device_desc: &'static str,
+    brand_badge: &'static str,
+    overview_kicker: &'static str,
+    overview_title: &'static str,
+    overview_body: &'static str,
+    overview_connect: &'static str,
+    overview_preview: &'static str,
+    overview_diagnostics: &'static str,
+    overview_summary_title: &'static str,
+    overview_summary_body: &'static str,
+    overview_live_title: &'static str,
+    overview_live_body: &'static str,
+    overview_card_build_title: &'static str,
+    overview_card_build_body: &'static str,
+    overview_card_device_title: &'static str,
+    overview_card_device_body: &'static str,
+    overview_card_runtime_title: &'static str,
+    overview_card_runtime_body: &'static str,
+    overview_card_surface_title: &'static str,
+    overview_card_surface_body: &'static str,
+    build_kicker: &'static str,
+    build_title: &'static str,
+    build_body: &'static str,
+    build_quick_title: &'static str,
+    build_quick_body: &'static str,
+    build_login: &'static str,
+    build_whoami: &'static str,
+    build_fork: &'static str,
+    build_sync: &'static str,
+    build_preview: &'static str,
+    build_matrix: &'static str,
+    build_status: &'static str,
+    build_artifacts: &'static str,
+    build_command_title: &'static str,
+    build_command_body: &'static str,
+    build_command_placeholder: &'static str,
+    build_run: &'static str,
+    build_output_title: &'static str,
+    build_output_body: &'static str,
+    device_kicker: &'static str,
     device_title: &'static str,
-    device_description: &'static str,
-    device_connection_title: &'static str,
-    device_connection_description: &'static str,
-    device_serial_placeholder: &'static str,
-    device_port_placeholder: &'static str,
+    device_body: &'static str,
+    device_connect_title: &'static str,
+    device_connect_body: &'static str,
+    device_serial: &'static str,
+    device_port: &'static str,
     device_detect: &'static str,
     device_start: &'static str,
     device_stop: &'static str,
     device_refresh: &'static str,
     device_snapshot_title: &'static str,
-    device_snapshot_description: &'static str,
-    device_session_tab: &'static str,
-    device_runtime_tab: &'static str,
-    device_root_tab: &'static str,
-    device_susfs_tab: &'static str,
-    device_log_title: &'static str,
-    device_log_description: &'static str,
-    actions_title: &'static str,
-    actions_description: &'static str,
-    root_card_title: &'static str,
-    root_card_description: &'static str,
-    root_package_placeholder: &'static str,
-    root_allow: &'static str,
-    root_revoke: &'static str,
-    module_card_title: &'static str,
-    module_card_description: &'static str,
-    module_placeholder: &'static str,
-    module_enable: &'static str,
-    module_disable: &'static str,
-    module_uninstall: &'static str,
-    module_action: &'static str,
-    install_card_title: &'static str,
-    install_card_description: &'static str,
-    install_module_placeholder: &'static str,
-    install_module_button: &'static str,
-    install_apk_placeholder: &'static str,
-    install_apk_button: &'static str,
-    flash_image_placeholder: &'static str,
-    flash_partition_placeholder: &'static str,
-    flash_button: &'static str,
-    susfs_card_title: &'static str,
-    susfs_card_description: &'static str,
-    susfs_load: &'static str,
-    susfs_apply: &'static str,
-    diagnostics_export: &'static str,
-    action_log_title: &'static str,
-    action_log_description: &'static str,
-    log_adb_forward: &'static str,
-    log_start_agent: &'static str,
-    log_agent_ready: &'static str,
-    log_agent_timeout: &'static str,
+    device_snapshot_body: &'static str,
+    device_parsed_title: &'static str,
+    device_parsed_body: &'static str,
+    device_raw_title: &'static str,
+    device_session: &'static str,
+    device_runtime: &'static str,
+    device_root: &'static str,
+    device_susfs: &'static str,
+    grants_title: &'static str,
+    grants_body: &'static str,
+    modules_title: &'static str,
+    modules_body: &'static str,
+    uninstall_module: &'static str,
+    run_action: &'static str,
+    install_title: &'static str,
+    install_body: &'static str,
+    module_zip_placeholder: &'static str,
+    install_module: &'static str,
+    apk_placeholder: &'static str,
+    install_apk: &'static str,
+    image_placeholder: &'static str,
+    partition_placeholder: &'static str,
+    flash_image: &'static str,
+    susfs_tools_title: &'static str,
+    susfs_tools_body: &'static str,
+    load_susfs: &'static str,
+    apply_susfs: &'static str,
+    export_diagnostics: &'static str,
+    activity_title: &'static str,
+    activity_body: &'static str,
+    log_forward: &'static str,
+    log_start: &'static str,
+    log_ready: &'static str,
+    log_timeout: &'static str,
     log_task_queued: &'static str,
     log_task_result: &'static str,
-    log_downloaded_to: &'static str,
+    log_downloaded: &'static str,
     log_download_failed: &'static str,
 }
 
-const ZH_STRINGS: Strings = Strings {
+const ZH: Strings = Strings {
     app_title: "ABK 桌面版",
-    app_subtitle: "GTK / libadwaita 控制台",
-    page_cli: "CLI",
-    page_device: "设备",
-    page_actions: "操作",
-    cli_title: "GitHub 与构建入口",
-    cli_description: "桌面端直接调用现有 ABK CLI，这一页应该像控制台前端，而不是一块空黑板。",
-    cli_command_title: "命令执行",
-    cli_command_description: "输入任意 `abk` 子命令参数，桌面端会调用仓库里的 `cli/abk.py`。",
-    cli_command_placeholder: "例如：build --sub-level 162 --os-patch-level 2026-03",
-    cli_run: "运行",
-    cli_output_title: "命令输出",
-    cli_output_description: "CLI 的标准输出和错误输出会显示在这里。",
-    quick_login: "登录",
-    quick_whoami: "当前账号",
-    quick_fork: "检查 Fork",
-    quick_sync: "同步 Fork",
-    quick_list: "列出选项",
-    quick_status: "最近状态",
-    quick_artifacts: "产物",
-    quick_build: "预览构建",
-    device_title: "设备桥接",
-    device_description:
-        "通过 `adb forward` 连接手机上的 ABK agent，读取运行态、Root 授权和 SUSFS 状态。",
-    device_connection_title: "连接",
-    device_connection_description: "先检测 ADB，再启动手机端 agent，最后刷新各个快照页。",
-    device_serial_placeholder: "ADB 序列号（只有一台设备时可留空）",
-    device_port_placeholder: "端口",
+    app_subtitle: "Material 3 风格 GTK 控制台",
+    nav_overview: "概览",
+    nav_overview_desc: "起步和状态",
+    nav_build: "构建",
+    nav_build_desc: "GitHub 与工作流",
+    nav_device: "设备",
+    nav_device_desc: "ADB、Root 与运行态",
+    brand_badge: "M3 风格预览",
+    overview_kicker: "AnyBase Kernel",
+    overview_title: "把构建、设备和运行态放进一个更清楚的桌面工作区",
+    overview_body:
+        "这版界面不再把所有控件摊在一个平面上，而是按照 Material 3 的层级做成主操作、摘要和危险操作分区。",
+    overview_connect: "连接手机",
+    overview_preview: "预览构建计划",
+    overview_diagnostics: "导出诊断包",
+    overview_summary_title: "工作区摘要",
+    overview_summary_body: "先用概览页定位当前任务，再进入更细的构建页或设备页。",
+    overview_live_title: "实时状态",
+    overview_live_body: "连接、运行态、Root 授权和 SUSFS 状态会直接展示在这里，不再要求先读原始 JSON。",
+    overview_card_build_title: "构建流程",
+    overview_card_build_body: "登录 GitHub、检查 fork、同步仓库、预览构建参数，并把 CLI 输出集中到一处。",
+    overview_card_device_title: "设备桥接",
+    overview_card_device_body: "通过 ADB 启动手机上的 ABK agent，读取 session、runtime、root grants 与 SUSFS 快照。",
+    overview_card_runtime_title: "运行态工具",
+    overview_card_runtime_body: "Root 授权、模块开关、刷写与安装仍在手机执行，但桌面端提供更清晰的入口。",
+    overview_card_surface_title: "界面方向",
+    overview_card_surface_body: "使用导航轨、hero 卡片和高低层 surface，让桌面端更像一个产品，而不是脚本启动器。",
+    build_kicker: "GitHub / Actions",
+    build_title: "把常用构建动作做成主操作，把原始命令留给高级入口",
+    build_body: "默认先点按钮完成登录、sync、dry-run，再在需要时写高级命令。",
+    build_quick_title: "常用动作",
+    build_quick_body: "这些按钮覆盖最常见的 GitHub / ABK CLI 路径。",
+    build_login: "登录",
+    build_whoami: "当前账号",
+    build_fork: "检查 Fork",
+    build_sync: "同步 Fork",
+    build_preview: "Dry Run",
+    build_matrix: "矩阵预览",
+    build_status: "最近状态",
+    build_artifacts: "查看产物",
+    build_command_title: "高级命令",
+    build_command_body: "需要完整 CLI 自由度时，在这里直接输入 `abk` 子命令参数。",
+    build_command_placeholder: "例如：build --sub-level 162 --os-patch-level 2026-03",
+    build_run: "运行",
+    build_output_title: "CLI 输出",
+    build_output_body: "CLI 的标准输出与标准错误会在这里汇总。",
+    device_kicker: "ADB / Agent / Runtime",
+    device_title: "把连接、快照和危险操作拆开，避免所有动作挤在一起",
+    device_body: "先建立连接，再看快照，最后做 Root、模块、安装和 SUSFS 操作。",
+    device_connect_title: "连接手机",
+    device_connect_body: "先检测设备，再转发端口并启动手机端 agent。",
+    device_serial: "ADB 序列号（只有一台时可留空）",
+    device_port: "端口",
     device_detect: "检测设备",
-    device_start: "启动 agent",
-    device_stop: "停止 agent",
-    device_refresh: "刷新",
+    device_start: "启动 Agent",
+    device_stop: "停止 Agent",
+    device_refresh: "刷新快照",
     device_snapshot_title: "运行态快照",
-    device_snapshot_description: "这里显示 session、runtime、root grants 和 SUSFS 的 JSON 快照。",
-    device_session_tab: "Session",
-    device_runtime_tab: "Runtime",
-    device_root_tab: "Root 授权",
-    device_susfs_tab: "SUSFS",
-    device_log_title: "桥接日志",
-    device_log_description: "ADB 转发、agent 启动和刷新时的本地日志。",
-    actions_title: "设备动作",
-    actions_description: "桌面端发起命令，真正的 Root / Android 动作仍在手机端 ABK agent 上执行。",
-    root_card_title: "Root 授权",
-    root_card_description: "按包名允许或撤销 Root 授权。",
-    root_package_placeholder: "要操作的包名",
-    root_allow: "允许 Root",
-    root_revoke: "撤销 Root",
-    module_card_title: "运行时模块",
-    module_card_description: "控制模块启用状态、卸载标记和 action 脚本。",
-    module_placeholder: "运行时模块 ID",
-    module_enable: "启用",
-    module_disable: "禁用",
-    module_uninstall: "标记卸载",
-    module_action: "运行 Action",
-    install_card_title: "安装与刷写",
-    install_card_description: "路径必须是手机端能访问到的文件路径。",
-    install_module_placeholder: "模块 ZIP 路径（手机可访问）",
-    install_module_button: "安装模块",
-    install_apk_placeholder: "APK 路径（手机可访问）",
-    install_apk_button: "安装 APK",
-    flash_image_placeholder: "镜像路径（手机可访问）",
-    flash_partition_placeholder: "分区",
-    flash_button: "刷写镜像",
-    susfs_card_title: "SUSFS 与诊断",
-    susfs_card_description: "读取、编辑并回写 SUSFS JSON，同时支持导出诊断包。",
-    susfs_load: "加载 SUSFS",
-    susfs_apply: "应用编辑后的 SUSFS JSON",
-    diagnostics_export: "导出诊断包",
-    action_log_title: "动作日志",
-    action_log_description: "长任务状态、任务输出和下载结果会显示在这里。",
-    log_adb_forward: "ADB 转发",
-    log_start_agent: "启动 agent",
-    log_agent_ready: "Agent 已就绪",
-    log_agent_timeout: "Agent 在预期时间内没有就绪",
+    device_snapshot_body: "原始 JSON 还在，但被放进次一级区域，不再挡住主操作。",
+    device_parsed_title: "解析后的状态",
+    device_parsed_body: "先看可读的结构化状态，再按需展开原始 JSON。",
+    device_raw_title: "原始快照 JSON",
+    device_session: "Session",
+    device_runtime: "Runtime",
+    device_root: "Root 授权",
+    device_susfs: "SUSFS",
+    grants_title: "Root 授权",
+    grants_body: "按包名允许或撤销 Root 权限。",
+    modules_title: "运行时模块",
+    modules_body: "启用、禁用、标记卸载或运行模块 action。",
+    uninstall_module: "标记卸载",
+    run_action: "运行 Action",
+    install_title: "安装与刷写",
+    install_body: "路径必须是手机侧可访问的路径。",
+    module_zip_placeholder: "模块 ZIP 路径",
+    install_module: "安装模块",
+    apk_placeholder: "APK 路径",
+    install_apk: "安装 APK",
+    image_placeholder: "镜像路径",
+    partition_placeholder: "分区",
+    flash_image: "刷写镜像",
+    susfs_tools_title: "SUSFS 与诊断",
+    susfs_tools_body: "加载、编辑并应用 SUSFS JSON，同时导出诊断包。",
+    load_susfs: "加载 SUSFS",
+    apply_susfs: "应用 SUSFS JSON",
+    export_diagnostics: "导出诊断包",
+    activity_title: "活动日志",
+    activity_body: "ADB 转发、任务队列、安装、刷写和下载结果都汇总在这里。",
+    log_forward: "ADB 转发",
+    log_start: "启动 Agent",
+    log_ready: "Agent 已就绪",
+    log_timeout: "Agent 在预期时间内没有就绪",
     log_task_queued: "任务已入队",
     log_task_result: "任务结果",
-    log_downloaded_to: "已下载到",
+    log_downloaded: "已下载到",
     log_download_failed: "下载失败",
 };
 
-const EN_STRINGS: Strings = Strings {
+const EN: Strings = Strings {
     app_title: "ABK Desktop",
-    app_subtitle: "GTK / libadwaita console",
-    page_cli: "CLI",
-    page_device: "Device",
-    page_actions: "Actions",
-    cli_title: "GitHub and Build Frontend",
-    cli_description: "The desktop app calls the existing ABK CLI directly. This page should feel like a real frontend, not a blank slab.",
-    cli_command_title: "Command Runner",
-    cli_command_description: "Enter any `abk` subcommand arguments and the desktop app will invoke `cli/abk.py` from this repo.",
-    cli_command_placeholder: "Example: build --sub-level 162 --os-patch-level 2026-03",
-    cli_run: "Run",
-    cli_output_title: "Command Output",
-    cli_output_description: "Standard output and standard error from the CLI appear here.",
-    quick_login: "Login",
-    quick_whoami: "Whoami",
-    quick_fork: "Fork",
-    quick_sync: "Sync",
-    quick_list: "List",
-    quick_status: "Status",
-    quick_artifacts: "Artifacts",
-    quick_build: "Build Preview",
-    device_title: "Device Bridge",
-    device_description: "Connect to the phone-side ABK agent through `adb forward` and inspect runtime, root grant, and SUSFS state.",
-    device_connection_title: "Connection",
-    device_connection_description: "Detect ADB first, then start the phone agent, then refresh the snapshot panes.",
-    device_serial_placeholder: "ADB serial (optional when only one device is connected)",
-    device_port_placeholder: "Port",
+    app_subtitle: "Material 3 inspired GTK workspace",
+    nav_overview: "Overview",
+    nav_overview_desc: "entry and state",
+    nav_build: "Build",
+    nav_build_desc: "GitHub and workflows",
+    nav_device: "Device",
+    nav_device_desc: "ADB, root, runtime",
+    brand_badge: "M3-inspired preview",
+    overview_kicker: "AnyBase Kernel",
+    overview_title: "Bring builds, device control, and runtime operations into one clearer desktop workspace",
+    overview_body:
+        "This layout stops flattening every control onto one canvas and instead uses a Material 3 style hierarchy for primary actions, summaries, and risky operations.",
+    overview_connect: "Connect Phone",
+    overview_preview: "Preview Build Plan",
+    overview_diagnostics: "Export Diagnostics",
+    overview_summary_title: "Workspace Summary",
+    overview_summary_body: "Start here to orient yourself, then move into the focused build or device workspaces.",
+    overview_live_title: "Live Status",
+    overview_live_body: "Connection, runtime, root grants, and SUSFS state are shown here directly so raw JSON stops being the first thing you read.",
+    overview_card_build_title: "Build Flow",
+    overview_card_build_body: "Sign in to GitHub, check the fork, sync, preview build parameters, and keep CLI output in one place.",
+    overview_card_device_title: "Device Bridge",
+    overview_card_device_body: "Start the phone-side ABK agent through ADB and inspect session, runtime, root grants, and SUSFS snapshots.",
+    overview_card_runtime_title: "Runtime Tools",
+    overview_card_runtime_body: "Root grants, module toggles, flashing, and installs still run on the phone, but the desktop gets cleaner entry points.",
+    overview_card_surface_title: "Interface Direction",
+    overview_card_surface_body: "Navigation rail, hero surfaces, and layered cards make the desktop app feel like a product instead of a script launcher.",
+    build_kicker: "GitHub / Actions",
+    build_title: "Turn common build flows into primary actions and keep raw commands as an advanced path",
+    build_body: "Use the guided actions for login, sync, and dry-run first. Drop to advanced commands only when you need full CLI freedom.",
+    build_quick_title: "Common Actions",
+    build_quick_body: "These buttons cover the most common GitHub and ABK CLI flows.",
+    build_login: "Login",
+    build_whoami: "Whoami",
+    build_fork: "Fork",
+    build_sync: "Sync",
+    build_preview: "Dry Run",
+    build_matrix: "Matrix Preview",
+    build_status: "Recent Status",
+    build_artifacts: "Artifacts",
+    build_command_title: "Advanced Command",
+    build_command_body: "When you need full CLI flexibility, type raw `abk` subcommand arguments here.",
+    build_command_placeholder: "Example: build --sub-level 162 --os-patch-level 2026-03",
+    build_run: "Run",
+    build_output_title: "CLI Output",
+    build_output_body: "Standard output and standard error from the CLI are collected here.",
+    device_kicker: "ADB / Agent / Runtime",
+    device_title: "Separate connection, snapshots, and risky operations so everything stops fighting for attention",
+    device_body: "Connect first, inspect the snapshots second, and only then touch root, modules, installs, or SUSFS.",
+    device_connect_title: "Phone Connection",
+    device_connect_body: "Detect the device first, then forward the port and start the phone-side agent.",
+    device_serial: "ADB serial (optional when only one device is connected)",
+    device_port: "Port",
     device_detect: "Detect Devices",
     device_start: "Start Agent",
     device_stop: "Stop Agent",
-    device_refresh: "Refresh",
+    device_refresh: "Refresh Snapshots",
     device_snapshot_title: "Runtime Snapshots",
-    device_snapshot_description: "Session, runtime, root grants, and SUSFS JSON snapshots are shown here.",
-    device_session_tab: "Session",
-    device_runtime_tab: "Runtime",
-    device_root_tab: "Root Grants",
-    device_susfs_tab: "SUSFS",
-    device_log_title: "Bridge Log",
-    device_log_description: "Local ADB forwarding, agent startup, and refresh logs appear here.",
-    actions_title: "Device Actions",
-    actions_description: "The desktop app triggers commands, but the actual Root / Android actions still run inside the phone-side ABK agent.",
-    root_card_title: "Root Grants",
-    root_card_description: "Allow or revoke root access by package name.",
-    root_package_placeholder: "Package name to update",
-    root_allow: "Allow Root",
-    root_revoke: "Revoke Root",
-    module_card_title: "Runtime Modules",
-    module_card_description: "Control module enable state, uninstall marks, and module action scripts.",
-    module_placeholder: "Runtime module ID",
-    module_enable: "Enable",
-    module_disable: "Disable",
-    module_uninstall: "Mark Uninstall",
-    module_action: "Run Action",
-    install_card_title: "Install and Flash",
-    install_card_description: "Paths must point to files that are accessible on the phone side.",
-    install_module_placeholder: "Module ZIP path (phone-accessible)",
-    install_module_button: "Install Module",
-    install_apk_placeholder: "APK path (phone-accessible)",
-    install_apk_button: "Install APK",
-    flash_image_placeholder: "Image path (phone-accessible)",
-    flash_partition_placeholder: "Partition",
-    flash_button: "Flash Image",
-    susfs_card_title: "SUSFS and Diagnostics",
-    susfs_card_description: "Load, edit, and apply SUSFS JSON while also supporting diagnostic export.",
-    susfs_load: "Load SUSFS",
-    susfs_apply: "Apply Edited SUSFS JSON",
-    diagnostics_export: "Export Diagnostics",
-    action_log_title: "Action Log",
-    action_log_description: "Long task state, task output, and download results appear here.",
-    log_adb_forward: "ADB forward",
-    log_start_agent: "Start agent",
-    log_agent_ready: "Agent ready",
-    log_agent_timeout: "Agent did not become healthy in time",
+    device_snapshot_body: "Raw JSON still exists, but it now sits in a secondary surface instead of dominating the whole page.",
+    device_parsed_title: "Parsed State",
+    device_parsed_body: "Read the structured state first, then expand raw JSON only when you need the details.",
+    device_raw_title: "Raw Snapshot JSON",
+    device_session: "Session",
+    device_runtime: "Runtime",
+    device_root: "Root Grants",
+    device_susfs: "SUSFS",
+    grants_title: "Root Grants",
+    grants_body: "Allow or revoke root access by package name.",
+    modules_title: "Runtime Modules",
+    modules_body: "Enable, disable, mark uninstall, or run module actions.",
+    uninstall_module: "Mark Uninstall",
+    run_action: "Run Action",
+    install_title: "Install and Flash",
+    install_body: "Paths must refer to files available on the phone side.",
+    module_zip_placeholder: "Module ZIP path",
+    install_module: "Install Module",
+    apk_placeholder: "APK path",
+    install_apk: "Install APK",
+    image_placeholder: "Image path",
+    partition_placeholder: "Partition",
+    flash_image: "Flash Image",
+    susfs_tools_title: "SUSFS and Diagnostics",
+    susfs_tools_body: "Load, edit, and apply SUSFS JSON while exporting diagnostics when needed.",
+    load_susfs: "Load SUSFS",
+    apply_susfs: "Apply SUSFS JSON",
+    export_diagnostics: "Export Diagnostics",
+    activity_title: "Activity Log",
+    activity_body: "ADB forwarding, queued tasks, installs, flashes, and downloads are aggregated here.",
+    log_forward: "ADB forward",
+    log_start: "Start Agent",
+    log_ready: "Agent ready",
+    log_timeout: "Agent did not become healthy in time",
     log_task_queued: "Queued task",
     log_task_result: "Task result",
-    log_downloaded_to: "Downloaded to",
+    log_downloaded: "Downloaded to",
     log_download_failed: "Download failed",
 };
 
@@ -274,179 +332,477 @@ fn main() {
 }
 
 fn build_ui(app: &adw::Application) {
+    install_css();
     let strings = current_strings();
     let (sender, receiver) = mpsc::channel::<UiMessage>();
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title(strings.app_title)
-        .default_width(1380)
-        .default_height(920)
+        .default_width(1480)
+        .default_height(940)
         .build();
 
-    let header = adw::HeaderBar::new();
-    let title = adw::WindowTitle::new(strings.app_title, strings.app_subtitle);
-    header.set_title_widget(Some(&title));
-
-    let content = gtk::Paned::new(gtk::Orientation::Horizontal);
-    content.set_position(220);
-    content.set_resize_start_child(false);
-    content.set_shrink_start_child(false);
-    content.set_shrink_end_child(false);
+    let root = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    root.add_css_class("abk-root");
 
     let stack = gtk::Stack::new();
     stack.set_hexpand(true);
     stack.set_vexpand(true);
-    stack.set_transition_type(gtk::StackTransitionType::Crossfade);
+    stack.set_transition_type(gtk::StackTransitionType::SlideLeftRight);
 
-    let sidebar_box = gtk::Box::new(gtk::Orientation::Vertical, 12);
-    set_margin_all(&sidebar_box, 16);
-    sidebar_box.set_size_request(200, -1);
-
-    let sidebar = gtk::StackSidebar::new();
-    sidebar.set_stack(&stack);
-    sidebar.set_vexpand(true);
-    sidebar_box.append(&sidebar);
-
-    content.set_start_child(Some(&sidebar_box));
-    content.set_end_child(Some(&stack));
-
-    let cli_page = build_cli_page(&sender, strings);
-    stack.add_titled(&cli_page.container, Some("cli"), strings.page_cli);
-
+    let overview_page = build_overview_page(&sender, strings);
+    let build_page = build_build_page(&sender, strings);
     let device_page = build_device_page(&sender, strings);
-    stack.add_titled(&device_page.container, Some("device"), strings.page_device);
 
-    let actions_page = build_actions_page(&sender, strings);
     stack.add_titled(
-        &actions_page.container,
-        Some("actions"),
-        strings.page_actions,
+        &overview_page.container,
+        Some("overview"),
+        strings.nav_overview,
     );
+    stack.add_titled(&build_page.container, Some("build"), strings.nav_build);
+    stack.add_titled(&device_page.container, Some("device"), strings.nav_device);
+    stack.set_visible_child_name("overview");
 
-    let cli_buffer = cli_page.output;
-    let device_log_buffer = device_page.log_output;
-    let session_buffer = device_page.session_output;
-    let runtime_buffer = device_page.runtime_output;
-    let root_buffer = device_page.root_output;
-    let susfs_buffer = device_page.susfs_output;
-    let action_buffer = actions_page.log_output;
-    let susfs_editor = actions_page.susfs_editor;
+    let rail = build_navigation_rail(&stack, strings);
+    root.append(&rail);
+    root.append(&stack);
+
+    let overview_session_status = overview_page.session_status;
+    let overview_runtime_status = overview_page.runtime_status;
+    let overview_root_status = overview_page.root_status;
+    let overview_susfs_status = overview_page.susfs_status;
+    let build_output = build_page.output;
+    let activity_output = device_page.activity_log;
+    let device_port_entry = device_page.port_entry.clone();
+    let session_output = device_page.session_output;
+    let runtime_output = device_page.runtime_output;
+    let root_output = device_page.root_output;
+    let susfs_output = device_page.susfs_output;
+    let susfs_editor = device_page.susfs_editor;
+    let session_summary = device_page.session_summary;
+    let runtime_summary = device_page.runtime_summary;
+    let root_summary = device_page.root_summary;
+    let susfs_summary = device_page.susfs_summary;
+    let root_list = device_page.root_list;
+    let module_list = device_page.module_list;
+    let interaction_sender = sender.clone();
 
     glib::timeout_add_local(Duration::from_millis(100), move || {
         while let Ok(message) = receiver.try_recv() {
             match message {
-                UiMessage::CliOutput(text) => cli_buffer.set_text(&text),
-                UiMessage::DeviceLog(text) => append_buffer(&device_log_buffer, &text),
-                UiMessage::ActionLog(text) => append_buffer(&action_buffer, &text),
-                UiMessage::SessionJson(text) => session_buffer.set_text(&text),
-                UiMessage::RuntimeJson(text) => runtime_buffer.set_text(&text),
-                UiMessage::RootJson(text) => root_buffer.set_text(&text),
-                UiMessage::SusfsJson(text) => susfs_buffer.set_text(&text),
-                UiMessage::SusfsEditor(text) => susfs_editor.set_text(&text),
+                UiMessage::BuildOutput(text) => build_output.set_text(&text),
+                UiMessage::ActivityLog(text) => append_buffer(&activity_output, &text),
+                UiMessage::SessionSnapshot(value) => {
+                    if let Ok(text) = pretty_json_value(&value) {
+                        session_output.set_text(&text);
+                    }
+                    let session_text = summarize_session(&value);
+                    session_summary.set_text(&session_text);
+                    overview_session_status.set_text(&session_text);
+                }
+                UiMessage::RuntimeSnapshot(value) => {
+                    if let Ok(text) = pretty_json_value(&value) {
+                        runtime_output.set_text(&text);
+                    }
+                    let runtime_text = summarize_runtime(&value);
+                    runtime_summary.set_text(&runtime_text);
+                    overview_runtime_status.set_text(&runtime_text);
+                    render_module_rows(
+                        &module_list,
+                        &value,
+                        &interaction_sender,
+                        &device_port_entry,
+                        strings,
+                    );
+                }
+                UiMessage::RootSnapshot(value) => {
+                    if let Ok(text) = pretty_json_value(&value) {
+                        root_output.set_text(&text);
+                    }
+                    let root_text = summarize_root_grants(&value);
+                    root_summary.set_text(&root_text);
+                    overview_root_status.set_text(&root_text);
+                    render_root_grant_rows(
+                        &root_list,
+                        &value,
+                        &interaction_sender,
+                        &device_port_entry,
+                        strings,
+                    );
+                }
+                UiMessage::SusfsSnapshot(value) => {
+                    if let Ok(text) = pretty_json_value(&value) {
+                        susfs_output.set_text(&text);
+                    }
+                    let susfs_text = summarize_susfs(&value);
+                    susfs_summary.set_text(&susfs_text);
+                    overview_susfs_status.set_text(&susfs_text);
+                    if let Some(config) = value.get("config") {
+                        if let Ok(text) = pretty_json_value(config) {
+                            susfs_editor.set_text(&text);
+                        }
+                    }
+                }
             }
         }
         glib::ControlFlow::Continue
     });
 
-    window.set_titlebar(Some(&header));
-    window.set_content(Some(&content));
+    window.set_content(Some(&root));
     window.present();
 }
 
-struct CliPage {
+struct OverviewPage {
+    container: gtk::ScrolledWindow,
+    session_status: gtk::Label,
+    runtime_status: gtk::Label,
+    root_status: gtk::Label,
+    susfs_status: gtk::Label,
+}
+
+struct BuildPage {
     container: gtk::ScrolledWindow,
     output: gtk::TextBuffer,
 }
 
-fn build_cli_page(sender: &Sender<UiMessage>, strings: Strings) -> CliPage {
+struct DevicePage {
+    container: gtk::ScrolledWindow,
+    activity_log: gtk::TextBuffer,
+    port_entry: gtk::Entry,
+    session_output: gtk::TextBuffer,
+    runtime_output: gtk::TextBuffer,
+    root_output: gtk::TextBuffer,
+    susfs_output: gtk::TextBuffer,
+    susfs_editor: gtk::TextBuffer,
+    session_summary: gtk::Label,
+    runtime_summary: gtk::Label,
+    root_summary: gtk::Label,
+    susfs_summary: gtk::Label,
+    root_list: gtk::ListBox,
+    module_list: gtk::ListBox,
+}
+
+fn build_navigation_rail(stack: &gtk::Stack, strings: Strings) -> gtk::Box {
+    let rail = gtk::Box::new(gtk::Orientation::Vertical, 20);
+    rail.add_css_class("nav-rail");
+    rail.set_size_request(240, -1);
+    set_margin_all(&rail, 20);
+
+    let brand = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    brand.add_css_class("brand-card");
+
+    let badge = gtk::Label::new(Some(strings.brand_badge));
+    badge.set_xalign(0.0);
+    badge.add_css_class("state-chip");
+    badge.add_css_class("caption");
+    brand.append(&badge);
+
+    let title = gtk::Label::new(Some(strings.app_title));
+    title.set_xalign(0.0);
+    title.add_css_class("brand-title");
+    brand.append(&title);
+
+    let subtitle = gtk::Label::new(Some(strings.app_subtitle));
+    subtitle.set_xalign(0.0);
+    subtitle.add_css_class("brand-body");
+    subtitle.set_wrap(true);
+    brand.append(&subtitle);
+    rail.append(&brand);
+
+    let nav = gtk::ListBox::new();
+    nav.add_css_class("nav-list");
+    nav.set_selection_mode(gtk::SelectionMode::Single);
+
+    for (icon, title, subtitle) in [
+        (
+            "view-grid-symbolic",
+            strings.nav_overview,
+            strings.nav_overview_desc,
+        ),
+        (
+            "system-run-symbolic",
+            strings.nav_build,
+            strings.nav_build_desc,
+        ),
+        (
+            "smartphone-symbolic",
+            strings.nav_device,
+            strings.nav_device_desc,
+        ),
+    ] {
+        nav.append(&build_nav_row(icon, title, subtitle));
+    }
+
+    {
+        let stack = stack.clone();
+        nav.connect_row_selected(move |_, row| {
+            let Some(row) = row else { return };
+            match row.index() {
+                0 => stack.set_visible_child_name("overview"),
+                1 => stack.set_visible_child_name("build"),
+                2 => stack.set_visible_child_name("device"),
+                _ => {}
+            }
+        });
+    }
+
+    if let Some(first) = nav.row_at_index(0) {
+        nav.select_row(Some(&first));
+    }
+
+    rail.append(&nav);
+    rail
+}
+
+fn build_nav_row(icon: &str, title: &str, subtitle: &str) -> gtk::ListBoxRow {
+    let row = gtk::ListBoxRow::new();
+    row.set_selectable(true);
+    row.set_activatable(true);
+
+    let shell = gtk::Box::new(gtk::Orientation::Horizontal, 14);
+    shell.add_css_class("nav-shell");
+    set_margin_all(&shell, 10);
+
+    let image = gtk::Image::from_icon_name(icon);
+    image.add_css_class("nav-icon");
+    shell.append(&image);
+
+    let text = gtk::Box::new(gtk::Orientation::Vertical, 2);
+
+    let title_label = gtk::Label::new(Some(title));
+    title_label.set_xalign(0.0);
+    title_label.add_css_class("nav-title");
+    text.append(&title_label);
+
+    let subtitle_label = gtk::Label::new(Some(subtitle));
+    subtitle_label.set_xalign(0.0);
+    subtitle_label.add_css_class("nav-subtitle");
+    text.append(&subtitle_label);
+
+    shell.append(&text);
+    row.set_child(Some(&shell));
+    row
+}
+
+fn build_overview_page(sender: &Sender<UiMessage>, strings: Strings) -> OverviewPage {
     let (container, body) = new_page_shell();
-    body.append(&page_header(strings.cli_title, strings.cli_description));
 
-    let (command_section, command_content) =
-        new_card_section(strings.cli_command_title, strings.cli_command_description);
+    let hero = hero_card(
+        strings.overview_kicker,
+        strings.overview_title,
+        strings.overview_body,
+    );
+    let hero_actions = gtk::Box::new(gtk::Orientation::Horizontal, 10);
 
-    let entry = gtk::Entry::new();
-    entry.set_hexpand(true);
-    entry.set_placeholder_text(Some(strings.cli_command_placeholder));
-
-    let run_button = gtk::Button::with_label(strings.cli_run);
+    let connect = gtk::Button::with_label(strings.overview_connect);
+    connect.add_css_class("suggested-action");
+    connect.add_css_class("pill");
+    connect.add_css_class("big-button");
     {
         let sender = sender.clone();
-        let entry = entry.clone();
+        connect.connect_clicked(move |_| {
+            spawn_agent_start(String::new(), 48765, sender.clone(), strings);
+        });
+    }
+
+    let preview = gtk::Button::with_label(strings.overview_preview);
+    preview.add_css_class("big-button");
+    preview.add_css_class("tonal-button");
+    {
+        let sender = sender.clone();
+        preview.connect_clicked(move |_| {
+            spawn_cli(
+                "build --dry-run --sub-level 162 --os-patch-level 2026-03".into(),
+                sender.clone(),
+            );
+        });
+    }
+
+    let diagnostics = gtk::Button::with_label(strings.overview_diagnostics);
+    diagnostics.add_css_class("big-button");
+    diagnostics.add_css_class("tonal-button");
+    {
+        let sender = sender.clone();
+        diagnostics.connect_clicked(move |_| {
+            spawn_agent_task_call(
+                48765,
+                sender.clone(),
+                move |client| client.export_diagnostics(),
+                true,
+                strings,
+            );
+        });
+    }
+
+    hero_actions.append(&connect);
+    hero_actions.append(&preview);
+    hero_actions.append(&diagnostics);
+    hero.append(&hero_actions);
+    body.append(&hero);
+
+    let live_card = surface_card(strings.overview_live_title, strings.overview_live_body);
+    let live_grid = gtk::Grid::new();
+    live_grid.set_column_spacing(12);
+    live_grid.set_row_spacing(12);
+    live_grid.set_column_homogeneous(true);
+
+    let session_status = status_block("Device Session", "Not connected yet");
+    let runtime_status = status_block("Runtime", "No runtime snapshot yet");
+    let root_status = status_block("Root Grants", "No root grant snapshot yet");
+    let susfs_status = status_block("SUSFS", "No SUSFS snapshot yet");
+
+    live_grid.attach(&session_status.0, 0, 0, 1, 1);
+    live_grid.attach(&runtime_status.0, 1, 0, 1, 1);
+    live_grid.attach(&root_status.0, 0, 1, 1, 1);
+    live_grid.attach(&susfs_status.0, 1, 1, 1, 1);
+    live_card.append(&live_grid);
+    body.append(&live_card);
+
+    let section = section_header(
+        strings.overview_summary_title,
+        strings.overview_summary_body,
+    );
+    body.append(&section);
+
+    let grid = gtk::Grid::new();
+    grid.set_column_spacing(16);
+    grid.set_row_spacing(16);
+    grid.set_column_homogeneous(true);
+
+    let build_card = summary_card(
+        "system-run-symbolic",
+        strings.overview_card_build_title,
+        strings.overview_card_build_body,
+    );
+    let device_card = summary_card(
+        "smartphone-symbolic",
+        strings.overview_card_device_title,
+        strings.overview_card_device_body,
+    );
+    let runtime_card = summary_card(
+        "applications-system-symbolic",
+        strings.overview_card_runtime_title,
+        strings.overview_card_runtime_body,
+    );
+    let surface_card_widget = summary_card(
+        "preferences-desktop-theme-symbolic",
+        strings.overview_card_surface_title,
+        strings.overview_card_surface_body,
+    );
+
+    grid.attach(&build_card, 0, 0, 1, 1);
+    grid.attach(&device_card, 1, 0, 1, 1);
+    grid.attach(&runtime_card, 0, 1, 1, 1);
+    grid.attach(&surface_card_widget, 1, 1, 1, 1);
+    body.append(&grid);
+
+    OverviewPage {
+        container,
+        session_status: session_status.1,
+        runtime_status: runtime_status.1,
+        root_status: root_status.1,
+        susfs_status: susfs_status.1,
+    }
+}
+
+fn build_build_page(sender: &Sender<UiMessage>, strings: Strings) -> BuildPage {
+    let (container, body) = new_page_shell();
+    body.append(&hero_card(
+        strings.build_kicker,
+        strings.build_title,
+        strings.build_body,
+    ));
+
+    let quick_card = surface_card(strings.build_quick_title, strings.build_quick_body);
+    let quick_flow = gtk::FlowBox::new();
+    quick_flow.set_selection_mode(gtk::SelectionMode::None);
+    quick_flow.set_row_spacing(10);
+    quick_flow.set_column_spacing(10);
+    quick_flow.set_max_children_per_line(4);
+
+    for (label, command) in [
+        (strings.build_login, "login"),
+        (strings.build_whoami, "whoami"),
+        (strings.build_fork, "fork"),
+        (strings.build_sync, "sync"),
+        (
+            strings.build_preview,
+            "build --dry-run --sub-level 162 --os-patch-level 2026-03",
+        ),
+        (strings.build_matrix, "build --matrix both --dry-run"),
+        (strings.build_status, "status"),
+        (strings.build_artifacts, "artifacts --run-id 0"),
+    ] {
+        let button = gtk::Button::with_label(label);
+        button.add_css_class("pill");
+        button.add_css_class("tonal-button");
+        let sender = sender.clone();
+        let command = command.to_string();
+        button.connect_clicked(move |_| spawn_cli(command.clone(), sender.clone()));
+        quick_flow.insert(&button, -1);
+    }
+    quick_card.append(&quick_flow);
+    body.append(&quick_card);
+
+    let command_card = surface_card(strings.build_command_title, strings.build_command_body);
+    let command_entry = gtk::Entry::new();
+    command_entry.set_hexpand(true);
+    command_entry.set_placeholder_text(Some(strings.build_command_placeholder));
+    command_entry.add_css_class("material-entry");
+
+    let run_button = gtk::Button::with_label(strings.build_run);
+    run_button.add_css_class("suggested-action");
+    run_button.add_css_class("pill");
+    {
+        let sender = sender.clone();
+        let entry = command_entry.clone();
         run_button.connect_clicked(move |_| {
             let raw = entry.text().to_string();
             spawn_cli(raw, sender.clone());
         });
     }
 
-    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    controls.append(&entry);
-    controls.append(&run_button);
-    command_content.append(&controls);
+    let command_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    command_row.append(&command_entry);
+    command_row.append(&run_button);
+    command_card.append(&command_row);
+    body.append(&command_card);
 
-    let quick = gtk::FlowBox::new();
-    quick.set_selection_mode(gtk::SelectionMode::None);
-    quick.set_row_spacing(8);
-    quick.set_column_spacing(8);
-    quick.set_max_children_per_line(4);
-    quick.set_homogeneous(false);
-    quick.set_valign(gtk::Align::Start);
-
-    for (label, command) in quick_actions(strings) {
-        let button = gtk::Button::with_label(label);
-        let sender = sender.clone();
-        let command = command.to_string();
-        button.connect_clicked(move |_| spawn_cli(command.clone(), sender.clone()));
-        quick.insert(&button, -1);
-    }
-    command_content.append(&quick);
-    body.append(&command_section);
-
-    let (output_section, output_content) =
-        new_card_section(strings.cli_output_title, strings.cli_output_description);
+    let output_card = surface_card(strings.build_output_title, strings.build_output_body);
     let output = new_text_buffer();
     let output_view = new_text_view(&output, false);
+    output_view.add_css_class("console-pane");
     let output_scroll = new_scroller(&output_view);
-    output_scroll.set_min_content_height(360);
-    output_scroll.set_vexpand(true);
-    output_content.append(&output_scroll);
-    body.append(&output_section);
+    output_scroll.set_min_content_height(420);
+    output_card.append(&output_scroll);
+    body.append(&output_card);
 
-    CliPage { container, output }
-}
-
-struct DevicePage {
-    container: gtk::ScrolledWindow,
-    log_output: gtk::TextBuffer,
-    session_output: gtk::TextBuffer,
-    runtime_output: gtk::TextBuffer,
-    root_output: gtk::TextBuffer,
-    susfs_output: gtk::TextBuffer,
+    BuildPage { container, output }
 }
 
 fn build_device_page(sender: &Sender<UiMessage>, strings: Strings) -> DevicePage {
     let (container, body) = new_page_shell();
-    body.append(&page_header(
+    body.append(&hero_card(
+        strings.device_kicker,
         strings.device_title,
-        strings.device_description,
+        strings.device_body,
     ));
 
-    let (connection_section, connection_content) = new_card_section(
-        strings.device_connection_title,
-        strings.device_connection_description,
-    );
-
+    let connect_card = surface_card(strings.device_connect_title, strings.device_connect_body);
     let serial_entry = gtk::Entry::new();
-    serial_entry.set_placeholder_text(Some(strings.device_serial_placeholder));
     serial_entry.set_hexpand(true);
+    serial_entry.set_placeholder_text(Some(strings.device_serial));
+    serial_entry.add_css_class("material-entry");
 
     let port_entry = gtk::Entry::new();
-    port_entry.set_placeholder_text(Some(strings.device_port_placeholder));
-    port_entry.set_text("48765");
     port_entry.set_width_chars(8);
+    port_entry.set_text("48765");
+    port_entry.set_placeholder_text(Some(strings.device_port));
+    port_entry.add_css_class("material-entry");
 
     let detect_button = gtk::Button::with_label(strings.device_detect);
+    detect_button.add_css_class("pill");
     {
         let sender = sender.clone();
         detect_button.connect_clicked(move |_| {
@@ -454,24 +810,30 @@ fn build_device_page(sender: &Sender<UiMessage>, strings: Strings) -> DevicePage
             thread::spawn(move || {
                 let result = run_command(&build_adb_detect_command())
                     .unwrap_or_else(|error| format!("{error:#}"));
-                let _ = sender.send(UiMessage::DeviceLog(result));
+                let _ = sender.send(UiMessage::ActivityLog(result));
             });
         });
     }
 
     let start_button = gtk::Button::with_label(strings.device_start);
+    start_button.add_css_class("suggested-action");
+    start_button.add_css_class("pill");
     {
         let sender = sender.clone();
         let serial_entry = serial_entry.clone();
         let port_entry = port_entry.clone();
         start_button.connect_clicked(move |_| {
-            let serial = serial_entry.text().to_string();
-            let port = parse_port(&port_entry.text());
-            spawn_agent_start(serial, port, sender.clone(), strings);
+            spawn_agent_start(
+                serial_entry.text().to_string(),
+                parse_port(&port_entry.text()),
+                sender.clone(),
+                strings,
+            );
         });
     }
 
     let stop_button = gtk::Button::with_label(strings.device_stop);
+    stop_button.add_css_class("pill");
     {
         let sender = sender.clone();
         let serial_entry = serial_entry.clone();
@@ -481,12 +843,13 @@ fn build_device_page(sender: &Sender<UiMessage>, strings: Strings) -> DevicePage
             thread::spawn(move || {
                 let result = run_command(&build_adb_stop_agent_command(&serial))
                     .unwrap_or_else(|error| format!("{error:#}"));
-                let _ = sender.send(UiMessage::DeviceLog(result));
+                let _ = sender.send(UiMessage::ActivityLog(result));
             });
         });
     }
 
     let refresh_button = gtk::Button::with_label(strings.device_refresh);
+    refresh_button.add_css_class("pill");
     {
         let sender = sender.clone();
         let port_entry = port_entry.clone();
@@ -495,221 +858,109 @@ fn build_device_page(sender: &Sender<UiMessage>, strings: Strings) -> DevicePage
         });
     }
 
-    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    controls.append(&serial_entry);
-    controls.append(&port_entry);
-    controls.append(&detect_button);
-    controls.append(&start_button);
-    controls.append(&stop_button);
-    controls.append(&refresh_button);
-    connection_content.append(&controls);
-    body.append(&connection_section);
+    let connect_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    connect_row.append(&serial_entry);
+    connect_row.append(&port_entry);
+    connect_row.append(&detect_button);
+    connect_row.append(&start_button);
+    connect_row.append(&stop_button);
+    connect_row.append(&refresh_button);
+    connect_card.append(&connect_row);
+    body.append(&connect_card);
 
-    let (snapshot_section, snapshot_content) = new_card_section(
-        strings.device_snapshot_title,
-        strings.device_snapshot_description,
-    );
+    let snapshot_card = surface_card(strings.device_snapshot_title, strings.device_snapshot_body);
+    let parsed_card = surface_card(strings.device_parsed_title, strings.device_parsed_body);
+    let parsed_grid = gtk::Grid::new();
+    parsed_grid.set_column_spacing(12);
+    parsed_grid.set_row_spacing(12);
+    parsed_grid.set_column_homogeneous(true);
 
+    let session_summary = status_block("Session", "Not loaded");
+    let runtime_summary = status_block("Runtime", "Not loaded");
+    let root_summary = status_block("Root Grants", "Not loaded");
+    let susfs_summary = status_block("SUSFS", "Not loaded");
+
+    parsed_grid.attach(&session_summary.0, 0, 0, 1, 1);
+    parsed_grid.attach(&runtime_summary.0, 1, 0, 1, 1);
+    parsed_grid.attach(&root_summary.0, 0, 1, 1, 1);
+    parsed_grid.attach(&susfs_summary.0, 1, 1, 1, 1);
+    parsed_card.append(&parsed_grid);
+    snapshot_card.append(&parsed_card);
+
+    let raw_expander = gtk::Expander::new(Some(strings.device_raw_title));
+    raw_expander.set_expanded(false);
     let notebook = gtk::Notebook::new();
-    notebook.set_vexpand(true);
+    notebook.add_css_class("snapshot-notebook");
 
     let session_output = new_text_buffer();
+    let session_view = new_text_view(&session_output, false);
+    session_view.add_css_class("console-pane");
     notebook.append_page(
-        &new_scroller(&new_text_view(&session_output, false)),
-        Some(&gtk::Label::new(Some(strings.device_session_tab))),
+        &new_scroller(&session_view),
+        Some(&gtk::Label::new(Some(strings.device_session))),
     );
 
     let runtime_output = new_text_buffer();
+    let runtime_view = new_text_view(&runtime_output, false);
+    runtime_view.add_css_class("console-pane");
     notebook.append_page(
-        &new_scroller(&new_text_view(&runtime_output, false)),
-        Some(&gtk::Label::new(Some(strings.device_runtime_tab))),
+        &new_scroller(&runtime_view),
+        Some(&gtk::Label::new(Some(strings.device_runtime))),
     );
 
     let root_output = new_text_buffer();
+    let root_view = new_text_view(&root_output, false);
+    root_view.add_css_class("console-pane");
     notebook.append_page(
-        &new_scroller(&new_text_view(&root_output, false)),
-        Some(&gtk::Label::new(Some(strings.device_root_tab))),
+        &new_scroller(&root_view),
+        Some(&gtk::Label::new(Some(strings.device_root))),
     );
 
     let susfs_output = new_text_buffer();
+    let susfs_view = new_text_view(&susfs_output, false);
+    susfs_view.add_css_class("console-pane");
     notebook.append_page(
-        &new_scroller(&new_text_view(&susfs_output, false)),
-        Some(&gtk::Label::new(Some(strings.device_susfs_tab))),
+        &new_scroller(&susfs_view),
+        Some(&gtk::Label::new(Some(strings.device_susfs))),
     );
-    snapshot_content.append(&notebook);
-    body.append(&snapshot_section);
+    raw_expander.set_child(Some(&notebook));
+    snapshot_card.append(&raw_expander);
+    body.append(&snapshot_card);
 
-    let (log_section, log_content) =
-        new_card_section(strings.device_log_title, strings.device_log_description);
-    let log_output = new_text_buffer();
-    let log_view = new_text_view(&log_output, false);
-    let log_scroll = new_scroller(&log_view);
-    log_scroll.set_min_content_height(180);
-    log_content.append(&log_scroll);
-    body.append(&log_section);
+    let ops_grid = gtk::Grid::new();
+    ops_grid.set_column_spacing(16);
+    ops_grid.set_row_spacing(16);
+    ops_grid.set_column_homogeneous(true);
 
-    DevicePage {
-        container,
-        log_output,
-        session_output,
-        runtime_output,
-        root_output,
-        susfs_output,
-    }
-}
+    let grants_card = surface_card(strings.grants_title, strings.grants_body);
+    let root_list = gtk::ListBox::new();
+    root_list.add_css_class("plain-list");
+    let root_scroll = new_scroller(&root_list);
+    root_scroll.set_min_content_height(230);
+    grants_card.append(&root_scroll);
 
-struct ActionsPage {
-    container: gtk::ScrolledWindow,
-    log_output: gtk::TextBuffer,
-    susfs_editor: gtk::TextBuffer,
-}
+    let modules_card = surface_card(strings.modules_title, strings.modules_body);
+    let module_list = gtk::ListBox::new();
+    module_list.add_css_class("plain-list");
+    let module_scroll = new_scroller(&module_list);
+    module_scroll.set_min_content_height(230);
+    modules_card.append(&module_scroll);
 
-fn build_actions_page(sender: &Sender<UiMessage>, strings: Strings) -> ActionsPage {
-    let (container, body) = new_page_shell();
-    body.append(&page_header(
-        strings.actions_title,
-        strings.actions_description,
-    ));
-
-    let port_entry = gtk::Entry::new();
-    port_entry.set_placeholder_text(Some(strings.device_port_placeholder));
-    port_entry.set_text("48765");
-    port_entry.set_width_chars(8);
-
-    let (root_section, root_content) =
-        new_card_section(strings.root_card_title, strings.root_card_description);
-    let package_entry = gtk::Entry::new();
-    package_entry.set_hexpand(true);
-    package_entry.set_placeholder_text(Some(strings.root_package_placeholder));
-
-    let allow_button = gtk::Button::with_label(strings.root_allow);
-    {
-        let sender = sender.clone();
-        let package_entry = package_entry.clone();
-        let port_entry = port_entry.clone();
-        allow_button.connect_clicked(move |_| {
-            let package_name = package_entry.text().to_string();
-            spawn_agent_sync_call(
-                parse_port(&port_entry.text()),
-                sender.clone(),
-                move |client| client.set_root_grant(&package_name, true),
-            );
-        });
-    }
-
-    let revoke_button = gtk::Button::with_label(strings.root_revoke);
-    {
-        let sender = sender.clone();
-        let package_entry = package_entry.clone();
-        let port_entry = port_entry.clone();
-        revoke_button.connect_clicked(move |_| {
-            let package_name = package_entry.text().to_string();
-            spawn_agent_sync_call(
-                parse_port(&port_entry.text()),
-                sender.clone(),
-                move |client| client.set_root_grant(&package_name, false),
-            );
-        });
-    }
-
-    let root_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    root_row.append(&port_entry);
-    root_row.append(&package_entry);
-    root_row.append(&allow_button);
-    root_row.append(&revoke_button);
-    root_content.append(&root_row);
-    body.append(&root_section);
-
-    let (module_section, module_content) =
-        new_card_section(strings.module_card_title, strings.module_card_description);
-    let module_entry = gtk::Entry::new();
-    module_entry.set_hexpand(true);
-    module_entry.set_placeholder_text(Some(strings.module_placeholder));
-
-    let enable_button = gtk::Button::with_label(strings.module_enable);
-    {
-        let sender = sender.clone();
-        let module_entry = module_entry.clone();
-        let port_entry = port_entry.clone();
-        enable_button.connect_clicked(move |_| {
-            let module_id = module_entry.text().to_string();
-            spawn_agent_sync_call(
-                parse_port(&port_entry.text()),
-                sender.clone(),
-                move |client| client.set_module_enabled(&module_id, true),
-            );
-        });
-    }
-
-    let disable_button = gtk::Button::with_label(strings.module_disable);
-    {
-        let sender = sender.clone();
-        let module_entry = module_entry.clone();
-        let port_entry = port_entry.clone();
-        disable_button.connect_clicked(move |_| {
-            let module_id = module_entry.text().to_string();
-            spawn_agent_sync_call(
-                parse_port(&port_entry.text()),
-                sender.clone(),
-                move |client| client.set_module_enabled(&module_id, false),
-            );
-        });
-    }
-
-    let uninstall_button = gtk::Button::with_label(strings.module_uninstall);
-    {
-        let sender = sender.clone();
-        let module_entry = module_entry.clone();
-        let port_entry = port_entry.clone();
-        uninstall_button.connect_clicked(move |_| {
-            let module_id = module_entry.text().to_string();
-            spawn_agent_sync_call(
-                parse_port(&port_entry.text()),
-                sender.clone(),
-                move |client| client.set_module_pending_uninstall(&module_id, true),
-            );
-        });
-    }
-
-    let action_button = gtk::Button::with_label(strings.module_action);
-    {
-        let sender = sender.clone();
-        let module_entry = module_entry.clone();
-        let port_entry = port_entry.clone();
-        action_button.connect_clicked(move |_| {
-            let module_id = module_entry.text().to_string();
-            spawn_agent_task_call(
-                parse_port(&port_entry.text()),
-                sender.clone(),
-                move |client| client.run_module_action(&module_id),
-                false,
-                strings,
-            );
-        });
-    }
-
-    let module_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    module_row.append(&module_entry);
-    module_row.append(&enable_button);
-    module_row.append(&disable_button);
-    module_row.append(&uninstall_button);
-    module_row.append(&action_button);
-    module_content.append(&module_row);
-    body.append(&module_section);
-
-    let (install_section, install_content) =
-        new_card_section(strings.install_card_title, strings.install_card_description);
+    let install_card = surface_card(strings.install_title, strings.install_body);
 
     let module_zip_entry = gtk::Entry::new();
     module_zip_entry.set_hexpand(true);
-    module_zip_entry.set_placeholder_text(Some(strings.install_module_placeholder));
+    module_zip_entry.set_placeholder_text(Some(strings.module_zip_placeholder));
+    module_zip_entry.add_css_class("material-entry");
 
-    let install_module_button = gtk::Button::with_label(strings.install_module_button);
+    let install_module = gtk::Button::with_label(strings.install_module);
+    install_module.add_css_class("pill");
+    install_module.add_css_class("tonal-button");
     {
         let sender = sender.clone();
-        let module_zip_entry = module_zip_entry.clone();
         let port_entry = port_entry.clone();
-        install_module_button.connect_clicked(move |_| {
+        let module_zip_entry = module_zip_entry.clone();
+        install_module.connect_clicked(move |_| {
             let path = module_zip_entry.text().to_string();
             spawn_agent_task_call(
                 parse_port(&port_entry.text()),
@@ -721,21 +972,23 @@ fn build_actions_page(sender: &Sender<UiMessage>, strings: Strings) -> ActionsPa
         });
     }
 
-    let module_zip_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    module_zip_row.append(&module_zip_entry);
-    module_zip_row.append(&install_module_button);
-    install_content.append(&module_zip_row);
+    let module_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    module_row.append(&module_zip_entry);
+    module_row.append(&install_module);
+    install_card.append(&module_row);
 
     let apk_entry = gtk::Entry::new();
     apk_entry.set_hexpand(true);
-    apk_entry.set_placeholder_text(Some(strings.install_apk_placeholder));
+    apk_entry.set_placeholder_text(Some(strings.apk_placeholder));
+    apk_entry.add_css_class("material-entry");
 
-    let install_apk_button = gtk::Button::with_label(strings.install_apk_button);
+    let install_apk = gtk::Button::with_label(strings.install_apk);
+    install_apk.add_css_class("pill");
     {
         let sender = sender.clone();
-        let apk_entry = apk_entry.clone();
         let port_entry = port_entry.clone();
-        install_apk_button.connect_clicked(move |_| {
+        let apk_entry = apk_entry.clone();
+        install_apk.connect_clicked(move |_| {
             let path = apk_entry.text().to_string();
             spawn_agent_task_call(
                 parse_port(&port_entry.text()),
@@ -747,95 +1000,100 @@ fn build_actions_page(sender: &Sender<UiMessage>, strings: Strings) -> ActionsPa
         });
     }
 
-    let apk_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let apk_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     apk_row.append(&apk_entry);
-    apk_row.append(&install_apk_button);
-    install_content.append(&apk_row);
+    apk_row.append(&install_apk);
+    install_card.append(&apk_row);
 
     let image_entry = gtk::Entry::new();
     image_entry.set_hexpand(true);
-    image_entry.set_placeholder_text(Some(strings.flash_image_placeholder));
+    image_entry.set_placeholder_text(Some(strings.image_placeholder));
+    image_entry.add_css_class("material-entry");
 
     let partition_entry = gtk::Entry::new();
-    partition_entry.set_placeholder_text(Some(strings.flash_partition_placeholder));
-    partition_entry.set_text("boot");
     partition_entry.set_width_chars(8);
+    partition_entry.set_text("boot");
+    partition_entry.set_placeholder_text(Some(strings.partition_placeholder));
+    partition_entry.add_css_class("material-entry");
 
-    let flash_button = gtk::Button::with_label(strings.flash_button);
+    let flash = gtk::Button::with_label(strings.flash_image);
+    flash.add_css_class("pill");
     {
         let sender = sender.clone();
+        let port_entry = port_entry.clone();
         let image_entry = image_entry.clone();
         let partition_entry = partition_entry.clone();
-        let port_entry = port_entry.clone();
-        flash_button.connect_clicked(move |_| {
-            let path = image_entry.text().to_string();
+        flash.connect_clicked(move |_| {
+            let image = image_entry.text().to_string();
             let partition = partition_entry.text().to_string();
             spawn_agent_task_call(
                 parse_port(&port_entry.text()),
                 sender.clone(),
-                move |client| client.flash_image(&path, &partition),
+                move |client| client.flash_image(&image, &partition),
                 false,
                 strings,
             );
         });
     }
 
-    let flash_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let flash_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     flash_row.append(&image_entry);
     flash_row.append(&partition_entry);
-    flash_row.append(&flash_button);
-    install_content.append(&flash_row);
-    body.append(&install_section);
+    flash_row.append(&flash);
+    install_card.append(&flash_row);
 
-    let (susfs_section, susfs_content) =
-        new_card_section(strings.susfs_card_title, strings.susfs_card_description);
+    let susfs_tools = surface_card(strings.susfs_tools_title, strings.susfs_tools_body);
+    let susfs_controls = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let susfs_editor = new_text_buffer();
 
-    let susfs_controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let load_susfs_button = gtk::Button::with_label(strings.susfs_load);
+    let load_susfs = gtk::Button::with_label(strings.load_susfs);
+    load_susfs.add_css_class("pill");
+    load_susfs.add_css_class("tonal-button");
     {
         let sender = sender.clone();
         let port_entry = port_entry.clone();
-        load_susfs_button.connect_clicked(move |_| {
-            let port = parse_port(&port_entry.text());
+        load_susfs.connect_clicked(move |_| {
             let sender = sender.clone();
+            let port = parse_port(&port_entry.text());
             thread::spawn(move || {
                 let client = AgentClient::new("127.0.0.1", port);
-                match client.susfs() {
-                    Ok(json) => {
-                        let _ = sender.send(UiMessage::SusfsJson(json.clone()));
-                        let _ = sender.send(UiMessage::SusfsEditor(json));
+                match client.susfs_json() {
+                    Ok(value) => {
+                        let _ = sender.send(UiMessage::SusfsSnapshot(value));
                     }
                     Err(error) => {
-                        let _ = sender.send(UiMessage::ActionLog(format!("{error:#}")));
+                        let _ = sender.send(UiMessage::ActivityLog(format!("{error:#}")));
                     }
                 }
             });
         });
     }
 
-    let apply_susfs_button = gtk::Button::with_label(strings.susfs_apply);
-    let susfs_editor = new_text_buffer();
+    let apply_susfs = gtk::Button::with_label(strings.apply_susfs);
+    apply_susfs.add_css_class("pill");
     {
         let sender = sender.clone();
-        let susfs_editor = susfs_editor.clone();
         let port_entry = port_entry.clone();
-        apply_susfs_button.connect_clicked(move |_| {
-            let json = buffer_text(&susfs_editor);
+        let susfs_editor_clone = susfs_editor.clone();
+        apply_susfs.connect_clicked(move |_| {
+            let body = buffer_text(&susfs_editor_clone);
             spawn_agent_task_call(
                 parse_port(&port_entry.text()),
                 sender.clone(),
-                move |client| client.apply_susfs_json(&json),
+                move |client| client.apply_susfs_json(&body),
                 false,
                 strings,
             );
         });
     }
 
-    let export_diag_button = gtk::Button::with_label(strings.diagnostics_export);
+    let export = gtk::Button::with_label(strings.export_diagnostics);
+    export.add_css_class("pill");
+    export.add_css_class("tonal-button");
     {
         let sender = sender.clone();
         let port_entry = port_entry.clone();
-        export_diag_button.connect_clicked(move |_| {
+        export.connect_clicked(move |_| {
             spawn_agent_task_call(
                 parse_port(&port_entry.text()),
                 sender.clone(),
@@ -846,30 +1104,47 @@ fn build_actions_page(sender: &Sender<UiMessage>, strings: Strings) -> ActionsPa
         });
     }
 
-    susfs_controls.append(&load_susfs_button);
-    susfs_controls.append(&apply_susfs_button);
-    susfs_controls.append(&export_diag_button);
-    susfs_content.append(&susfs_controls);
+    susfs_controls.append(&load_susfs);
+    susfs_controls.append(&apply_susfs);
+    susfs_controls.append(&export);
+    susfs_tools.append(&susfs_controls);
 
-    let susfs_view = new_text_view(&susfs_editor, true);
-    let susfs_scroll = new_scroller(&susfs_view);
-    susfs_scroll.set_min_content_height(260);
-    susfs_content.append(&susfs_scroll);
-    body.append(&susfs_section);
+    let editor_view = new_text_view(&susfs_editor, true);
+    editor_view.add_css_class("console-pane");
+    let editor_scroll = new_scroller(&editor_view);
+    editor_scroll.set_min_content_height(240);
+    susfs_tools.append(&editor_scroll);
 
-    let (log_section, log_content) =
-        new_card_section(strings.action_log_title, strings.action_log_description);
-    let log_output = new_text_buffer();
-    let log_view = new_text_view(&log_output, false);
-    let log_scroll = new_scroller(&log_view);
-    log_scroll.set_min_content_height(200);
-    log_content.append(&log_scroll);
-    body.append(&log_section);
+    ops_grid.attach(&grants_card, 0, 0, 1, 1);
+    ops_grid.attach(&modules_card, 1, 0, 1, 1);
+    ops_grid.attach(&install_card, 0, 1, 1, 1);
+    ops_grid.attach(&susfs_tools, 1, 1, 1, 1);
+    body.append(&ops_grid);
 
-    ActionsPage {
+    let activity = surface_card(strings.activity_title, strings.activity_body);
+    let activity_log = new_text_buffer();
+    let activity_view = new_text_view(&activity_log, false);
+    activity_view.add_css_class("console-pane");
+    let activity_scroll = new_scroller(&activity_view);
+    activity_scroll.set_min_content_height(260);
+    activity.append(&activity_scroll);
+    body.append(&activity);
+
+    DevicePage {
         container,
-        log_output,
+        activity_log,
+        port_entry,
+        session_output,
+        runtime_output,
+        root_output,
+        susfs_output,
         susfs_editor,
+        session_summary: session_summary.1,
+        runtime_summary: runtime_summary.1,
+        root_summary: root_summary.1,
+        susfs_summary: susfs_summary.1,
+        root_list,
+        module_list,
     }
 }
 
@@ -879,7 +1154,7 @@ fn spawn_cli(raw: String, sender: Sender<UiMessage>) {
             Ok(output) => output,
             Err(error) => format!("{error:#}"),
         };
-        let _ = sender.send(UiMessage::CliOutput(message));
+        let _ = sender.send(UiMessage::BuildOutput(message));
     });
 }
 
@@ -887,25 +1162,21 @@ fn spawn_agent_start(serial: String, port: u16, sender: Sender<UiMessage>, strin
     thread::spawn(move || {
         let forward = run_command(&build_adb_forward_command(&serial, port));
         let start = run_command(&build_adb_start_agent_command(&serial, port));
-        let mut lines = Vec::new();
-        lines.push(format!(
-            "{}: {}",
-            strings.log_adb_forward,
-            forward.unwrap_or_else(|e| format!("{e:#}"))
-        ));
-        lines.push(format!(
-            "{}: {}",
-            strings.log_start_agent,
-            start.unwrap_or_else(|e| format!("{e:#}"))
-        ));
-        let _ = sender.send(UiMessage::DeviceLog(lines.join("\n\n")));
+        let summary = format!(
+            "{}: {}\n\n{}: {}",
+            strings.log_forward,
+            forward.unwrap_or_else(|error| format!("{error:#}")),
+            strings.log_start,
+            start.unwrap_or_else(|error| format!("{error:#}")),
+        );
+        let _ = sender.send(UiMessage::ActivityLog(summary));
         for _ in 0..20 {
             let client = AgentClient::new("127.0.0.1", port);
             match client.health() {
                 Ok(health) => {
-                    let _ = sender.send(UiMessage::DeviceLog(format!(
+                    let _ = sender.send(UiMessage::ActivityLog(format!(
                         "{}\n{}",
-                        strings.log_agent_ready, health
+                        strings.log_ready, health
                     )));
                     refresh_agent(client, &sender);
                     return;
@@ -913,7 +1184,7 @@ fn spawn_agent_start(serial: String, port: u16, sender: Sender<UiMessage>, strin
                 Err(_) => thread::sleep(Duration::from_millis(500)),
             }
         }
-        let _ = sender.send(UiMessage::DeviceLog(strings.log_agent_timeout.into()));
+        let _ = sender.send(UiMessage::ActivityLog(strings.log_timeout.into()));
     });
 }
 
@@ -922,37 +1193,36 @@ fn spawn_agent_refresh(port: u16, sender: Sender<UiMessage>) {
 }
 
 fn refresh_agent(client: AgentClient, sender: &Sender<UiMessage>) {
-    match client.session() {
-        Ok(text) => {
-            let _ = sender.send(UiMessage::SessionJson(text));
+    match client.session_json() {
+        Ok(value) => {
+            let _ = sender.send(UiMessage::SessionSnapshot(value));
         }
         Err(error) => {
-            let _ = sender.send(UiMessage::DeviceLog(format!("{error:#}")));
+            let _ = sender.send(UiMessage::ActivityLog(format!("{error:#}")));
         }
     }
-    match client.runtime() {
-        Ok(text) => {
-            let _ = sender.send(UiMessage::RuntimeJson(text));
+    match client.runtime_json() {
+        Ok(value) => {
+            let _ = sender.send(UiMessage::RuntimeSnapshot(value));
         }
         Err(error) => {
-            let _ = sender.send(UiMessage::DeviceLog(format!("{error:#}")));
+            let _ = sender.send(UiMessage::ActivityLog(format!("{error:#}")));
         }
     }
-    match client.root_grants() {
-        Ok(text) => {
-            let _ = sender.send(UiMessage::RootJson(text));
+    match client.root_grants_json() {
+        Ok(value) => {
+            let _ = sender.send(UiMessage::RootSnapshot(value));
         }
         Err(error) => {
-            let _ = sender.send(UiMessage::DeviceLog(format!("{error:#}")));
+            let _ = sender.send(UiMessage::ActivityLog(format!("{error:#}")));
         }
     }
-    match client.susfs() {
-        Ok(text) => {
-            let _ = sender.send(UiMessage::SusfsJson(text.clone()));
-            let _ = sender.send(UiMessage::SusfsEditor(text));
+    match client.susfs_json() {
+        Ok(value) => {
+            let _ = sender.send(UiMessage::SusfsSnapshot(value));
         }
         Err(error) => {
-            let _ = sender.send(UiMessage::DeviceLog(format!("{error:#}")));
+            let _ = sender.send(UiMessage::ActivityLog(format!("{error:#}")));
         }
     }
 }
@@ -970,7 +1240,7 @@ where
             }
             Err(error) => format!("{error:#}"),
         };
-        let _ = sender.send(UiMessage::ActionLog(message));
+        let _ = sender.send(UiMessage::ActivityLog(message));
     });
 }
 
@@ -987,7 +1257,7 @@ fn spawn_agent_task_call<F>(
         let client = AgentClient::new("127.0.0.1", port);
         match call(client.clone()) {
             Ok(task) => {
-                let _ = sender.send(UiMessage::ActionLog(format!(
+                let _ = sender.send(UiMessage::ActivityLog(format!(
                     "{} {} ({})",
                     strings.log_task_queued, task.id, task.kind
                 )));
@@ -1014,23 +1284,23 @@ fn spawn_agent_task_call<F>(
                             ) {
                                 Ok(path) => lines.push(format!(
                                     "{} {}",
-                                    strings.log_downloaded_to,
+                                    strings.log_downloaded,
                                     path.display()
                                 )),
                                 Err(error) => lines
                                     .push(format!("{}: {error:#}", strings.log_download_failed)),
                             }
                         }
-                        let _ = sender.send(UiMessage::ActionLog(lines.join("\n\n")));
+                        let _ = sender.send(UiMessage::ActivityLog(lines.join("\n\n")));
                         refresh_agent(client, &sender);
                     }
                     Err(error) => {
-                        let _ = sender.send(UiMessage::ActionLog(format!("{error:#}")));
+                        let _ = sender.send(UiMessage::ActivityLog(format!("{error:#}")));
                     }
                 }
             }
             Err(error) => {
-                let _ = sender.send(UiMessage::ActionLog(format!("{error:#}")));
+                let _ = sender.send(UiMessage::ActivityLog(format!("{error:#}")));
             }
         }
     });
@@ -1049,102 +1319,483 @@ fn current_strings() -> Strings {
     .to_lowercase();
 
     if locale.starts_with("zh") {
-        ZH_STRINGS
+        ZH
     } else {
-        EN_STRINGS
+        EN
     }
 }
 
-fn quick_actions(strings: Strings) -> [(&'static str, &'static str); 8] {
-    [
-        (strings.quick_login, "login"),
-        (strings.quick_whoami, "whoami"),
-        (strings.quick_fork, "fork"),
-        (strings.quick_sync, "sync"),
-        (strings.quick_list, "list"),
-        (strings.quick_status, "status"),
-        (strings.quick_artifacts, "artifacts --run-id 0"),
-        (
-            strings.quick_build,
-            "build --dry-run --sub-level 162 --os-patch-level 2026-03",
-        ),
-    ]
+fn install_css() {
+    let provider = gtk::CssProvider::new();
+    provider.load_from_data(APP_CSS);
+    if let Some(display) = gdk::Display::default() {
+        gtk::style_context_add_provider_for_display(
+            &display,
+            &provider,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+    }
 }
 
 fn new_page_shell() -> (gtk::ScrolledWindow, gtk::Box) {
-    let body = gtk::Box::new(gtk::Orientation::Vertical, 24);
-    set_margin_all(&body, 24);
+    let body = gtk::Box::new(gtk::Orientation::Vertical, 20);
+    body.add_css_class("page-body");
+    set_margin_all(&body, 28);
 
     let clamp = adw::Clamp::new();
-    clamp.set_maximum_size(1120);
-    clamp.set_tightening_threshold(760);
+    clamp.set_maximum_size(1180);
+    clamp.set_tightening_threshold(860);
     clamp.set_child(Some(&body));
 
     let scroller = gtk::ScrolledWindow::new();
     scroller.set_policy(gtk::PolicyType::Automatic, gtk::PolicyType::Automatic);
     scroller.set_vexpand(true);
-    scroller.set_hexpand(true);
     scroller.set_child(Some(&clamp));
     (scroller, body)
 }
 
-fn page_header(title: &str, description: &str) -> gtk::Box {
-    let header = gtk::Box::new(gtk::Orientation::Vertical, 6);
+fn hero_card(kicker: &str, title: &str, body: &str) -> gtk::Box {
+    let card = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    card.add_css_class("hero-card");
+
+    let kicker_label = gtk::Label::new(Some(kicker));
+    kicker_label.set_xalign(0.0);
+    kicker_label.add_css_class("hero-kicker");
+    card.append(&kicker_label);
 
     let title_label = gtk::Label::new(Some(title));
     title_label.set_xalign(0.0);
     title_label.set_wrap(true);
-    title_label.add_css_class("title-2");
-    header.append(&title_label);
+    title_label.add_css_class("hero-title");
+    card.append(&title_label);
 
-    let description_label = gtk::Label::new(Some(description));
-    description_label.set_xalign(0.0);
-    description_label.set_wrap(true);
-    description_label.add_css_class("dim-label");
-    header.append(&description_label);
+    let body_label = gtk::Label::new(Some(body));
+    body_label.set_xalign(0.0);
+    body_label.set_wrap(true);
+    body_label.add_css_class("hero-body");
+    card.append(&body_label);
 
-    header
+    card
 }
 
-fn new_card_section(title: &str, description: &str) -> (gtk::Box, gtk::Box) {
-    let section = gtk::Box::new(gtk::Orientation::Vertical, 10);
+fn section_header(title: &str, body: &str) -> gtk::Box {
+    let section = gtk::Box::new(gtk::Orientation::Vertical, 6);
 
     let title_label = gtk::Label::new(Some(title));
     title_label.set_xalign(0.0);
-    title_label.set_wrap(true);
-    title_label.add_css_class("title-4");
+    title_label.add_css_class("section-title");
     section.append(&title_label);
 
-    let description_label = gtk::Label::new(Some(description));
-    description_label.set_xalign(0.0);
-    description_label.set_wrap(true);
-    description_label.add_css_class("dim-label");
-    section.append(&description_label);
+    let body_label = gtk::Label::new(Some(body));
+    body_label.set_xalign(0.0);
+    body_label.set_wrap(true);
+    body_label.add_css_class("section-body");
+    section.append(&body_label);
 
-    let frame = gtk::Frame::new(None);
-    frame.add_css_class("card");
-
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
-    set_margin_all(&content, 16);
-    frame.set_child(Some(&content));
-    section.append(&frame);
-
-    (section, content)
+    section
 }
 
-fn set_margin_all(widget: &impl IsA<gtk::Widget>, margin: i32) {
-    widget.set_margin_top(margin);
-    widget.set_margin_bottom(margin);
-    widget.set_margin_start(margin);
-    widget.set_margin_end(margin);
+fn summary_card(icon: &str, title: &str, body: &str) -> gtk::Box {
+    let card = surface_card(title, body);
+
+    let image = gtk::Image::from_icon_name(icon);
+    image.add_css_class("summary-icon");
+    card.prepend(&image);
+    card
 }
 
-fn parse_port(raw: &str) -> u16 {
-    raw.trim()
-        .parse::<u16>()
-        .ok()
-        .filter(|port| *port > 0)
-        .unwrap_or(48765)
+fn surface_card(title: &str, body: &str) -> gtk::Box {
+    let card = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    card.add_css_class("surface-card");
+
+    let title_label = gtk::Label::new(Some(title));
+    title_label.set_xalign(0.0);
+    title_label.set_wrap(true);
+    title_label.add_css_class("card-title");
+    card.append(&title_label);
+
+    let body_label = gtk::Label::new(Some(body));
+    body_label.set_xalign(0.0);
+    body_label.set_wrap(true);
+    body_label.add_css_class("card-body");
+    card.append(&body_label);
+
+    card
+}
+
+fn status_block(title: &str, initial: &str) -> (gtk::Box, gtk::Label) {
+    let card = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    card.add_css_class("status-block");
+
+    let title_label = gtk::Label::new(Some(title));
+    title_label.set_xalign(0.0);
+    title_label.add_css_class("status-title");
+    card.append(&title_label);
+
+    let value_label = gtk::Label::new(Some(initial));
+    value_label.set_xalign(0.0);
+    value_label.set_wrap(true);
+    value_label.add_css_class("status-value");
+    card.append(&value_label);
+
+    (card, value_label)
+}
+
+fn summarize_session(value: &Value) -> String {
+    let version = json_str_any(value, &["appVersion", "app_version"]);
+    let manager = json_str_any(value, &["managerAccessKind", "manager_access_kind"]);
+    let root = json_bool_opt(value, &["rootGranted", "root_granted"]);
+    let caps = json_array_len(value, &["capabilities"]);
+    if version.is_none() && manager.is_none() && root.is_none() && caps.is_none() {
+        return json_str_any(value, &["error", "managerDiagnostic", "manager_diagnostic"])
+            .unwrap_or("Session payload unavailable")
+            .to_string();
+    }
+    format!(
+        "ABK {} · {} · {} · {} capabilities",
+        version.unwrap_or("?"),
+        manager.unwrap_or("unknown"),
+        root.map(|granted| bool_label(granted, "root", "no root"))
+            .unwrap_or("root unknown"),
+        caps.unwrap_or(0)
+    )
+}
+
+fn summarize_runtime(value: &Value) -> String {
+    let root = json_bool_opt(value, &["rootGranted", "root_granted"]);
+    let runtime = value.get("runtimeStatus");
+    if runtime.is_none() {
+        return json_str_any(value, &["managerDiagnostic", "manager_diagnostic", "error"])
+            .unwrap_or("Runtime payload unavailable")
+            .to_string();
+    }
+    let manager = runtime
+        .and_then(|v| v.get("manager"))
+        .and_then(|v| v.get("display_name").or_else(|| v.get("displayName")))
+        .and_then(Value::as_str)
+        .unwrap_or("inactive");
+    let modules = runtime
+        .and_then(|v| v.get("modules"))
+        .and_then(Value::as_array)
+        .map(|items| items.len())
+        .unwrap_or(0);
+    let build = runtime
+        .and_then(|v| v.get("build"))
+        .and_then(|v| v.get("kernel_version").or_else(|| v.get("kernelVersion")))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    format!(
+        "{manager} · {modules} modules · kernel {build} · {}",
+        root.map(|granted| bool_label(granted, "root", "no root"))
+            .unwrap_or("root unknown")
+    )
+}
+
+fn summarize_root_grants(value: &Value) -> String {
+    let root = json_bool_opt(value, &["rootGranted", "root_granted"]);
+    let diagnostic = json_str_any(value, &["managerDiagnostic", "manager_diagnostic", "error"]);
+    let apps = value
+        .get("apps")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if apps.is_empty() {
+        return match root {
+            Some(false) => "Root not granted on device".to_string(),
+            _ => diagnostic
+                .unwrap_or("No root grant entries reported")
+                .to_string(),
+        };
+    }
+    let allowed = apps
+        .iter()
+        .filter(|app| {
+            app.get("profile")
+                .and_then(|v| v.get("allowSu"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+        })
+        .count();
+    format!("{allowed} allowed · {} visible apps", apps.len())
+}
+
+fn summarize_susfs(value: &Value) -> String {
+    let root = json_bool_opt(value, &["rootGranted", "root_granted"]);
+    if matches!(root, Some(false)) {
+        return "Root not granted on device".to_string();
+    }
+    let available = value
+        .get("status")
+        .and_then(|v| v.get("available"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let kernel = value
+        .get("status")
+        .and_then(|v| v.get("kernelVersion"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let path_rules = value
+        .get("config")
+        .and_then(|v| v.get("pathRules"))
+        .and_then(Value::as_array)
+        .map(|items| items.len())
+        .unwrap_or(0);
+    format!(
+        "{} · kernel {kernel} · {path_rules} path rules",
+        if available {
+            "available"
+        } else {
+            "unavailable"
+        }
+    )
+}
+
+fn render_root_grant_rows(
+    list: &gtk::ListBox,
+    value: &Value,
+    sender: &Sender<UiMessage>,
+    port_entry: &gtk::Entry,
+    _strings: Strings,
+) {
+    clear_list_box(list);
+    let root = json_bool_opt(value, &["rootGranted", "root_granted"]);
+    let diagnostic = json_str_any(value, &["managerDiagnostic", "manager_diagnostic", "error"]);
+    let apps = value
+        .get("apps")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if apps.is_empty() {
+        let message = match root {
+            Some(false) => "Root not granted on device",
+            _ => diagnostic.unwrap_or("No root grant entries reported"),
+        };
+        append_placeholder_row(list, message);
+        return;
+    }
+
+    for app in apps.into_iter().take(20) {
+        let package = json_str_any(&app, &["packageName", "package_name"])
+            .unwrap_or("")
+            .to_string();
+        if package.is_empty() {
+            continue;
+        }
+        let label = json_str_any(&app, &["label"])
+            .unwrap_or(&package)
+            .to_string();
+        let allowed = app
+            .get("profile")
+            .and_then(|v| v.get("allowSu"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        let row = gtk::ListBoxRow::new();
+        let shell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        shell.add_css_class("list-row-shell");
+        set_margin_all(&shell, 10);
+
+        let text = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        let title = gtk::Label::new(Some(&label));
+        title.set_xalign(0.0);
+        title.add_css_class("list-row-title");
+        let subtitle = gtk::Label::new(Some(&package));
+        subtitle.set_xalign(0.0);
+        subtitle.add_css_class("list-row-subtitle");
+        text.append(&title);
+        text.append(&subtitle);
+
+        let toggle = gtk::Switch::new();
+        toggle.set_active(allowed);
+        {
+            let sender = sender.clone();
+            let port_entry = port_entry.clone();
+            let package = package.clone();
+            toggle.connect_active_notify(move |switch| {
+                spawn_agent_sync_call(parse_port(&port_entry.text()), sender.clone(), {
+                    let package = package.clone();
+                    let active = switch.is_active();
+                    move |client| client.set_root_grant(&package, active)
+                });
+            });
+        }
+
+        shell.append(&text);
+        shell.append(&toggle);
+        row.set_child(Some(&shell));
+        list.append(&row);
+    }
+}
+
+fn render_module_rows(
+    list: &gtk::ListBox,
+    value: &Value,
+    sender: &Sender<UiMessage>,
+    port_entry: &gtk::Entry,
+    strings: Strings,
+) {
+    clear_list_box(list);
+    let diagnostic = json_str_any(value, &["managerDiagnostic", "manager_diagnostic", "error"]);
+    let modules = value
+        .get("runtimeStatus")
+        .and_then(|v| v.get("modules"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if modules.is_empty() {
+        append_placeholder_row(
+            list,
+            diagnostic.unwrap_or("No runtime modules reported by the device"),
+        );
+        return;
+    }
+
+    for module in modules.into_iter().take(20) {
+        let module_id = json_str_any(&module, &["id"]).unwrap_or("").to_string();
+        if module_id.is_empty() {
+            continue;
+        }
+        let name = json_str_any(&module, &["name"])
+            .unwrap_or(&module_id)
+            .to_string();
+        let source = json_str_any(&module, &["source"]).unwrap_or("runtime");
+        let enabled = module
+            .get("enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let action_supported = module
+            .get("actionSupported")
+            .or_else(|| module.get("action_supported"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let uninstall_supported = module
+            .get("type")
+            .and_then(Value::as_str)
+            .map(|kind| kind == "standard")
+            .unwrap_or(false)
+            || source.contains("ksud");
+
+        let row = gtk::ListBoxRow::new();
+        let shell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        shell.add_css_class("list-row-shell");
+        set_margin_all(&shell, 10);
+
+        let text = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        let title = gtk::Label::new(Some(&name));
+        title.set_xalign(0.0);
+        title.add_css_class("list-row-title");
+        let subtitle = gtk::Label::new(Some(&format!("{module_id} · {source}")));
+        subtitle.set_xalign(0.0);
+        subtitle.add_css_class("list-row-subtitle");
+        text.append(&title);
+        text.append(&subtitle);
+
+        let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+
+        let toggle = gtk::Switch::new();
+        toggle.set_active(enabled);
+        {
+            let sender = sender.clone();
+            let port_entry = port_entry.clone();
+            let module_id = module_id.clone();
+            toggle.connect_active_notify(move |switch| {
+                spawn_agent_sync_call(parse_port(&port_entry.text()), sender.clone(), {
+                    let module_id = module_id.clone();
+                    let active = switch.is_active();
+                    move |client| client.set_module_enabled(&module_id, active)
+                });
+            });
+        }
+        actions.append(&toggle);
+
+        if uninstall_supported {
+            let uninstall = gtk::Button::with_label(strings.uninstall_module);
+            uninstall.add_css_class("pill");
+            {
+                let sender = sender.clone();
+                let port_entry = port_entry.clone();
+                let module_id = module_id.clone();
+                uninstall.connect_clicked(move |_| {
+                    spawn_agent_sync_call(parse_port(&port_entry.text()), sender.clone(), {
+                        let module_id = module_id.clone();
+                        move |client| client.set_module_pending_uninstall(&module_id, true)
+                    });
+                });
+            }
+            actions.append(&uninstall);
+        }
+
+        if action_supported {
+            let action = gtk::Button::with_label(strings.run_action);
+            action.add_css_class("pill");
+            action.add_css_class("tonal-button");
+            {
+                let sender = sender.clone();
+                let port_entry = port_entry.clone();
+                let module_id = module_id.clone();
+                action.connect_clicked(move |_| {
+                    spawn_agent_task_call(
+                        parse_port(&port_entry.text()),
+                        sender.clone(),
+                        {
+                            let module_id = module_id.clone();
+                            move |client| client.run_module_action(&module_id)
+                        },
+                        false,
+                        strings,
+                    );
+                });
+            }
+            actions.append(&action);
+        }
+
+        shell.append(&text);
+        shell.append(&actions);
+        row.set_child(Some(&shell));
+        list.append(&row);
+    }
+}
+
+fn clear_list_box(list: &gtk::ListBox) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+}
+
+fn append_placeholder_row(list: &gtk::ListBox, message: &str) {
+    let row = gtk::ListBoxRow::new();
+    row.set_selectable(false);
+    row.set_activatable(false);
+    let label = gtk::Label::new(Some(message));
+    label.set_xalign(0.0);
+    label.set_wrap(true);
+    label.add_css_class("list-row-subtitle");
+    set_margin_all(&label, 14);
+    row.set_child(Some(&label));
+    list.append(&row);
+}
+
+fn json_str_any<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_str))
+}
+
+fn json_bool_opt(value: &Value, keys: &[&str]) -> Option<bool> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_bool))
+}
+
+fn json_array_len(value: &Value, keys: &[&str]) -> Option<usize> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_array).map(Vec::len))
+}
+
+fn bool_label<'a>(value: bool, truthy: &'a str, falsy: &'a str) -> &'a str {
+    if value {
+        truthy
+    } else {
+        falsy
+    }
 }
 
 fn new_text_buffer() -> gtk::TextBuffer {
@@ -1182,3 +1833,155 @@ fn buffer_text(buffer: &gtk::TextBuffer) -> String {
     let end = buffer.end_iter();
     buffer.text(&start, &end, true).to_string()
 }
+
+fn set_margin_all(widget: &impl IsA<gtk::Widget>, margin: i32) {
+    widget.set_margin_top(margin);
+    widget.set_margin_bottom(margin);
+    widget.set_margin_start(margin);
+    widget.set_margin_end(margin);
+}
+
+fn parse_port(raw: &str) -> u16 {
+    raw.trim()
+        .parse::<u16>()
+        .ok()
+        .filter(|port| *port > 0)
+        .unwrap_or(48765)
+}
+
+const APP_CSS: &str = r#"
+.abk-root {
+  background-image: linear-gradient(
+    180deg,
+    alpha(@accent_bg_color, 0.08) 0%,
+    alpha(@window_bg_color, 1.0) 28%
+  );
+}
+
+.nav-rail {
+  background-color: alpha(@headerbar_bg_color, 0.82);
+  border-right: 1px solid alpha(@window_fg_color, 0.08);
+}
+
+.brand-card {
+  background-image: linear-gradient(
+    135deg,
+    alpha(@accent_bg_color, 0.16),
+    alpha(@card_bg_color, 0.95)
+  );
+  border-radius: 28px;
+  border: 1px solid alpha(@accent_bg_color, 0.18);
+  padding: 18px;
+}
+
+.brand-title {
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+
+.brand-body,
+.nav-subtitle,
+.section-body,
+.card-body,
+.hero-body {
+  opacity: 0.78;
+}
+
+.nav-list {
+  background: transparent;
+}
+
+.nav-list row {
+  border-radius: 24px;
+  margin: 4px 0;
+}
+
+.nav-list row:selected {
+  background-color: alpha(@accent_bg_color, 0.96);
+  color: @accent_fg_color;
+}
+
+.nav-list row:hover {
+  background-color: alpha(@accent_bg_color, 0.08);
+}
+
+.nav-shell {
+  min-height: 58px;
+}
+
+.nav-title {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.nav-icon,
+.summary-icon {
+  -gtk-icon-size: 22px;
+}
+
+.page-body {
+  padding-top: 8px;
+  padding-bottom: 40px;
+}
+
+.hero-card {
+  background-image: linear-gradient(
+    135deg,
+    alpha(@accent_bg_color, 0.22),
+    alpha(@card_bg_color, 0.98)
+  );
+  border-radius: 34px;
+  border: 1px solid alpha(@accent_bg_color, 0.18);
+  padding: 30px;
+}
+
+.hero-kicker {
+  letter-spacing: 0.12em;
+  font-size: 0.78rem;
+  font-weight: 700;
+  opacity: 0.68;
+}
+
+.hero-title {
+  font-size: 2.2rem;
+  font-weight: 800;
+}
+
+.section-title,
+.card-title {
+  font-size: 1.06rem;
+  font-weight: 760;
+}
+
+.surface-card {
+  background-color: alpha(@card_bg_color, 0.98);
+  border-radius: 28px;
+  border: 1px solid alpha(@window_fg_color, 0.08);
+  padding: 18px;
+}
+
+.material-entry {
+  min-height: 44px;
+  border-radius: 18px;
+}
+
+.big-button {
+  padding: 10px 18px;
+}
+
+.tonal-button {
+  background-color: alpha(@accent_bg_color, 0.14);
+}
+
+.console-pane {
+  background-color: alpha(@view_bg_color, 0.9);
+  border-radius: 22px;
+}
+
+.state-chip {
+  background-color: alpha(@accent_bg_color, 0.16);
+  color: @window_fg_color;
+  border-radius: 999px;
+  padding: 6px 12px;
+}
+"#;
