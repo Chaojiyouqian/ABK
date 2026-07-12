@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
+import android.os.Build
 import com.abk.kernel.BuildConfig
 import com.abk.kernel.R
 import com.abk.kernel.data.model.AbkRuntimeModule
@@ -58,6 +59,15 @@ internal data class AbkAgentRootGrantResponse(
     @SerializedName("managerAccessKind") val managerAccessKind: String,
     @SerializedName("managerDiagnostic") val managerDiagnostic: String? = null,
     @SerializedName("apps") val apps: List<RootGrantApp> = emptyList(),
+)
+
+internal data class AbkAgentPackageInfo(
+    @SerializedName("packageName") val packageName: String,
+    @SerializedName("versionName") val versionName: String,
+    @SerializedName("versionCode") val versionCode: Long,
+    @SerializedName("appLabel") val appLabel: String,
+    @SerializedName("isSystem") val isSystem: Boolean,
+    @SerializedName("uid") val uid: Int,
 )
 
 internal data class AbkAgentSusfsResponse(
@@ -151,6 +161,68 @@ internal object AbkAgentFacade {
             managerDiagnostic = managerAccessError(context, access, rootGranted),
             apps = apps,
         )
+    }
+
+    fun listPackages(context: Context, type: String): List<String> {
+        val normalizedType = type.trim().lowercase()
+        val packageManager = context.packageManager
+        val applications = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getInstalledApplications(android.content.pm.PackageManager.ApplicationInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getInstalledApplications(0)
+        }
+        return applications
+            .asSequence()
+            .filter { application ->
+                when (normalizedType) {
+                    "user" -> (application.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0
+                    "system" -> (application.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                    else -> true
+                }
+            }
+            .map { it.packageName.orEmpty() }
+            .filter { it.isNotBlank() }
+            .sorted()
+            .toList()
+    }
+
+    fun packageInfos(context: Context, packages: List<String>): List<AbkAgentPackageInfo> {
+        val packageManager = context.packageManager
+        return packages
+            .asSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .mapNotNull { packageName ->
+                val info = runCatching {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        packageManager.getPackageInfo(
+                            packageName,
+                            android.content.pm.PackageManager.PackageInfoFlags.of(0),
+                        )
+                    } else {
+                        @Suppress("DEPRECATION")
+                        packageManager.getPackageInfo(packageName, 0)
+                    }
+                }.getOrNull() ?: return@mapNotNull null
+                val appInfo = info.applicationInfo ?: return@mapNotNull null
+                AbkAgentPackageInfo(
+                    packageName = packageName,
+                    versionName = info.versionName.orEmpty(),
+                    versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        info.longVersionCode
+                    } else {
+                        @Suppress("DEPRECATION")
+                        info.versionCode.toLong()
+                    },
+                    appLabel = runCatching {
+                        packageManager.getApplicationLabel(appInfo).toString()
+                    }.getOrDefault(packageName),
+                    isSystem = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0,
+                    uid = appInfo.uid,
+                )
+            }
+            .toList()
     }
 
     fun readRootGrantIconPng(context: Context, packageName: String): ByteArray? {

@@ -1,10 +1,11 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
+use gtk3::prelude::*;
 use serde_json::to_string;
-use tao::event::{Event, WindowEvent};
-use tao::event_loop::{ControlFlow, EventLoopBuilder};
-use tao::window::WindowBuilder;
 use urlencoding::encode;
-use wry::{NewWindowResponse, WebViewBuilder};
+use webkit2gtk::{
+    LoadEvent, SettingsExt, UserContentInjectedFrames, UserContentManager, UserContentManagerExt,
+    UserScript, UserScriptInjectionTime, WebView, WebViewExt,
+};
 
 fn main() {
     if let Err(error) = run() {
@@ -15,6 +16,8 @@ fn main() {
 
 fn run() -> Result<()> {
     let args = parse_args(std::env::args().skip(1).collect())?;
+    configure_linux_webview_env();
+    gtk3::init().map_err(|error| anyhow!("failed to initialize GTK: {error}"))?;
     run_module_webui_window(args.port, &args.module_id, &args.module_name)
 }
 
@@ -26,72 +29,67 @@ fn run_module_webui_window(port: u16, module_id: &str, module_name: &str) -> Res
     let encoded_id = encode(module_id.trim());
     let bridge_base = format!("http://127.0.0.1:{port}/api/v1/runtime/modules/{encoded_id}/webui");
     let page_url = format!("{bridge_base}/files");
-    let init_script =
-        build_ksu_bridge_script(&bridge_base).context("failed to build module WebUI bridge")?;
     let title = if module_name.trim().is_empty() {
         format!("Module WebUI · {module_id}")
     } else {
         format!("Module WebUI · {module_name}")
     };
 
-    let event_loop = EventLoopBuilder::<WebUiUserEvent>::with_user_event().build();
-    let proxy = event_loop.create_proxy();
-    let window = WindowBuilder::new()
-        .with_title(title)
-        .with_inner_size(tao::dpi::LogicalSize::new(1180.0, 840.0))
-        .build(&event_loop)
-        .context("failed to create WebUI window")?;
-
-    let builder = WebViewBuilder::new()
-        .with_url(page_url)
-        .with_initialization_script(init_script)
-        .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
-        .with_ipc_handler(move |request| {
-            let message = request.body();
-            if message == "close" {
-                let _ = proxy.send_event(WebUiUserEvent::Close);
-            } else if let Some(text) = message.strip_prefix("toast:") {
-                let _ = proxy.send_event(WebUiUserEvent::Toast(text.to_string()));
-            }
-        });
-
-    #[cfg(target_os = "linux")]
-    let _webview = {
-        use tao::platform::unix::WindowExtUnix;
-        use wry::WebViewBuilderExtUnix;
-
-        let vbox = window
-            .default_vbox()
-            .ok_or_else(|| anyhow!("failed to acquire linux window container"))?;
-        builder
-            .build_gtk(vbox)
-            .context("failed to create linux WebUI webview")?
-    };
-
-    #[cfg(not(target_os = "linux"))]
-    let _webview = builder
-        .build(&window)
-        .context("failed to create WebUI webview")?;
-
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
-
-        match event {
-            Event::UserEvent(WebUiUserEvent::Close) => {
-                *control_flow = ControlFlow::Exit;
-            }
-            Event::UserEvent(WebUiUserEvent::Toast(message)) => {
-                eprintln!("module webui toast: {message}");
-            }
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                *control_flow = ControlFlow::Exit;
-            }
-            _ => {}
-        }
+    let window = gtk3::Window::new(gtk3::WindowType::Toplevel);
+    window.set_title(&title);
+    window.set_default_size(1180, 840);
+    window.connect_delete_event(|_, _| {
+        gtk3::main_quit();
+        gtk3::glib::Propagation::Proceed
     });
+
+    let manager = UserContentManager::new();
+    manager.add_script(&UserScript::new(
+        &build_ksu_bridge_script(&bridge_base)?,
+        UserContentInjectedFrames::TopFrame,
+        UserScriptInjectionTime::Start,
+        &[],
+        &[],
+    ));
+
+    let webview = WebView::with_user_content_manager(&manager);
+    if let Some(settings) = WebViewExt::settings(&webview) {
+        settings.set_enable_write_console_messages_to_stdout(true);
+        settings.set_javascript_can_open_windows_automatically(false);
+    }
+
+    {
+        let page_url = page_url.clone();
+        webview.connect_load_failed(move |view, event, uri, error| {
+            if event == LoadEvent::Finished {
+                return false;
+            }
+            view.load_html(
+                &render_error_page(
+                    "Module WebUI load failed",
+                    &format!("{uri}\n\n{}", error.message()),
+                ),
+                Some(&page_url),
+            );
+            true
+        });
+    }
+
+    webview.connect_web_process_terminated(|view, reason| {
+        view.load_html(
+            &render_error_page(
+                "WebKit process terminated",
+                &format!("The embedded WebKit process terminated: {reason:?}"),
+            ),
+            None,
+        );
+    });
+
+    window.add(&webview);
+    window.show_all();
+    webview.load_uri(&page_url);
+    gtk3::main();
+    Ok(())
 }
 
 fn parse_args(args: Vec<String>) -> Result<CliArgs> {
@@ -141,6 +139,52 @@ fn build_ksu_bridge_script(bridge_base: &str) -> Result<String> {
   }}
 
   const bridgeBase = {base};
+  const rootBase = new URL(bridgeBase).origin;
+  const packageIconBase = rootBase + "/api/v1/root-grants/";
+
+  function buildUrl(path) {{
+    if (typeof path === "string" && /^(https?:)?\/\//.test(path)) {{
+      return path;
+    }}
+    if (typeof path === "string" && path.startsWith("/")) {{
+      return rootBase + path;
+    }}
+    return bridgeBase + path;
+  }}
+
+  function normalizeUrlValue(input) {{
+    if (typeof input === "string") {{
+      return input;
+    }}
+    if (input && typeof input.url === "string") {{
+      return input.url;
+    }}
+    return String(input ?? "");
+  }}
+
+  function isPhoneLocalhostUrl(value) {{
+    try {{
+      const resolved = new URL(normalizeUrlValue(value), window.location.href);
+      return resolved.hostname === "127.0.0.1" ||
+        resolved.hostname === "localhost" ||
+        resolved.hostname === "0.0.0.0" ||
+        resolved.hostname === "::1" ||
+        resolved.hostname === "[::1]";
+    }} catch (_error) {{
+      return false;
+    }}
+  }}
+
+  function proxyLocalhostUrl(value) {{
+    const resolved = new URL(normalizeUrlValue(value), window.location.href);
+    return (
+      rootBase +
+      "/api/v1/runtime/modules/" +
+      encodeURIComponent(moduleInfoObject().id || "") +
+      "/webui/http-proxy?target=" +
+      encodeURIComponent(resolved.toString())
+    );
+  }}
 
   function parseJson(text) {{
     if (!text) return {{}};
@@ -153,7 +197,7 @@ fn build_ksu_bridge_script(bridge_base: &str) -> Result<String> {
 
   function syncRequest(method, path, body) {{
     const xhr = new XMLHttpRequest();
-    xhr.open(method, bridgeBase + path, false);
+    xhr.open(method, buildUrl(path), false);
     if (body !== undefined) {{
       xhr.setRequestHeader("Content-Type", "application/json");
     }}
@@ -174,7 +218,7 @@ fn build_ksu_bridge_script(bridge_base: &str) -> Result<String> {
   }}
 
   async function asyncRequest(method, path, body) {{
-    const response = await fetch(bridgeBase + path, {{
+    const response = await fetch(buildUrl(path), {{
       method,
       headers: body === undefined ? undefined : {{ "Content-Type": "application/json" }},
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -273,24 +317,156 @@ fn build_ksu_bridge_script(bridge_base: &str) -> Result<String> {
     return payload.raw || JSON.stringify(payload.info || {{}});
   }}
 
-  window.ksu = {{
+  function moduleInfoObject() {{
+    try {{
+      return JSON.parse(moduleInfo());
+    }} catch (_error) {{
+      return {{}};
+    }}
+  }}
+
+  function fullScreen(enabled) {{
+    try {{
+      if (enabled) {{
+        document.documentElement.requestFullscreen?.();
+      }} else {{
+        document.exitFullscreen?.();
+      }}
+    }} catch (_error) {{
+    }}
+  }}
+
+  function enableEdgeToEdge(_enabled) {{
+  }}
+
+  function listPackages(type) {{
+    const payload = syncRequest(
+      "GET",
+      "/api/v1/packages?type=" + encodeURIComponent(type || "all")
+    );
+    return JSON.stringify(payload.packages || []);
+  }}
+
+  function getPackagesInfo(packages) {{
+    let values = packages;
+    if (typeof values === "string") {{
+      try {{
+        values = JSON.parse(values);
+      }} catch (_error) {{
+        values = [];
+      }}
+    }}
+    const payload = syncRequest("POST", "/api/v1/packages/info", {{
+      packages: Array.isArray(values) ? values : [],
+    }});
+    return JSON.stringify(payload.packages || []);
+  }}
+
+  const originalFetch = window.fetch?.bind(window);
+  if (originalFetch) {{
+    window.fetch = function(input, init) {{
+      if (isPhoneLocalhostUrl(input)) {{
+        return originalFetch(proxyLocalhostUrl(input), init);
+      }}
+      return originalFetch(input, init);
+    }};
+  }}
+
+  const OriginalXHR = window.XMLHttpRequest;
+  if (OriginalXHR) {{
+    window.XMLHttpRequest = class extends OriginalXHR {{
+      open(method, url, ...rest) {{
+        const nextUrl = isPhoneLocalhostUrl(url) ? proxyLocalhostUrl(url) : url;
+        return super.open(method, nextUrl, ...rest);
+      }}
+    }};
+  }}
+
+  const OriginalEventSource = window.EventSource;
+  if (OriginalEventSource) {{
+    window.EventSource = class extends OriginalEventSource {{
+      constructor(url, options) {{
+        super(isPhoneLocalhostUrl(url) ? proxyLocalhostUrl(url) : url, options);
+      }}
+    }};
+  }}
+
+  function rewriteKsuIconValue(value) {{
+    if (typeof value !== "string") {{
+      return value;
+    }}
+    if (!value.startsWith("ksu://icon/")) {{
+      return value;
+    }}
+    const packageName = value.slice("ksu://icon/".length);
+    return packageIconBase + encodeURIComponent(packageName) + "/icon";
+  }}
+
+  function rewriteKsuIconNodes(root) {{
+    if (!root || !root.querySelectorAll) {{
+      return;
+    }}
+    root.querySelectorAll("[src],[href]").forEach((node) => {{
+      if (node.hasAttribute("src")) {{
+        const next = rewriteKsuIconValue(node.getAttribute("src"));
+        if (next !== node.getAttribute("src")) {{
+          node.setAttribute("src", next);
+        }}
+      }}
+      if (node.hasAttribute("href")) {{
+        const next = rewriteKsuIconValue(node.getAttribute("href"));
+        if (next !== node.getAttribute("href")) {{
+          node.setAttribute("href", next);
+        }}
+      }}
+    }});
+  }}
+
+  const observer = new MutationObserver((mutations) => {{
+    for (const mutation of mutations) {{
+      if (mutation.type === "attributes" && mutation.target) {{
+        const target = mutation.target;
+        if (mutation.attributeName === "src") {{
+          const next = rewriteKsuIconValue(target.getAttribute("src"));
+          if (next !== target.getAttribute("src")) {{
+            target.setAttribute("src", next);
+          }}
+        }}
+        if (mutation.attributeName === "href") {{
+          const next = rewriteKsuIconValue(target.getAttribute("href"));
+          if (next !== target.getAttribute("href")) {{
+            target.setAttribute("href", next);
+          }}
+        }}
+      }}
+      mutation.addedNodes?.forEach?.((node) => rewriteKsuIconNodes(node));
+    }}
+  }});
+
+  document.addEventListener("DOMContentLoaded", () => {{
+    rewriteKsuIconNodes(document);
+    observer.observe(document.documentElement, {{
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["src", "href"],
+    }});
+  }});
+
+        window.ksu = {{
     __abkDesktopBridge: true,
     exec,
     spawn,
+    fullScreen,
+    enableEdgeToEdge,
     toast(message) {{
-      if (window.ipc && typeof window.ipc.postMessage === "function") {{
-        window.ipc.postMessage(`toast:${{String(message)}}`);
-      }} else {{
-        console.info(message);
-      }}
+      console.info(String(message));
     }},
     moduleInfo,
+    listPackages,
+    getPackagesInfo,
     exit() {{
-      if (window.ipc && typeof window.ipc.postMessage === "function") {{
-        window.ipc.postMessage("close");
-      }} else {{
-        window.close();
-      }}
+      window.close();
     }},
   }};
 }})();
@@ -299,10 +475,58 @@ fn build_ksu_bridge_script(bridge_base: &str) -> Result<String> {
     ))
 }
 
-#[derive(Debug, Clone)]
-enum WebUiUserEvent {
-    Close,
-    Toast(String),
+fn render_error_page(title: &str, body: &str) -> String {
+    format!(
+        r#"<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{title}</title>
+    <style>
+      body {{
+        margin: 0;
+        padding: 32px;
+        font-family: sans-serif;
+        background: #f5f1e8;
+        color: #1d1b16;
+      }}
+      main {{
+        max-width: 920px;
+        margin: 0 auto;
+        background: #fffdf8;
+        border: 1px solid #d8d0c2;
+        border-radius: 18px;
+        padding: 24px;
+      }}
+      h1 {{
+        margin-top: 0;
+      }}
+      pre {{
+        white-space: pre-wrap;
+        background: #f0ebe1;
+        border-radius: 12px;
+        padding: 16px;
+      }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>{title}</h1>
+      <pre>{body}</pre>
+    </main>
+  </body>
+</html>"#,
+        title = html_escape(title),
+        body = html_escape(body),
+    )
+}
+
+fn html_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 #[derive(Debug, Clone)]
@@ -310,4 +534,19 @@ struct CliArgs {
     port: u16,
     module_id: String,
     module_name: String,
+}
+
+fn configure_linux_webview_env() {
+    #[cfg(target_os = "linux")]
+    {
+        let has_wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
+        let has_x11 = std::env::var_os("DISPLAY").is_some();
+        let backend_set = std::env::var_os("GDK_BACKEND").is_some();
+        if has_wayland && has_x11 && !backend_set {
+            std::env::set_var("GDK_BACKEND", "x11");
+        }
+        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
+    }
 }

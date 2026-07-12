@@ -9,6 +9,8 @@ import com.google.gson.JsonParser
 import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayInputStream
 import java.io.FileInputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -39,6 +41,17 @@ internal class AbkAgentServer(
                 AbkAgentRoute.RootGrants -> requireMethod(session, Method.GET) {
                     jsonResponse(payload = AbkAgentFacade.rootGrants(context))
                 }
+                AbkAgentRoute.PackageList -> requireMethod(session, Method.GET) {
+                    val packageType = decode(session.parameters["type"]?.firstOrNull().orEmpty())
+                    jsonResponse(payload = mapOf("packages" to AbkAgentFacade.listPackages(context, packageType)))
+                }
+                AbkAgentRoute.PackageInfo -> requireMethod(session, Method.POST) {
+                    val body = readJsonBody(session)
+                    val packages = body?.getAsJsonArray("packages")
+                        ?.mapNotNull { element -> element?.asString?.trim()?.takeIf { it.isNotBlank() } }
+                        .orEmpty()
+                    jsonResponse(payload = mapOf("packages" to AbkAgentFacade.packageInfos(context, packages)))
+                }
                 is AbkAgentRoute.RootGrantAllow -> requireMethod(session, Method.POST) {
                     val body = readJsonBody(session)
                     val allowed = body?.get("allowed")?.asBoolean ?: false
@@ -54,6 +67,20 @@ internal class AbkAgentServer(
                         bytes = icon,
                         contentType = "image/png",
                         fileName = "${decode(route.packageName)}.png",
+                    )
+                }
+                AbkAgentRoute.InternalInsetsCss -> requireMethod(session, Method.GET) {
+                    binaryResponse(
+                        bytes = """
+                            :root {
+                              --ksu-safe-area-inset-top: 0px;
+                              --ksu-safe-area-inset-right: 0px;
+                              --ksu-safe-area-inset-bottom: 0px;
+                              --ksu-safe-area-inset-left: 0px;
+                            }
+                        """.trimIndent().toByteArray(StandardCharsets.UTF_8),
+                        contentType = "text/css; charset=utf-8",
+                        fileName = "insets.css",
                     )
                 }
                 AbkAgentRoute.Susfs -> requireMethod(session, Method.GET) {
@@ -125,6 +152,10 @@ internal class AbkAgentServer(
                         fileName = webUiFileName(route.relativePath),
                     )
                 }
+                is AbkAgentRoute.RuntimeModuleWebUiHttpProxy -> proxyModuleWebUiRequest(
+                    session = session,
+                    moduleId = decode(route.moduleId),
+                )
                 is AbkAgentRoute.RuntimeModuleWebUiExec -> requireMethod(session, Method.POST) {
                     val body = readJsonBody(session)
                     val command = body?.get("command")?.asString.orEmpty()
@@ -326,6 +357,92 @@ internal class AbkAgentServer(
         return response
     }
 
+    private fun proxyModuleWebUiRequest(
+        session: IHTTPSession,
+        moduleId: String,
+    ): Response {
+        if (!RootUtils.isSafeModuleIdForPath(moduleId)) {
+            return jsonResponse(
+                status = Response.Status.BAD_REQUEST,
+                payload = mapOf("error" to "invalid module id"),
+            )
+        }
+        val target = decode(session.parameters["target"]?.firstOrNull().orEmpty())
+        if (target.isBlank()) {
+            return jsonResponse(
+                status = Response.Status.BAD_REQUEST,
+                payload = mapOf("error" to "target missing"),
+            )
+        }
+        val url = runCatching { URL(target) }.getOrNull()
+            ?: return jsonResponse(
+                status = Response.Status.BAD_REQUEST,
+                payload = mapOf("error" to "invalid target url", "target" to target),
+            )
+        if (!isAllowedLocalWebUiTarget(url)) {
+            return jsonResponse(
+                status = Response.Status.FORBIDDEN,
+                payload = mapOf("error" to "target host forbidden", "target" to target),
+            )
+        }
+
+        val connection = (url.openConnection() as? HttpURLConnection)
+            ?: return jsonResponse(
+                status = Response.Status.BAD_REQUEST,
+                payload = mapOf("error" to "unsupported target protocol", "target" to target),
+            )
+        return try {
+            connection.requestMethod = session.method.name
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 15000
+            connection.readTimeout = 30000
+            connection.doInput = true
+            copyProxyRequestHeaders(session, connection)
+
+            val body = if (session.method == Method.POST || session.method == Method.PUT) {
+                readBody(session)
+            } else {
+                ""
+            }
+            if (body.isNotEmpty()) {
+                connection.doOutput = true
+                connection.outputStream.use { output ->
+                    output.write(body.toByteArray(StandardCharsets.UTF_8))
+                }
+            }
+
+            val statusCode = connection.responseCode.takeIf { it > 0 } ?: 502
+            val stream = connection.errorStream ?: connection.inputStream
+                ?: ByteArrayInputStream(ByteArray(0))
+            val response = newChunkedResponse(
+                proxyStatus(statusCode),
+                connection.contentType ?: "application/octet-stream",
+                stream,
+            )
+            response.addHeader("Cache-Control", "no-store")
+            response.addHeader("Access-Control-Allow-Origin", "*")
+            connection.headerFields
+                .filterKeys { key -> !key.isNullOrBlank() }
+                .forEach { (key, values) ->
+                    values?.forEach { value ->
+                        if (!value.isNullOrBlank() && shouldForwardProxyResponseHeader(key)) {
+                            response.addHeader(key, value)
+                        }
+                    }
+                }
+            response
+        } catch (error: Exception) {
+            connection.disconnect()
+            jsonResponse(
+                status = Response.Status.BAD_GATEWAY,
+                payload = mapOf(
+                    "error" to (error.message ?: error::class.java.simpleName),
+                    "target" to target,
+                ),
+            )
+        }
+    }
+
     private fun shellResultPayload(result: RootUtils.ShellResult): Map<String, Any> = mapOf(
         "success" to result.success,
         "output" to result.output,
@@ -368,6 +485,54 @@ internal class AbkAgentServer(
             ?.substringAfterLast('/')
             ?.takeIf { it.isNotBlank() }
             ?: "index.html"
+
+    private fun isAllowedLocalWebUiTarget(url: URL): Boolean {
+        val protocol = url.protocol?.lowercase().orEmpty()
+        if (protocol != "http" && protocol != "https") return false
+        val host = url.host?.trim()?.lowercase().orEmpty()
+        return host == "127.0.0.1" ||
+            host == "localhost" ||
+            host == "::1" ||
+            host == "[::1]" ||
+            host == "0.0.0.0"
+    }
+
+    private fun copyProxyRequestHeaders(session: IHTTPSession, connection: HttpURLConnection) {
+        session.headers.forEach { (key, value) ->
+            if (key.isNullOrBlank() || value.isNullOrBlank()) return@forEach
+            if (!shouldForwardProxyRequestHeader(key)) return@forEach
+            connection.setRequestProperty(key, value)
+        }
+    }
+
+    private fun shouldForwardProxyRequestHeader(name: String): Boolean {
+        val normalized = name.lowercase()
+        return normalized !in setOf(
+            "host",
+            "connection",
+            "content-length",
+            "accept-encoding",
+            "origin",
+            "referer",
+        )
+    }
+
+    private fun shouldForwardProxyResponseHeader(name: String): Boolean {
+        val normalized = name.lowercase()
+        return normalized !in setOf(
+            "transfer-encoding",
+            "connection",
+            "content-length",
+            "content-encoding",
+            "access-control-allow-origin",
+        )
+    }
+
+    private fun proxyStatus(code: Int): Response.IStatus = object : Response.IStatus {
+        override fun getRequestStatus(): Int = code
+
+        override fun getDescription(): String = "$code Proxy"
+    }
 
     private fun decode(raw: String): String =
         URLDecoder.decode(raw, StandardCharsets.UTF_8.name())

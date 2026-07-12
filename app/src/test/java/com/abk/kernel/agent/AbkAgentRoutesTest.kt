@@ -28,6 +28,13 @@ class AbkAgentRoutesTest {
     }
 
     @Test
+    fun parsesPackageAndInternalRoutes() {
+        assertTrue(AbkAgentRoutes.parse("/api/v1/packages") is AbkAgentRoute.PackageList)
+        assertTrue(AbkAgentRoutes.parse("/api/v1/packages/info") is AbkAgentRoute.PackageInfo)
+        assertTrue(AbkAgentRoutes.parse("/internal/insets.css") is AbkAgentRoute.InternalInsetsCss)
+    }
+
+    @Test
     fun parsesRuntimeModuleWebUiRoutes() {
         val files = AbkAgentRoutes.parse("/api/v1/runtime/modules/meta-abk-mount/webui/files/assets/app.js")
         assertTrue(files is AbkAgentRoute.RuntimeModuleWebUiFiles)

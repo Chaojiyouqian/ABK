@@ -5,14 +5,18 @@ internal sealed interface AbkAgentRoute {
     data object Session : AbkAgentRoute
     data object Runtime : AbkAgentRoute
     data object RootGrants : AbkAgentRoute
+    data object PackageList : AbkAgentRoute
+    data object PackageInfo : AbkAgentRoute
     data class RootGrantAllow(val packageName: String) : AbkAgentRoute
     data class RootGrantIcon(val packageName: String) : AbkAgentRoute
+    data object InternalInsetsCss : AbkAgentRoute
     data object Susfs : AbkAgentRoute
     data object ApplySusfs : AbkAgentRoute
     data class RuntimeModuleEnable(val moduleId: String) : AbkAgentRoute
     data class RuntimeModulePendingUninstall(val moduleId: String) : AbkAgentRoute
     data class RuntimeModuleAction(val moduleId: String) : AbkAgentRoute
     data class RuntimeModuleWebUiFiles(val moduleId: String, val relativePath: String?) : AbkAgentRoute
+    data class RuntimeModuleWebUiHttpProxy(val moduleId: String) : AbkAgentRoute
     data class RuntimeModuleWebUiExec(val moduleId: String) : AbkAgentRoute
     data class RuntimeModuleWebUiSpawn(val moduleId: String) : AbkAgentRoute
     data class RuntimeModuleWebUiModuleInfo(val moduleId: String) : AbkAgentRoute
@@ -29,6 +33,7 @@ internal object AbkAgentRoutes {
     private val runtimePendingUninstall = Regex("""^/api/v1/runtime/modules/([^/]+)/pending-uninstall$""")
     private val runtimeAction = Regex("""^/api/v1/runtime/modules/([^/]+)/action$""")
     private val runtimeWebUiFiles = Regex("""^/api/v1/runtime/modules/([^/]+)/webui/files(?:/(.*))?$""")
+    private val runtimeWebUiHttpProxy = Regex("""^/api/v1/runtime/modules/([^/]+)/webui/http-proxy$""")
     private val runtimeWebUiExec = Regex("""^/api/v1/runtime/modules/([^/]+)/webui/exec$""")
     private val runtimeWebUiSpawn = Regex("""^/api/v1/runtime/modules/([^/]+)/webui/spawn$""")
     private val runtimeWebUiModuleInfo = Regex("""^/api/v1/runtime/modules/([^/]+)/webui/module-info$""")
@@ -48,6 +53,9 @@ internal object AbkAgentRoutes {
             "/api/v1/session" -> AbkAgentRoute.Session
             "/api/v1/runtime" -> AbkAgentRoute.Runtime
             "/api/v1/root-grants" -> AbkAgentRoute.RootGrants
+            "/api/v1/packages" -> AbkAgentRoute.PackageList
+            "/api/v1/packages/info" -> AbkAgentRoute.PackageInfo
+            "/internal/insets.css" -> AbkAgentRoute.InternalInsetsCss
             "/api/v1/susfs" -> AbkAgentRoute.Susfs
             "/api/v1/susfs/apply" -> AbkAgentRoute.ApplySusfs
             "/api/v1/install/module" -> AbkAgentRoute.InstallModule
@@ -66,6 +74,9 @@ internal object AbkAgentRoutes {
                 }
                 runtimeWebUiExec.matchEntire(clean)?.groupValues?.getOrNull(1)?.let {
                     return AbkAgentRoute.RuntimeModuleWebUiExec(it)
+                }
+                runtimeWebUiHttpProxy.matchEntire(clean)?.groupValues?.getOrNull(1)?.let {
+                    return AbkAgentRoute.RuntimeModuleWebUiHttpProxy(it)
                 }
                 runtimeWebUiSpawn.matchEntire(clean)?.groupValues?.getOrNull(1)?.let {
                     return AbkAgentRoute.RuntimeModuleWebUiSpawn(it)

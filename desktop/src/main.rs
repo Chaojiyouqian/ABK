@@ -13,7 +13,7 @@ use gtk::{gdk, glib};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::Cursor;
 use std::path::PathBuf;
@@ -30,7 +30,7 @@ enum UiMessage {
     SessionSnapshot(Value),
     RuntimeSnapshot(Value),
     RootSnapshot(Value),
-    RootIconLoaded(String, Vec<u8>),
+    RootIconResolved(String, Option<Vec<u8>>),
     SusfsSnapshot(Value),
     SusfsActionOutput(String),
 }
@@ -52,6 +52,9 @@ struct RootGrantPageState {
     selected_package: Option<String>,
     icon_cache: HashMap<String, Vec<u8>>,
     icon_inflight: HashSet<String>,
+    icon_failed: HashSet<String>,
+    icon_queue: VecDeque<String>,
+    icon_workers: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -923,34 +926,67 @@ fn build_ui(app: &adw::Application) {
                     update_root_grant_state(&root_state, &value);
                     let show_system_apps = root_state.borrow().show_system_apps;
                     root_system_switch.set_active(show_system_apps);
-                    render_root_grant_page(
-                        &root_state,
-                        &root_list,
-                        &root_page_count,
-                        &root_hub_status,
-                        &interaction_sender,
-                        &device_port_entry,
-                        strings,
-                    );
+                    root_hub_status.set_text(&root_hub_summary_text(&root_state.borrow(), strings));
+                    if is_root_list_page_visible(&device_nav_stack) {
+                        render_root_grant_page(
+                            &root_state,
+                            &root_list,
+                            &root_page_count,
+                            &root_hub_status,
+                            &interaction_sender,
+                            &device_port_entry,
+                            strings,
+                        );
+                    }
+                    if is_root_detail_page_visible(&device_nav_stack) {
+                        if let Some(selected_package) = root_state.borrow().selected_package.clone()
+                        {
+                            render_root_grant_detail(
+                                &root_state,
+                                &selected_package,
+                                &root_detail_title,
+                                &root_detail_icon,
+                                &root_detail_package,
+                                &root_detail_type,
+                                &root_detail_status,
+                                &root_detail_json,
+                                &root_detail_switch,
+                                &interaction_sender,
+                                &device_port_entry,
+                                strings,
+                            );
+                        }
+                    }
                 }
-                UiMessage::RootIconLoaded(package_name, bytes) => {
-                    handle_root_icon_loaded(
-                        &root_state,
-                        &package_name,
-                        bytes,
-                        &root_list,
-                        &root_page_count,
-                        &root_hub_status,
-                        &interaction_sender,
-                        &device_port_entry,
-                        strings,
-                    );
-                    if root_state
-                        .borrow()
-                        .selected_package
-                        .as_deref()
-                        .map(|selected| selected == package_name)
-                        .unwrap_or(false)
+                UiMessage::RootIconResolved(package_name, bytes) => {
+                    if is_root_list_page_visible(&device_nav_stack) {
+                        handle_root_icon_loaded(
+                            &root_state,
+                            &package_name,
+                            bytes,
+                            &root_list,
+                            &root_page_count,
+                            &root_hub_status,
+                            &interaction_sender,
+                            &device_port_entry,
+                            strings,
+                        );
+                    } else {
+                        resolve_root_icon_state(
+                            &root_state,
+                            &package_name,
+                            bytes,
+                            &interaction_sender,
+                            &device_port_entry,
+                        );
+                    }
+                    if is_root_detail_page_visible(&device_nav_stack)
+                        && root_state
+                            .borrow()
+                            .selected_package
+                            .as_deref()
+                            .map(|selected| selected == package_name)
+                            .unwrap_or(false)
                     {
                         render_root_grant_detail(
                             &root_state,
@@ -2677,13 +2713,24 @@ fn spawn_module_webui_helper<F>(
                     helper_path.display()
                 ));
             }
-            Command::new(&helper_path)
+            let mut command = Command::new(&helper_path);
+            command
                 .arg("--port")
                 .arg(port.to_string())
                 .arg("--module-id")
                 .arg(&module_id)
                 .arg("--module-name")
-                .arg(&module_name)
+                .arg(&module_name);
+            #[cfg(target_os = "linux")]
+            {
+                let has_wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
+                let has_x11 = std::env::var_os("DISPLAY").is_some();
+                if has_wayland && has_x11 {
+                    command.env("GDK_BACKEND", "x11");
+                }
+                command.env("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+            }
+            command
                 .spawn()
                 .with_context(|| format!("failed to launch {}", helper_path.display()))?;
             Ok(())
@@ -2720,6 +2767,35 @@ fn localized_text(strings: Strings, zh: &'static str, en: &'static str) -> &'sta
     } else {
         en
     }
+}
+
+fn is_root_list_page_visible(nav_stack: &gtk::Stack) -> bool {
+    matches!(
+        nav_stack.visible_child_name().as_deref(),
+        Some("root-grants")
+    )
+}
+
+fn is_root_detail_page_visible(nav_stack: &gtk::Stack) -> bool {
+    matches!(
+        nav_stack.visible_child_name().as_deref(),
+        Some("root-grant-detail")
+    )
+}
+
+fn root_hub_summary_text(state: &RootGrantPageState, strings: Strings) -> String {
+    let total = state.entries.len();
+    let allowed_total = state.entries.iter().filter(|entry| entry.allow_su).count();
+    format!(
+        "{} allowed · {} total · {}",
+        allowed_total,
+        total,
+        if state.show_system_apps {
+            strings.grants_summary_showing_system
+        } else {
+            strings.grants_summary_hidden_system
+        }
+    )
 }
 
 fn install_css() {
@@ -2977,7 +3053,23 @@ fn update_root_grant_state(state: &Rc<RefCell<RootGrantPageState>>, value: &Valu
     let mut remainder = by_package.into_values().collect::<Vec<_>>();
     sort_root_entries(&mut remainder);
     merged.extend(remainder);
+    let valid_packages = merged
+        .iter()
+        .map(|entry| entry.package_name.clone())
+        .collect::<HashSet<_>>();
     guard.entries = merged;
+    guard
+        .icon_cache
+        .retain(|package, _| valid_packages.contains(package));
+    guard
+        .icon_failed
+        .retain(|package| valid_packages.contains(package));
+    guard
+        .icon_inflight
+        .retain(|package| valid_packages.contains(package));
+    guard
+        .icon_queue
+        .retain(|package| valid_packages.contains(package));
 }
 
 fn render_root_grant_page(
@@ -3021,7 +3113,7 @@ fn render_root_grant_page(
         return;
     }
 
-    for entry in filtered {
+    for (index, entry) in filtered.into_iter().enumerate() {
         let row = gtk::ListBoxRow::new();
         row.set_activatable(true);
         row.set_selectable(false);
@@ -3031,7 +3123,13 @@ fn render_root_grant_page(
         shell.add_css_class("list-row-shell");
         set_margin_all(&shell, 8);
 
-        let icon = root_grant_icon_widget(state, sender, port_entry, &entry.package_name);
+        let icon = root_grant_icon_widget(
+            state,
+            sender,
+            port_entry,
+            &entry.package_name,
+            index < ROOT_ICON_PREFETCH_LIMIT,
+        );
         shell.append(&icon);
 
         let text = gtk::Box::new(gtk::Orientation::Vertical, 4);
@@ -3148,7 +3246,7 @@ fn render_root_grant_detail(
 fn handle_root_icon_loaded(
     state: &Rc<RefCell<RootGrantPageState>>,
     package_name: &str,
-    bytes: Vec<u8>,
+    bytes: Option<Vec<u8>>,
     list: &gtk::ListBox,
     count_label: &gtk::Label,
     summary_label: &gtk::Label,
@@ -3156,10 +3254,7 @@ fn handle_root_icon_loaded(
     port_entry: &gtk::Entry,
     strings: Strings,
 ) {
-    let mut guard = state.borrow_mut();
-    guard.icon_cache.insert(package_name.to_string(), bytes);
-    guard.icon_inflight.remove(package_name);
-    drop(guard);
+    resolve_root_icon_state(state, package_name, bytes, sender, port_entry);
     render_root_grant_page(
         state,
         list,
@@ -3169,6 +3264,26 @@ fn handle_root_icon_loaded(
         port_entry,
         strings,
     );
+}
+
+fn resolve_root_icon_state(
+    state: &Rc<RefCell<RootGrantPageState>>,
+    package_name: &str,
+    bytes: Option<Vec<u8>>,
+    sender: &Sender<UiMessage>,
+    port_entry: &gtk::Entry,
+) {
+    let mut guard = state.borrow_mut();
+    if let Some(bytes) = bytes {
+        guard.icon_failed.remove(package_name);
+        guard.icon_cache.insert(package_name.to_string(), bytes);
+    } else {
+        guard.icon_failed.insert(package_name.to_string());
+    }
+    guard.icon_inflight.remove(package_name);
+    guard.icon_workers = guard.icon_workers.saturating_sub(1);
+    drop(guard);
+    pump_root_icon_fetches(state, sender, port_entry);
 }
 
 fn filtered_root_entries(state: &RootGrantPageState) -> Vec<RootGrantEntry> {
@@ -5850,6 +5965,7 @@ fn root_grant_icon_widget(
     sender: &Sender<UiMessage>,
     port_entry: &gtk::Entry,
     package_name: &str,
+    allow_fetch: bool,
 ) -> gtk::Image {
     let image = gtk::Image::from_icon_name("application-x-executable-symbolic");
     image.add_css_class("list-icon");
@@ -5866,7 +5982,7 @@ fn root_grant_icon_widget(
             image.set_from_pixbuf(Some(&pixbuf));
             image.set_pixel_size(28);
         }
-    } else {
+    } else if allow_fetch {
         trigger_root_icon_fetch(state, sender, port_entry, package_name);
     }
     image
@@ -5884,18 +6000,42 @@ fn trigger_root_icon_fetch(
     }
     {
         let mut guard = state.borrow_mut();
-        if guard.icon_cache.contains_key(&package) || !guard.icon_inflight.insert(package.clone()) {
+        if guard.icon_cache.contains_key(&package)
+            || guard.icon_failed.contains(&package)
+            || !guard.icon_inflight.insert(package.clone())
+        {
             return;
         }
+        guard.icon_queue.push_back(package.clone());
     }
-    let sender = sender.clone();
+    pump_root_icon_fetches(state, sender, port_entry);
+}
+
+fn pump_root_icon_fetches(
+    state: &Rc<RefCell<RootGrantPageState>>,
+    sender: &Sender<UiMessage>,
+    port_entry: &gtk::Entry,
+) {
     let port = parse_port(&port_entry.text());
-    thread::spawn(move || {
-        let client = AgentClient::new("127.0.0.1", port);
-        if let Ok(bytes) = client.root_grant_icon_png(&package) {
-            let _ = sender.send(UiMessage::RootIconLoaded(package, bytes));
-        }
-    });
+    loop {
+        let next_package = {
+            let mut guard = state.borrow_mut();
+            if guard.icon_workers >= ROOT_ICON_MAX_WORKERS {
+                return;
+            }
+            let Some(package) = guard.icon_queue.pop_front() else {
+                return;
+            };
+            guard.icon_workers += 1;
+            package
+        };
+        let sender = sender.clone();
+        thread::spawn(move || {
+            let client = AgentClient::new("127.0.0.1", port);
+            let bytes = client.root_grant_icon_png(&next_package).ok();
+            let _ = sender.send(UiMessage::RootIconResolved(next_package, bytes));
+        });
+    }
 }
 
 fn module_icon_widget(module: &RuntimeModuleEntry) -> gtk::Image {
@@ -6125,6 +6265,9 @@ fn parse_port(raw: &str) -> u16 {
         .unwrap_or(48765)
 }
 
+const ROOT_ICON_PREFETCH_LIMIT: usize = 48;
+const ROOT_ICON_MAX_WORKERS: usize = 4;
+
 const APP_CSS: &str = r#"
 .abk-root {
   background-image: linear-gradient(
@@ -6172,7 +6315,7 @@ const APP_CSS: &str = r#"
   margin: 4px 0;
 }
 
-.nav-list row:selected {
+.nav-list row.selected {
   background-color: alpha(@accent_bg_color, 0.96);
   color: @accent_fg_color;
 }
@@ -6331,6 +6474,9 @@ mod tests {
             selected_package: None,
             icon_cache: HashMap::new(),
             icon_inflight: HashSet::new(),
+            icon_failed: HashSet::new(),
+            icon_queue: VecDeque::new(),
+            icon_workers: 0,
         };
 
         let filtered = filtered_root_entries(&state);

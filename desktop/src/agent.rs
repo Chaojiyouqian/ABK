@@ -3,6 +3,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -31,10 +32,7 @@ impl AgentClient {
         Self {
             host: host.into(),
             port,
-            http: reqwest::blocking::Client::builder()
-                .timeout(Duration::from_secs(15))
-                .build()
-                .expect("reqwest client"),
+            http: shared_http_client().clone(),
         }
     }
 
@@ -218,6 +216,16 @@ impl AgentClient {
     fn base_url(&self) -> String {
         format!("http://{}:{}", self.host, self.port)
     }
+}
+
+fn shared_http_client() -> &'static reqwest::blocking::Client {
+    static HTTP_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+    HTTP_CLIENT.get_or_init(|| {
+        reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(15))
+            .build()
+            .expect("reqwest client")
+    })
 }
 
 fn handle_response(response: reqwest::blocking::Response) -> Result<String> {
