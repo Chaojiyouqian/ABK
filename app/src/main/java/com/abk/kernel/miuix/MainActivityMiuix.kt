@@ -372,8 +372,14 @@ private fun AbkMiuixMainScaffold(
             if (!hasRail) {
                 LaunchedEffect(childPageVisible, predictiveBackProgress) {
                     if (predictiveBackProgress > 0f) {
-                        barSlideOffset.snapTo(-(1f - predictiveBackProgress))
-                        lastGestureProgress.value = predictiveBackProgress
+                        // Only show bar during predictive back when popping from first sub-page level
+                        // (backStackSize == 2) back to root. For deeper pages (>= 3) the bar stays hidden.
+                        if (navigator.backStackSize() <= 2) {
+                            barSlideOffset.snapTo(-(1f - predictiveBackProgress))
+                            lastGestureProgress.value = predictiveBackProgress
+                        } else {
+                            barSlideOffset.snapTo(-1f)
+                        }
                     } else {
                         val target = if (childPageVisible) -1f else 0f
                         val fromGesture = lastGestureProgress.value > 0f

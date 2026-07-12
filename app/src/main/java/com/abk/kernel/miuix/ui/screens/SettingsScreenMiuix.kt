@@ -1,4 +1,4 @@
-package com.abk.kernel.miuix.ui.screens
+﻿package com.abk.kernel.miuix.ui.screens
 
 import android.app.Activity
 import android.content.Context
@@ -58,6 +58,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,6 +87,17 @@ import com.abk.kernel.ui.navigation3.LocalNavigator
 import com.abk.kernel.ui.navigation3.Route
 import com.abk.kernel.viewmodel.MainUiState
 import com.abk.kernel.viewmodel.MainViewModel
+import androidx.core.content.FileProvider
+import com.abk.kernel.viewmodel.exportDiagnosticBundle
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlin.text.Charsets
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.Alignment
+import com.abk.kernel.data.repository.Result
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text as MiuixText
@@ -126,9 +138,12 @@ fun SettingsScreenMiuix(
     val scrollBehavior = MiuixScrollBehavior()
     val iconTint = MiuixTheme.colorScheme.onSurfaceSecondary
     val navigator = LocalNavigator.current
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showClearArtifactsDialog by remember { mutableStateOf(false) }
+    var exportingDiagnostics by remember { mutableStateOf(false) }
 
     // Refresh manager settings on first composition (mirrors MD3 LaunchedEffect).
     LaunchedEffect(Unit) {
@@ -141,10 +156,41 @@ fun SettingsScreenMiuix(
         vm.consumeAppUpdatePendingInstallPath()
     }
 
+    fun exportDiagnostics() {
+        if (exportingDiagnostics) return
+        scope.launch {
+            exportingDiagnostics = true
+            runCatching {
+                exportDiagnosticBundle(context, state)
+            }.onSuccess { result ->
+                shareDiagnosticBundle(context, result.zipFile)
+                if (result.warnings.isNotEmpty()) {
+                    vm.showSnackbar(
+                        context.getString(
+                            R.string.settings_export_diagnostics_partial,
+                            result.warnings.size
+                        ),
+                        longDuration = true
+                    )
+                }
+            }.onFailure { error ->
+                vm.showSnackbar(
+                    context.getString(
+                        R.string.settings_export_diagnostics_failed,
+                        error.message ?: error::class.java.simpleName
+                    ),
+                    longDuration = true
+                )
+            }
+            exportingDiagnostics = false
+        }
+    }
+
     // ── Main layout ────────────────────────────────────────────────────────
     Box(Modifier.fillMaxSize()) {
         // ── Logout confirmation dialog ──────────────────────────────────────
-        if (showLogoutDialog) {
+    
+    if (showLogoutDialog) {
             WindowDialog(
                 show = true,
                 title = stringResource(R.string.settings_logout_title),
@@ -407,7 +453,12 @@ fun SettingsScreenMiuix(
                 }
 
                 // ═══════════════════════════════════════════════════════════
-                // 3. APP UPDATE
+                // 3. SECURITY
+                // ═══════════════════════════════════════════════════════════
+                SecuritySettingsGroupMiuix(state = state, vm = vm, iconTint = iconTint)
+
+                // ═══════════════════════════════════════════════════════════
+                // 4. APP UPDATE
                 // ═══════════════════════════════════════════════════════════
                 SectionTitle(stringResource(R.string.settings_app_update))
                 Card(modifier = Modifier.fillMaxWidth()) {
@@ -706,6 +757,18 @@ fun SettingsScreenMiuix(
                         startAction = { Icon(Icons.Default.Article, contentDescription = null, tint = iconTint) },
                         onClick = { navigator.push(Route.OpenSourceLicenses) }
                     )
+                    ArrowPreference(
+                        title = stringResource(R.string.settings_export_diagnostics),
+                        summary = stringResource(R.string.settings_export_diagnostics_desc),
+                        startAction = {
+                            if (exportingDiagnostics) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            } else {
+                                Icon(Icons.Default.BugReport, contentDescription = null, tint = iconTint)
+                            }
+                        },
+                        onClick = { exportDiagnostics() }
+                    )
                 }
 
                 Spacer(Modifier.height(60.dp + outerPadding.calculateBottomPadding()))
@@ -995,7 +1058,377 @@ private fun managerSettingIcon(id: String) = when (id) {
     else -> Icons.Default.Settings
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+private fun shareDiagnosticBundle(context: Context, zipFile: File) {
+    val uri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        zipFile
+    )
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "application/zip"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_SUBJECT, zipFile.name)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(
+        Intent.createChooser(intent, context.getString(R.string.settings_export_diagnostics_share))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    )
+}
+
+
+private enum class SecurityKeyImportTargetMiuix {
+    PUBLIC,
+    PRIVATE,
+}
+
+@Composable
+private fun SecuritySettingsGroupMiuix(
+    state: MainUiState,
+    vm: MainViewModel,
+    iconTint: Color,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val canManageKeys = state.isLoggedIn && state.forkRepo != null
+    var showImportDialog by remember { mutableStateOf(false) }
+    var showDisableConfirm1 by remember { mutableStateOf(false) }
+    var showDisableConfirm2 by remember { mutableStateOf(false) }
+    var showResetConfirm by remember { mutableStateOf(false) }
+    var importPublicKeyText by remember { mutableStateOf("") }
+    var importPrivateKeyText by remember { mutableStateOf("") }
+    var importError by remember { mutableStateOf<String?>(null) }
+    var importPickerTarget by remember { mutableStateOf<SecurityKeyImportTargetMiuix?>(null) }
+    val importKeyPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val target = importPickerTarget ?: return@rememberLauncherForActivityResult
+        importPickerTarget = null
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            val text = try {
+                readTextFromUri(context, uri)
+            } catch (_: Throwable) {
+                importError = context.getString(R.string.settings_security_import_read_failed)
+                return@launch
+            }
+            when (target) {
+                SecurityKeyImportTargetMiuix.PUBLIC -> importPublicKeyText = text
+                SecurityKeyImportTargetMiuix.PRIVATE -> importPrivateKeyText = text
+            }
+            importError = null
+        }
+    }
+
+    SectionTitle(stringResource(R.string.settings_security))
+    Card(modifier = Modifier.fillMaxWidth()) {
+        SwitchPreference(
+            title = stringResource(R.string.settings_security_signing_title),
+            summary = when {
+                !canManageKeys -> stringResource(R.string.settings_security_requires_fork)
+                state.artifactSigningVerificationEnabled && state.artifactSigningConfigured ->
+                    stringResource(R.string.settings_security_status_enabled_configured)
+                state.artifactSigningVerificationEnabled ->
+                    stringResource(R.string.settings_security_status_enabled_pending)
+                else ->
+                    stringResource(R.string.settings_security_status_disabled)
+            },
+            checked = state.artifactSigningVerificationEnabled,
+            enabled = !state.artifactSigningOperationInFlight && canManageKeys,
+            onCheckedChange = { enabled ->
+                when {
+                    enabled -> vm.enableArtifactSigningVerification()
+                    else -> showDisableConfirm1 = true
+                }
+            },
+            startAction = { Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = iconTint) }
+        )
+        ArrowPreference(
+            title = stringResource(R.string.settings_security_import_keys),
+            summary = when {
+                !canManageKeys -> stringResource(R.string.settings_security_requires_fork)
+                !state.artifactSigningVerificationEnabled -> stringResource(R.string.settings_security_import_requires_enabled)
+                else -> stringResource(R.string.settings_security_import_keys_desc)
+            },
+            startAction = { Icon(Icons.Default.UploadFile, contentDescription = null, tint = iconTint) },
+            enabled = !state.artifactSigningOperationInFlight && canManageKeys && state.artifactSigningVerificationEnabled,
+            onClick = {
+                importPublicKeyText = ""
+                importPrivateKeyText = ""
+                importError = null
+                showImportDialog = true
+            }
+        )
+        ArrowPreference(
+            title = stringResource(R.string.settings_security_reset_keys),
+            summary = stringResource(R.string.settings_security_reset_keys_desc),
+            startAction = { Icon(Icons.Default.Key, contentDescription = null, tint = iconTint) },
+            enabled = !state.artifactSigningOperationInFlight && state.artifactSigningVerificationEnabled && canManageKeys,
+            onClick = { showResetConfirm = true }
+        )
+        if (state.artifactSigningOperationInFlight) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                MiuixText(
+                    text = stringResource(R.string.settings_security_operation_running),
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    style = MiuixTheme.textStyles.body2
+                )
+            }
+        }
+    }
+
+    if (showImportDialog) {
+        ImportKeysDialogMiuix(
+            publicKeyText = importPublicKeyText,
+            privateKeyText = importPrivateKeyText,
+            error = importError,
+            importing = state.artifactSigningOperationInFlight,
+            onPublicKeyTextChange = { importPublicKeyText = it; importError = null },
+            onPrivateKeyTextChange = { importPrivateKeyText = it; importError = null },
+            onPickPublicKey = {
+                importPickerTarget = SecurityKeyImportTargetMiuix.PUBLIC
+                importKeyPicker.launch(arrayOf("text/*", "*/*"))
+            },
+            onPickPrivateKey = {
+                importPickerTarget = SecurityKeyImportTargetMiuix.PRIVATE
+                importKeyPicker.launch(arrayOf("text/*", "*/*"))
+            },
+            onImport = {
+                scope.launch {
+                    importError = null
+                    when (val result = vm.importArtifactSigningKeys(importPublicKeyText, importPrivateKeyText)) {
+                        is Result.Success -> {
+                            showImportDialog = false
+                            importPublicKeyText = ""
+                            importPrivateKeyText = ""
+                        }
+                        is Result.Error -> importError = result.message
+                        Result.Loading -> Unit
+                    }
+                }
+            },
+            onDismiss = {
+                if (!state.artifactSigningOperationInFlight) {
+                    showImportDialog = false
+                }
+            }
+        )
+    }
+
+    if (showDisableConfirm1) {
+        TimedConfirmDialogMiuix(
+            title = stringResource(R.string.settings_security_disable_dialog_title_1),
+            message = stringResource(R.string.settings_security_disable_dialog_message_1),
+            confirmLabel = stringResource(R.string.confirm),
+            onDismiss = { showDisableConfirm1 = false },
+            onConfirm = {
+                showDisableConfirm1 = false
+                showDisableConfirm2 = true
+            }
+        )
+    }
+
+    if (showDisableConfirm2) {
+        TimedConfirmDialogMiuix(
+            title = stringResource(R.string.settings_security_disable_dialog_title_2),
+            message = stringResource(R.string.settings_security_disable_dialog_message_2),
+            confirmLabel = stringResource(R.string.confirm),
+            onDismiss = { showDisableConfirm2 = false },
+            onConfirm = {
+                showDisableConfirm2 = false
+                vm.disableArtifactSigningVerification()
+            }
+        )
+    }
+
+    if (showResetConfirm) {
+        TimedConfirmDialogMiuix(
+            title = stringResource(R.string.settings_security_reset_dialog_title),
+            message = stringResource(R.string.settings_security_reset_dialog_message),
+            confirmLabel = stringResource(R.string.confirm),
+            onDismiss = { showResetConfirm = false },
+            onConfirm = {
+                showResetConfirm = false
+                vm.resetArtifactSigningKeys()
+            }
+        )
+    }
+}
+
+@Composable
+private fun TimedConfirmDialogMiuix(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    delaySeconds: Int = 5,
+) {
+    var remainingSeconds by remember { mutableStateOf(delaySeconds) }
+    LaunchedEffect(Unit) {
+        while (remainingSeconds > 0) {
+            delay(1_000)
+            remainingSeconds -= 1
+        }
+    }
+    WindowDialog(
+        show = true,
+        title = title,
+        onDismissRequest = onDismiss
+    ) {
+        Column {
+            MiuixText(text = message)
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                MiuixTextButton(
+                    modifier = Modifier.weight(1f),
+                    text = stringResource(android.R.string.cancel),
+                    onClick = onDismiss
+                )
+                Spacer(Modifier.width(20.dp))
+                MiuixTextButton(
+                    modifier = Modifier.weight(1f),
+                    text = if (remainingSeconds > 0) {
+                        confirmLabel + " (" + remainingSeconds + "s)"
+                    } else {
+                        confirmLabel
+                    },
+                    enabled = remainingSeconds <= 0,
+                    colors = if (remainingSeconds <= 0) {
+                        ButtonDefaults.textButtonColorsPrimary()
+                    } else {
+                        ButtonDefaults.textButtonColors()
+                    },
+                    onClick = onConfirm
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportKeysDialogMiuix(
+    publicKeyText: String,
+    privateKeyText: String,
+    error: String?,
+    importing: Boolean,
+    onPublicKeyTextChange: (String) -> Unit,
+    onPrivateKeyTextChange: (String) -> Unit,
+    onPickPublicKey: () -> Unit,
+    onPickPrivateKey: () -> Unit,
+    onImport: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    WindowDialog(
+        show = true,
+        title = stringResource(R.string.settings_security_import_dialog_title),
+        onDismissRequest = onDismiss
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            MiuixText(
+                text = stringResource(R.string.settings_security_import_keys_desc),
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                style = MiuixTheme.textStyles.body2
+            )
+            MiuixText(
+                text = stringResource(R.string.settings_security_import_public_key),
+                style = MiuixTheme.textStyles.body2
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, MiuixTheme.colorScheme.outline, RoundedCornerShape(8.dp))
+                    .padding(12.dp)
+            ) {
+                BasicTextField(
+                    value = publicKeyText,
+                    onValueChange = onPublicKeyTextChange,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
+                    textStyle = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
+                    cursorBrush = SolidColor(MiuixTheme.colorScheme.primary),
+                    enabled = !importing
+                )
+            }
+            MiuixTextButton(
+                modifier = Modifier.fillMaxWidth(),
+                text = stringResource(R.string.settings_security_import_pick_public_key),
+                onClick = onPickPublicKey,
+                enabled = !importing
+            )
+            MiuixText(
+                text = stringResource(R.string.settings_security_import_private_key),
+                style = MiuixTheme.textStyles.body2
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, MiuixTheme.colorScheme.outline, RoundedCornerShape(8.dp))
+                    .padding(12.dp)
+            ) {
+                BasicTextField(
+                    value = privateKeyText,
+                    onValueChange = onPrivateKeyTextChange,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
+                    textStyle = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface),
+                    cursorBrush = SolidColor(MiuixTheme.colorScheme.primary),
+                    enabled = !importing
+                )
+            }
+            MiuixTextButton(
+                modifier = Modifier.fillMaxWidth(),
+                text = stringResource(R.string.settings_security_import_pick_private_key),
+                onClick = onPickPrivateKey,
+                enabled = !importing
+            )
+            error?.let {
+                MiuixText(
+                    text = it,
+                    color = MiuixTheme.colorScheme.error,
+                    style = MiuixTheme.textStyles.body2
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                MiuixTextButton(
+                    modifier = Modifier.weight(1f),
+                    text = stringResource(android.R.string.cancel),
+                    onClick = onDismiss,
+                    enabled = !importing
+                )
+                Spacer(Modifier.width(20.dp))
+                MiuixTextButton(
+                    modifier = Modifier.weight(1f),
+                    text = stringResource(R.string.settings_import),
+                    enabled = !importing && publicKeyText.isNotBlank() && privateKeyText.isNotBlank(),
+                    colors = if (!importing && publicKeyText.isNotBlank() && privateKeyText.isNotBlank()) {
+                        ButtonDefaults.textButtonColorsPrimary()
+                    } else {
+                        ButtonDefaults.textButtonColors()
+                    },
+                    onClick = onImport
+                )
+            }
+        }
+    }
+}
+
+private suspend fun readTextFromUri(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
+    context.contentResolver.openInputStream(uri)?.use { input ->
+        input.bufferedReader(Charsets.UTF_8).readText()
+    } ?: error(context.getString(R.string.settings_security_import_read_failed))
+}
+
 // Utility functions (mirrored from MD3 SettingsScreen.kt)
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
@@ -169,6 +170,7 @@ fun ModuleInstallLogScreenMiuix(
                 ) {
                     Icon(
                         Icons.Rounded.Refresh,
+                        tint = Color.White,
                         contentDescription = stringResource(R.string.flash_terminal_reboot)
                     )
                 }
