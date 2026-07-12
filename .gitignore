@@ -27,6 +27,7 @@ hympfs-dev.diff
 ehthumbs.db
 Thumbs.db
 desktop.ini
+desktop/target/
 
 # Build outputs
 *.o
