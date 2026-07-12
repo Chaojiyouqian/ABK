@@ -76,7 +76,7 @@ internal object AbkAgentTaskStore {
         }
     }
 
-    private class MutableTask(
+    internal class MutableTask(
         val id: String,
         val kind: String,
         val createdAt: Long,
@@ -143,7 +143,7 @@ internal object AbkAgentTaskStore {
         }
     }
 
-    internal class AbkAgentTaskHandle private constructor(
+    internal class AbkAgentTaskHandle(
         private val task: MutableTask,
     ) {
         fun markRunning() {
