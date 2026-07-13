@@ -1,10 +1,11 @@
 use anyhow::{anyhow, Result};
 use gtk3::prelude::*;
 use serde_json::to_string;
+use serde_json::{json, Value};
 use urlencoding::encode;
 use webkit2gtk::{
-    LoadEvent, SettingsExt, UserContentInjectedFrames, UserContentManager, UserContentManagerExt,
-    UserScript, UserScriptInjectionTime, WebView, WebViewExt,
+    LoadEvent, ScriptDialogType, SettingsExt, UserContentInjectedFrames, UserContentManager,
+    UserContentManagerExt, UserScript, UserScriptInjectionTime, WebView, WebViewExt,
 };
 
 fn main() {
@@ -28,7 +29,8 @@ fn run_module_webui_window(port: u16, module_id: &str, module_name: &str) -> Res
 
     let encoded_id = encode(module_id.trim());
     let bridge_base = format!("http://127.0.0.1:{port}/api/v1/runtime/modules/{encoded_id}/webui");
-    let page_url = format!("{bridge_base}/files");
+    let page_base_url = format!("{bridge_base}/files/");
+    let page_url = format!("{page_base_url}index.html");
     let title = if module_name.trim().is_empty() {
         format!("Module WebUI · {module_id}")
     } else {
@@ -59,7 +61,30 @@ fn run_module_webui_window(port: u16, module_id: &str, module_name: &str) -> Res
     }
 
     {
-        let page_url = page_url.clone();
+        let module_id = module_id.to_string();
+        webview.connect_script_dialog(move |_view, dialog| {
+            if dialog.dialog_type() != ScriptDialogType::Prompt {
+                return false;
+            }
+            let Some(message) = dialog.message().map(|value| value.to_string()) else {
+                return false;
+            };
+            let Some(method) = message.strip_prefix("__abk__:") else {
+                return false;
+            };
+            let payload = dialog
+                .prompt_get_default_text()
+                .map(|value| value.to_string())
+                .unwrap_or_default();
+            let response = handle_sync_bridge_call(port, &module_id, method, &payload)
+                .unwrap_or_else(|error| error.to_string());
+            dialog.prompt_set_text(&response);
+            true
+        });
+    }
+
+    {
+        let page_base_url = page_base_url.clone();
         webview.connect_load_failed(move |view, event, uri, error| {
             if event == LoadEvent::Finished {
                 return false;
@@ -69,7 +94,7 @@ fn run_module_webui_window(port: u16, module_id: &str, module_name: &str) -> Res
                     "Module WebUI load failed",
                     &format!("{uri}\n\n{}", error.message()),
                 ),
-                Some(&page_url),
+                Some(&page_base_url),
             );
             true
         });
@@ -141,10 +166,18 @@ fn build_ksu_bridge_script(bridge_base: &str) -> Result<String> {
   const bridgeBase = {base};
   const rootBase = new URL(bridgeBase).origin;
   const packageIconBase = rootBase + "/api/v1/root-grants/";
+  let moduleInfoCache = null;
 
   function buildUrl(path) {{
     if (typeof path === "string" && /^(https?:)?\/\//.test(path)) {{
       return path;
+    }}
+    if (typeof path === "string" && (
+      path === "/exec" ||
+      path === "/spawn" ||
+      path === "/module-info"
+    )) {{
+      return bridgeBase + path;
     }}
     if (typeof path === "string" && path.startsWith("/")) {{
       return rootBase + path;
@@ -231,6 +264,14 @@ fn build_ksu_bridge_script(bridge_base: &str) -> Result<String> {
     return payload;
   }}
 
+  function syncNative(method, payload) {{
+    try {{
+      return window.prompt(`__abk__:${{method}}`, JSON.stringify(payload ?? null)) ?? "";
+    }} catch (_error) {{
+      return "";
+    }}
+  }}
+
   function resolveCallback(callbackRef) {{
     if (typeof callbackRef === "function") {{
       return callbackRef;
@@ -276,13 +317,20 @@ fn build_ksu_bridge_script(bridge_base: &str) -> Result<String> {
       callback && maybeCallback === undefined ? undefined : optionsOrCallback;
 
     if (!callback) {{
-      const payload = syncRequest("POST", "/exec", {{ command, options }});
-      return normalizeOutput(payload);
+      return syncNative("exec", {{ command, options }});
     }}
 
     asyncRequest("POST", "/exec", {{ command, options }})
-      .then((payload) => callback(payload.code ?? 0, normalizeOutput(payload), ""))
-      .catch((error) => callback(1, String(error), ""));
+      .then((payload) => {{
+        const output = normalizeOutput(payload);
+        const isOk = payload && payload.success !== false && (payload.code ?? 0) === 0;
+        callback(
+          payload.code ?? (isOk ? 0 : 1),
+          isOk ? output : "",
+          isOk ? "" : (payload.stderr || output || "command failed")
+        );
+      }})
+      .catch((error) => callback(1, "", String(error)));
   }}
 
   function spawn(command, args, options, callbackRef) {{
@@ -313,8 +361,11 @@ fn build_ksu_bridge_script(bridge_base: &str) -> Result<String> {
   }}
 
   function moduleInfo() {{
-    const payload = syncRequest("GET", "/module-info");
-    return payload.raw || JSON.stringify(payload.info || {{}});
+    if (moduleInfoCache !== null) {{
+      return moduleInfoCache;
+    }}
+    moduleInfoCache = syncNative("moduleInfo");
+    return moduleInfoCache;
   }}
 
   function moduleInfoObject() {{
@@ -328,9 +379,15 @@ fn build_ksu_bridge_script(bridge_base: &str) -> Result<String> {
   function fullScreen(enabled) {{
     try {{
       if (enabled) {{
-        document.documentElement.requestFullscreen?.();
+        const result = document.documentElement.requestFullscreen?.();
+        if (result && typeof result.catch === "function") {{
+          result.catch(() => {{}});
+        }}
       }} else {{
-        document.exitFullscreen?.();
+        const result = document.exitFullscreen?.();
+        if (result && typeof result.catch === "function") {{
+          result.catch(() => {{}});
+        }}
       }}
     }} catch (_error) {{
     }}
@@ -340,11 +397,7 @@ fn build_ksu_bridge_script(bridge_base: &str) -> Result<String> {
   }}
 
   function listPackages(type) {{
-    const payload = syncRequest(
-      "GET",
-      "/api/v1/packages?type=" + encodeURIComponent(type || "all")
-    );
-    return JSON.stringify(payload.packages || []);
+    return syncNative("listPackages", {{ type: type || "all" }});
   }}
 
   function getPackagesInfo(packages) {{
@@ -356,10 +409,9 @@ fn build_ksu_bridge_script(bridge_base: &str) -> Result<String> {
         values = [];
       }}
     }}
-    const payload = syncRequest("POST", "/api/v1/packages/info", {{
+    return syncNative("getPackagesInfo", {{
       packages: Array.isArray(values) ? values : [],
     }});
-    return JSON.stringify(payload.packages || []);
   }}
 
   const originalFetch = window.fetch?.bind(window);
@@ -527,6 +579,85 @@ fn html_escape(value: &str) -> String {
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+}
+
+fn handle_sync_bridge_call(
+    port: u16,
+    module_id: &str,
+    method: &str,
+    payload_raw: &str,
+) -> Result<String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()?;
+    let encoded_module_id = encode(module_id);
+    let bridge_base =
+        format!("http://127.0.0.1:{port}/api/v1/runtime/modules/{encoded_module_id}/webui");
+    let payload = if payload_raw.trim().is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_str::<Value>(payload_raw).unwrap_or(Value::Null)
+    };
+
+    match method {
+        "moduleInfo" => {
+            let response = client.get(format!("{bridge_base}/module-info")).send()?;
+            let value = response.json::<Value>()?;
+            Ok(value
+                .get("raw")
+                .and_then(Value::as_str)
+                .unwrap_or("{}")
+                .to_string())
+        }
+        "listPackages" => {
+            let package_type = payload.get("type").and_then(Value::as_str).unwrap_or("all");
+            let response = client
+                .get(format!(
+                    "http://127.0.0.1:{port}/api/v1/packages?type={}",
+                    encode(package_type)
+                ))
+                .send()?;
+            let value = response.json::<Value>()?;
+            Ok(serde_json::to_string(
+                value.get("packages").unwrap_or(&Value::Array(vec![])),
+            )?)
+        }
+        "getPackagesInfo" => {
+            let packages = payload
+                .get("packages")
+                .cloned()
+                .unwrap_or_else(|| Value::Array(vec![]));
+            let response = client
+                .post(format!("http://127.0.0.1:{port}/api/v1/packages/info"))
+                .json(&json!({ "packages": packages }))
+                .send()?;
+            let value = response.json::<Value>()?;
+            Ok(serde_json::to_string(
+                value.get("packages").unwrap_or(&Value::Array(vec![])),
+            )?)
+        }
+        "exec" => {
+            let command = payload
+                .get("command")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let options = payload.get("options").cloned().unwrap_or(Value::Null);
+            let response = client
+                .post(format!("{bridge_base}/exec"))
+                .json(&json!({
+                    "command": command,
+                    "options": if options.is_null() { Value::Null } else { options }
+                }))
+                .send()?;
+            let value = response.json::<Value>()?;
+            Ok(value
+                .get("stdout")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string())
+        }
+        other => Err(anyhow!("unsupported sync bridge method: {other}")),
+    }
 }
 
 #[derive(Debug, Clone)]
