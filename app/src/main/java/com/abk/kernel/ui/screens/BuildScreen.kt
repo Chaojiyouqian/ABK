@@ -1489,7 +1489,7 @@ fun BuildScreen(
                     SwitchRow(stringResource(R.string.build_zram_full_algo), config.zramFullAlgo) {
                         vm.updateBuildConfig(config.copy(zramFullAlgo = it))
                     }
-                    if (!config.zramFullAlgo) {
+                    AnimatedVisibility(config.zramFullAlgo) {
                         OutlinedTextField(
                             value = config.zramExtraAlgos,
                             onValueChange = { vm.updateBuildConfig(config.copy(zramExtraAlgos = it)) },

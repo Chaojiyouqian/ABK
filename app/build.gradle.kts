@@ -3,6 +3,8 @@ import java.util.zip.ZipFile
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.parcelize)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 val githubClientId = providers.gradleProperty("ABK_GITHUB_CLIENT_ID")
@@ -76,7 +78,7 @@ android {
 
     defaultConfig {
         applicationId = "com.abk.kernel"
-        minSdk = 26
+        minSdk = 33
         targetSdk = 35
         versionCode = 10025
         versionName = "1.2.5"
@@ -92,7 +94,7 @@ android {
         buildConfigField("String", "APP_BUILD_COMMIT_SHA", "\"${appBuildCommitSha.get()}\"")
         buildConfigField("String", "APP_BUILD_WORKFLOW_NAME", "\"${appBuildWorkflowName.get()}\"")
         buildConfigField("String", "GITHUB_CLIENT_ID", "\"${githubClientId.get()}\"")
-        buildConfigField("String", "SOURCE_REPO_OWNER", "\"xingguangcuican6666\"")
+        buildConfigField("String", "SOURCE_REPO_OWNER", "\"fanziyun\"")
         buildConfigField("String", "SOURCE_REPO_NAME", "\"ABK\"")
         buildConfigField("String", "SOURCE_REPO_DEFAULT_BRANCH", "\"dev\"")
         buildConfigField("String", "UPSTREAM_REPO_URL", "\"https://github.com/zzh20188/GKI_KernelSU_SUSFS\"")
@@ -145,6 +147,9 @@ android {
         }
     }
     packaging {
+        dex {
+            useLegacyPackaging = true
+        }
         jniLibs {
             useLegacyPackaging = true
         }
@@ -203,11 +208,22 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation("io.mockk:mockk:1.13.14")
     testImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
+
+    // MIUIX HyperOS theme
+    implementation(libs.miuix.core)
+    implementation(libs.miuix.icons)
+    implementation(libs.miuix.preference)
+    implementation(libs.miuix.blur)
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+    implementation(libs.miuix.navigation3.ui)
+
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }

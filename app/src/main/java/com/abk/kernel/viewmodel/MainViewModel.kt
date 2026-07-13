@@ -1,4 +1,4 @@
-package com.abk.kernel.viewmodel
+﻿package com.abk.kernel.viewmodel
 
 import android.app.Application
 import androidx.annotation.VisibleForTesting
@@ -71,7 +71,7 @@ import java.util.zip.GZIPOutputStream
 
 // ── UI State ─────────────────────────────────────────────────────────────────
 
-enum class AuthStep { INTRO, LOGIN, FORK_CHECK }
+enum class AuthStep { INTRO, LOGIN, FORK_CHECK, THEME_SELECT }
 
 enum class WorkflowStepI18nRefreshReason {
     SYNC_GATE,
@@ -114,6 +114,7 @@ data class MainUiState(
     val behindBy: Int = 0,
     val showSyncPrompt: Boolean = false,
     val showOobe: Boolean = false,
+    val oobeFromBuild: Boolean = false,
     val oobeCompleted: Boolean = false,
     val isLoading: Boolean = false,
     val error: String? = null,
@@ -191,6 +192,10 @@ data class MainUiState(
     val dynamicColorEnabled: Boolean = true,
     val customThemeColorArgb: Int? = null,
     val customAccentColorArgb: Int? = null,
+    val uiStyle: String = "material",
+    val miuixBlurEnabled: Boolean = true,
+    val miuixFloatingBottomBarEnabled: Boolean = false,
+    val miuixLiquidGlassEnabled: Boolean = true,
     val customBackgroundUri: String? = null,
     val backgroundImageEnabled: Boolean = false,
     val uiSurfaceAlpha: Float = 1f,
@@ -209,6 +214,7 @@ data class MainUiState(
     val appUpdateError: String? = null,
     val appUpdatePendingInstallPath: String? = null,
     val predictiveBackEnabled: Boolean = true,
+    val miuixPredictiveBackEnabled: Boolean = true,
     val runtimeNavigationEnabled: Boolean = false,
     val webViewDebugEnabled: Boolean = false,
     val managerAccessState: ManagerAccessState = ManagerAccessState.UNKNOWN,
@@ -555,6 +561,28 @@ class MainViewModel @JvmOverloads constructor(
             }
         }
         viewModelScope.launch {
+            prefs.uiStyle.collect { style ->
+                _uiState.update { it.copy(uiStyle = style) }
+            }
+        }
+        viewModelScope.launch {
+            combine(
+                prefs.miuixBlurEnabled,
+                prefs.miuixFloatingBottomBarEnabled,
+                prefs.miuixLiquidGlassEnabled
+            ) { blur, floating, liquid ->
+                Triple(blur, floating, liquid)
+            }.collect { (blur, floating, liquid) ->
+                _uiState.update {
+                    it.copy(
+                        miuixBlurEnabled = blur,
+                        miuixFloatingBottomBarEnabled = floating,
+                        miuixLiquidGlassEnabled = liquid
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
             prefs.downloadDirectory.collect { path ->
                 _uiState.update { it.copy(downloadDirectory = path) }
             }
@@ -639,6 +667,11 @@ class MainViewModel @JvmOverloads constructor(
         viewModelScope.launch {
             prefs.predictiveBackEnabled.collect { enabled ->
                 _uiState.update { it.copy(predictiveBackEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            prefs.miuixPredictiveBackEnabled.collect { enabled ->
+                _uiState.update { it.copy(miuixPredictiveBackEnabled = enabled) }
             }
         }
         viewModelScope.launch {
@@ -3149,6 +3182,10 @@ class MainViewModel @JvmOverloads constructor(
     fun setWorkflowForegroundRefreshIntervalSec(seconds: Int) = viewModelScope.launch {
         prefs.setWorkflowForegroundRefreshIntervalSec(seconds)
     }
+    fun setUiStyle(style: String) = viewModelScope.launch { prefs.setUiStyle(style) }
+    fun setMiuixBlurEnabled(v: Boolean) = viewModelScope.launch { prefs.setMiuixBlurEnabled(v) }
+    fun setMiuixFloatingBottomBarEnabled(v: Boolean) = viewModelScope.launch { prefs.setMiuixFloatingBottomBarEnabled(v) }
+    fun setMiuixLiquidGlassEnabled(v: Boolean) = viewModelScope.launch { prefs.setMiuixLiquidGlassEnabled(v) }
     fun setThemeMode(mode: String) = viewModelScope.launch { prefs.setThemeMode(mode) }
     fun setDynamicColorEnabled(
         v: Boolean,
@@ -3173,6 +3210,7 @@ class MainViewModel @JvmOverloads constructor(
         prefs.setDownloadMirrorBaseUrl(url)
     }
     fun setPredictiveBackEnabled(v: Boolean) = viewModelScope.launch { prefs.setPredictiveBackEnabled(v) }
+    fun setMiuixPredictiveBackEnabled(v: Boolean) = viewModelScope.launch { prefs.setMiuixPredictiveBackEnabled(v) }
     fun setPrebuiltGkiEnabled(v: Boolean) = viewModelScope.launch {
         if (!v) {
             artifactDownloadJobs.keys.filter { it < 0L }.forEach { key ->
@@ -3247,13 +3285,6 @@ class MainViewModel @JvmOverloads constructor(
                             appUpdateError = null
                         )
                     }
-                    showSnackbar(
-                        if (info.hasUpdate) {
-                            text(R.string.vm_app_update_available, remote.versionName)
-                        } else {
-                            text(R.string.vm_app_update_latest)
-                        }
-                    )
                 }
                 is Result.Error -> {
                     val message = text(R.string.vm_app_update_check_failed, result.message)
