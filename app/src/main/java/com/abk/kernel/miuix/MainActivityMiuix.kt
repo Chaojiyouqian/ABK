@@ -98,6 +98,7 @@ import com.abk.kernel.miuix.ui.screens.BuildModuleRepoSettingsScreenMiuix
 import com.abk.kernel.miuix.ui.screens.ExtensionManagerScreenMiuix
 import com.abk.kernel.miuix.ui.screens.ManagerPatchScreenMiuix
 import com.abk.kernel.miuix.ui.screens.ManagerToolsScreenMiuix
+import com.abk.kernel.miuix.ui.screens.SusfsControlScreenMiuix
 import com.abk.kernel.miuix.ui.screens.OpenSourceLicensesScreenMiuix
 import com.abk.kernel.miuix.ui.screens.RuntimeModuleRepoSettingsScreenMiuix
 import com.abk.kernel.miuix.ui.screens.SettingsScreenMiuix
@@ -663,6 +664,16 @@ private fun AbkMiuixMainScaffold(
                                             onBack = popBack,
                                         )
                                     }
+                                    entry<Route.SusfsControl> {
+                                        SusfsControlScreenMiuix(
+                                            state = state,
+                                            showRefreshLoading = state.susfsLoading,
+                                            onApply = { vm.applySusfsConfig(it) },
+                                            onReset = { vm.resetSusfsConfig() },
+                                            onRefresh = { vm.refreshSusfsState(force = true) },
+                                            onBack = popBack,
+                                        )
+                                    }
                                     entry<Route.ModuleInstallLog> { route ->
                                         ModuleInstallLogScreenMiuix(
                                             params = route.params,
@@ -1011,6 +1022,16 @@ private fun AbkMiuixMainScaffold(
                                         runtimeVariant = state.abkRuntimeStatus?.manager?.variant.orEmpty(),
                                         backgroundUri = state.customBackgroundUri,
                                         backgroundImageEnabled = state.backgroundImageEnabled,
+                                        onBack = popBack,
+                                    )
+                                }
+                                entry<Route.SusfsControl> {
+                                    SusfsControlScreenMiuix(
+                                        state = state,
+                                        showRefreshLoading = state.susfsLoading,
+                                        onApply = { vm.applySusfsConfig(it) },
+                                        onReset = { vm.resetSusfsConfig() },
+                                        onRefresh = { vm.refreshSusfsState(force = true) },
                                         onBack = popBack,
                                     )
                                 }

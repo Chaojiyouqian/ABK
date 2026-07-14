@@ -148,6 +148,7 @@ fun SettingsScreenMiuix(
     // Refresh manager settings on first composition (mirrors MD3 LaunchedEffect).
     LaunchedEffect(Unit) {
         vm.refreshManagerSettings(force = true)
+        vm.refreshSusfsState(force = true)
     }
 
     // Auto-install pending app update APK (mirrors MD3 LaunchedEffect).
@@ -624,6 +625,10 @@ fun SettingsScreenMiuix(
                                                     "app_profile_templates" -> navigator.push(Route.AppProfileTemplates)
                                                     "manager_tools" -> navigator.push(Route.ManagerTools)
                                                     "kpm" -> onOpenInstalledModules()
+                                                    "susfs_control" -> {
+                                                        vm.refreshSusfsState(force = true)
+                                                        navigator.push(Route.SusfsControl)
+                                                    }
                                                 }
                                             }
                                         } else null
@@ -666,8 +671,35 @@ fun SettingsScreenMiuix(
                     }
                 }
 
+                val susfsAvailable = state.susfsRuntimeStatus?.available == true
+                if (susfsAvailable) {
+                    SectionTitle(stringResource(R.string.susfs_title))
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        val runtime = state.susfsRuntimeStatus!!
+                        ArrowPreference(
+                            title = stringResource(R.string.susfs_title),
+                            summary = stringResource(
+                                R.string.settings_susfs_control_summary,
+                                runtime.kernelVersion,
+                                runtime.bundledBinaryVersion
+                            ),
+                            startAction = {
+                                Icon(
+                                    imageVector = Icons.Default.Extension,
+                                    contentDescription = null,
+                                    tint = iconTint
+                                )
+                            },
+                            onClick = {
+                                vm.refreshSusfsState(force = true)
+                                navigator.push(Route.SusfsControl)
+                            }
+                        )
+                    }
+                }
+
                 // ═══════════════════════════════════════════════════════════
-                // 5. NOTIFICATION
+                // 6. NOTIFICATION
                 // ═══════════════════════════════════════════════════════════
                 SectionTitle(stringResource(R.string.settings_notification))
                 Card(modifier = Modifier.fillMaxWidth()) {
@@ -1048,6 +1080,7 @@ private fun managerSettingIcon(id: String) = when (id) {
     "app_profile_templates" -> Icons.Default.Apps
     "manager_tools" -> Icons.Default.Build
     "kpm" -> Icons.Default.Extension
+    "susfs_control" -> Icons.Default.Extension
     "su_compat" -> Icons.Default.RemoveModerator
     "kernel_umount" -> Icons.Default.RemoveCircle
     "adb_root" -> Icons.Default.Adb
