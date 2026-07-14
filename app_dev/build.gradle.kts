@@ -10,8 +10,8 @@ plugins {
 val githubClientId = providers.gradleProperty("ABK_GITHUB_CLIENT_ID")
     .orElse(providers.environmentVariable("ABK_GITHUB_CLIENT_ID"))
     .orElse("Ov23li8skGo6AFPBeSTh")
-val appVersionCode = 10025
-val appVersionName = "1.2.5-dev"
+val appVersionCode = 10023
+val appVersionName = "1.2.3-dev"
 val appUpdateMetadataUrl = providers.environmentVariable("ABK_APP_UPDATE_METADATA_URL")
     .orElse("https://raw.githubusercontent.com/xingguangcuican6666/ABK/dev/version.json")
 val appBuildTimestamp = providers.environmentVariable("ABK_APP_BUILD_TIMESTAMP")
@@ -80,8 +80,8 @@ android {
         applicationId = "com.abk.kernel"
         minSdk = 33
         targetSdk = 35
-        versionCode = 10025
-        versionName = "1.2.5-dev"
+        versionCode = 10023
+        versionName = "1.2.3-dev"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -94,7 +94,7 @@ android {
         buildConfigField("String", "APP_BUILD_COMMIT_SHA", "\"${appBuildCommitSha.get()}\"")
         buildConfigField("String", "APP_BUILD_WORKFLOW_NAME", "\"${appBuildWorkflowName.get()}\"")
         buildConfigField("String", "GITHUB_CLIENT_ID", "\"${githubClientId.get()}\"")
-        buildConfigField("String", "SOURCE_REPO_OWNER", "\"fanziyun\"")
+        buildConfigField("String", "SOURCE_REPO_OWNER", "\"xingguangcuican6666\"")
         buildConfigField("String", "SOURCE_REPO_NAME", "\"ABK\"")
         buildConfigField("String", "SOURCE_REPO_DEFAULT_BRANCH", "\"dev\"")
         buildConfigField("String", "UPSTREAM_REPO_URL", "\"https://github.com/zzh20188/GKI_KernelSU_SUSFS\"")
@@ -147,9 +147,6 @@ android {
         }
     }
     packaging {
-        dex {
-            useLegacyPackaging = true
-        }
         jniLibs {
             useLegacyPackaging = true
         }
