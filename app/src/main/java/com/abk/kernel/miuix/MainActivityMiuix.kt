@@ -210,6 +210,7 @@ private fun AbkMiuixMainScaffold(
         AbkTab.Settings -> navIsOnSubPage || settingsChildPageVisible
         AbkTab.RootAuth -> navIsOnSubPage || rootAuthDetailPageVisible
         AbkTab.RuntimeHome -> navIsOnSubPage
+        AbkTab.Status -> navIsOnSubPage
         else -> false
     }
     // Mutable state captured by closures; reassigned inside NavDisplay setup so any
