@@ -30,7 +30,7 @@ internal class AbkAgentServer(
                 )
             when (route) {
                 AbkAgentRoute.Health -> requireMethod(session, Method.GET) {
-                    jsonResponse(payload = AbkAgentFacade.health(listeningPort))
+                    jsonResponse(payload = AbkAgentFacade.health(context, listeningPort))
                 }
                 AbkAgentRoute.Session -> requireMethod(session, Method.GET) {
                     jsonResponse(payload = AbkAgentFacade.session(context, host, listeningPort))

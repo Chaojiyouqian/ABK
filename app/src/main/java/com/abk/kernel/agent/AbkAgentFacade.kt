@@ -81,44 +81,27 @@ internal object AbkAgentFacade {
     private val gson = Gson()
     private val ksuModuleListType = object : TypeToken<List<Map<String, Any?>>>() {}.type
 
-    fun health(port: Int): Map<String, Any> = mapOf(
-        "status" to "ok",
-        "protocolVersion" to "abk-agent-v1",
-        "port" to port,
-    )
+    fun health(context: Context, port: Int): Map<String, Any> {
+        val rootGranted = RootUtils.isRootAvailable()
+        val access = RootUtils.resolveManagerAccess(rootGranted)
+        val runtime = currentRuntimeSnapshot(rootGranted, access)
+        return mapOf(
+            "status" to "ok",
+            "protocolVersion" to "abk-agent-v1",
+            "port" to port,
+            "appVersion" to BuildConfig.VERSION_NAME,
+            "appVersionCode" to BuildConfig.APP_VERSION_CODE,
+            "rootGranted" to rootGranted,
+            "managerAccessKind" to access.kind.name.lowercase(),
+            "managerDiagnostic" to managerAccessError(context, access, rootGranted),
+            "capabilities" to declaredCapabilities(rootGranted, access, runtime),
+        )
+    }
 
     fun session(context: Context, host: String, port: Int): AbkAgentSessionResponse {
         val rootGranted = RootUtils.isRootAvailable()
         val access = RootUtils.resolveManagerAccess(rootGranted)
         val runtime = currentRuntimeSnapshot(rootGranted, access)
-        val capabilities = mutableListOf(
-            "session.read",
-            "runtime.read",
-            "root.refresh",
-            "diagnostics.export",
-        )
-        if (rootGranted) {
-            capabilities += listOf(
-                "susfs.read",
-                "susfs.write",
-                "install.module",
-                "install.apk",
-                "flash.image",
-            )
-        }
-        if (runtime?.modules?.isNotEmpty() == true) {
-            capabilities += listOf(
-                "runtime.module.enable",
-                "runtime.module.uninstall",
-                "runtime.module.action",
-            )
-        }
-        if (access.hasNativeManagerPermission) {
-            capabilities += listOf(
-                "root_grants.read",
-                "root_grants.write",
-            )
-        }
         return AbkAgentSessionResponse(
             protocolVersion = "abk-agent-v1",
             appVersion = BuildConfig.VERSION_NAME,
@@ -129,7 +112,7 @@ internal object AbkAgentFacade {
             rootGranted = rootGranted,
             managerAccessKind = access.kind.name.lowercase(),
             managerDiagnostic = managerAccessError(context, access, rootGranted),
-            capabilities = capabilities.distinct().sorted(),
+            capabilities = declaredCapabilities(rootGranted, access, runtime),
         )
     }
 
@@ -449,6 +432,42 @@ internal object AbkAgentFacade {
             controlJson = snapshot.controlStatusJson,
             ksuModulesJson = snapshot.ksuModulesJson,
         )
+    }
+
+    private fun declaredCapabilities(
+        rootGranted: Boolean,
+        access: RootUtils.ManagerAccessInfo,
+        runtime: AbkRuntimeStatus?,
+    ): List<String> {
+        val capabilities = mutableListOf(
+            "session.read",
+            "runtime.read",
+            "root.refresh",
+            "diagnostics.export",
+        )
+        if (rootGranted) {
+            capabilities += listOf(
+                "susfs.read",
+                "susfs.write",
+                "install.module",
+                "install.apk",
+                "flash.image",
+            )
+        }
+        if (runtime?.modules?.isNotEmpty() == true) {
+            capabilities += listOf(
+                "runtime.module.enable",
+                "runtime.module.uninstall",
+                "runtime.module.action",
+            )
+        }
+        if (access.hasNativeManagerPermission) {
+            capabilities += listOf(
+                "root_grants.read",
+                "root_grants.write",
+            )
+        }
+        return capabilities.distinct().sorted()
     }
 
     private fun findRuntimeModule(moduleId: String): AbkRuntimeModule? {

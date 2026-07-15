@@ -30,11 +30,18 @@ pub fn build_cli_command(raw_args: &str) -> Result<CommandSpec> {
     if parsed.is_empty() {
         return Err(anyhow!("CLI args are empty"));
     }
+    build_cli_command_parts(&parsed)
+}
+
+pub fn build_cli_command_parts(parts: &[String]) -> Result<CommandSpec> {
+    if parts.is_empty() {
+        return Err(anyhow!("CLI args are empty"));
+    }
     let script = repo_root().join("cli").join("abk.py");
     Ok(CommandSpec {
         program: "python3".into(),
         args: std::iter::once(script.to_string_lossy().to_string())
-            .chain(parsed)
+            .chain(parts.iter().cloned())
             .collect(),
         cwd: repo_root(),
     })
@@ -43,7 +50,7 @@ pub fn build_cli_command(raw_args: &str) -> Result<CommandSpec> {
 pub fn build_adb_detect_command() -> CommandSpec {
     CommandSpec {
         program: "adb".into(),
-        args: vec!["devices".into()],
+        args: vec!["devices".into(), "-l".into()],
         cwd: repo_root(),
     }
 }
@@ -55,6 +62,16 @@ pub fn build_adb_forward_command(serial: &str, port: u16) -> CommandSpec {
         format!("tcp:{port}"),
         format!("tcp:{port}"),
     ]);
+    CommandSpec {
+        program: "adb".into(),
+        args,
+        cwd: repo_root(),
+    }
+}
+
+pub fn build_adb_remove_forward_command(serial: &str, port: u16) -> CommandSpec {
+    let mut args = adb_prefix(serial);
+    args.extend(["forward".into(), "--remove".into(), format!("tcp:{port}")]);
     CommandSpec {
         program: "adb".into(),
         args,
@@ -96,6 +113,35 @@ pub fn build_adb_stop_agent_command(serial: &str) -> CommandSpec {
         "com.abk.kernel.agent.STOP".into(),
         "-n".into(),
         "com.abk.kernel/.agent.AbkAgentService".into(),
+    ]);
+    CommandSpec {
+        program: "adb".into(),
+        args,
+        cwd: repo_root(),
+    }
+}
+
+pub fn build_adb_push_command(serial: &str, local_path: &str, remote_path: &str) -> CommandSpec {
+    let mut args = adb_prefix(serial);
+    args.extend([
+        "push".into(),
+        local_path.to_string(),
+        remote_path.to_string(),
+    ]);
+    CommandSpec {
+        program: "adb".into(),
+        args,
+        cwd: repo_root(),
+    }
+}
+
+pub fn build_adb_shell_command(serial: &str, script: &str) -> CommandSpec {
+    let mut args = adb_prefix(serial);
+    args.extend([
+        "shell".into(),
+        "sh".into(),
+        "-lc".into(),
+        script.to_string(),
     ]);
     CommandSpec {
         program: "adb".into(),
@@ -159,5 +205,15 @@ mod tests {
             .args
             .contains(&"com.abk.kernel/.agent.AbkAgentService".into()));
         assert!(spec.args.contains(&"48765".into()));
+    }
+
+    #[test]
+    fn builds_push_command() {
+        let spec =
+            build_adb_push_command("ABC123", "/tmp/module.zip", "/data/local/tmp/module.zip");
+        assert_eq!(spec.args[0], "-s");
+        assert_eq!(spec.args[2], "push");
+        assert_eq!(spec.args[3], "/tmp/module.zip");
+        assert_eq!(spec.args[4], "/data/local/tmp/module.zip");
     }
 }
