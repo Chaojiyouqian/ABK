@@ -97,6 +97,12 @@ class ContractClient:
         path.write_bytes(b"artifact")
         return str(path)
 
+    def get_published_signing_key(self):
+        return None
+
+    def repository_secret_exists(self, name):
+        return False
+
 
 class JsonContractTests(unittest.TestCase):
     def setUp(self):
@@ -915,6 +921,28 @@ class JsonContractTests(unittest.TestCase):
         self.assertEqual("artifact_verification_failed", payload["errorCode"])
         self.assertIsNone(payload["downloads"][0]["path"])
         self.assertFalse((output_dir / "artifact-77.zip").exists())
+
+    def test_disabled_verification_keeps_download_and_skips_verifier(self):
+        client = ContractClient()
+        output_dir = Path(self.temp_dir.name) / "verification-disabled"
+        abk._save_signing_disabled_state({}, "alice/ABK")
+        argv = [
+            "abk", "--json", "artifacts", "--run-id", "101", "--download",
+            "--artifact-id", "77", "--output", str(output_dir),
+        ]
+        with (
+            mock.patch.object(abk, "get_token", return_value="test-token"),
+            mock.patch.object(abk, "GitHubClient", return_value=client),
+            mock.patch.object(abk, "verify_artifact_archive") as verify,
+        ):
+            exit_code, payload, _ = self._run_main(argv)
+
+        self.assertEqual(0, exit_code)
+        self.assertFalse(payload["verificationEnabled"])
+        self.assertEqual("disabled", payload["downloads"][0]["verification"]["status"])
+        self.assertTrue(Path(payload["downloads"][0]["path"]).is_file())
+        self.assertIsNone(payload["downloads"][0]["error"])
+        verify.assert_not_called()
 
 
 class GitHubClientContractTests(unittest.TestCase):

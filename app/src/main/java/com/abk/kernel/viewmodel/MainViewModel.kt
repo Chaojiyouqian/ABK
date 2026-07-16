@@ -1438,10 +1438,6 @@ class MainViewModel @JvmOverloads constructor(
             }
             val existingPublicKeyAsset = releaseAssets.firstOrNull { it.name == FORK_ARTIFACT_SIGNING_PUBLIC_KEY_ASSET_NAME }
             val existingPublicKey = prefs.forkArtifactSigningPublicKey.first()
-            if (secretExists && !existingPublicKey.isNullOrBlank()) {
-                prefs.saveForkArtifactSigningState(existingPublicKey, secretName, releaseTag)
-                return
-            }
             if (secretExists && existingPublicKeyAsset != null) {
                 val pem = when (val downloaded = github.downloadReleaseAssetText(owner, fork.name, release.id, FORK_ARTIFACT_SIGNING_PUBLIC_KEY_ASSET_NAME)) {
                     is Result.Success -> downloaded.data
@@ -1457,6 +1453,10 @@ class MainViewModel @JvmOverloads constructor(
                         return
                     }
                 }
+            }
+            if (secretExists && !existingPublicKey.isNullOrBlank()) {
+                prefs.saveForkArtifactSigningState(existingPublicKey, secretName, releaseTag)
+                return
             }
 
             when (val regenerated = regenerateForkArtifactSigningMaterial(owner, fork, secretName, releaseTag)) {
