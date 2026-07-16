@@ -8,9 +8,9 @@ void main() {
       'name': 'ABK ABI Bridge',
       'type': 'builtin',
       'source': 'abk',
-      'groupName': 'ABK Control Module',
-      'groupId': 'abk-control',
-      'groupRepoUrl':
+      'group_name': 'ABK Control Module',
+      'group_id': 'abk-control',
+      'group_repo_url':
           'https://github.com/xingguangcuican6666/ABK_control_module',
     });
 
@@ -25,8 +25,8 @@ void main() {
       'name': 'ABK ABI Bridge',
       'type': 'builtin',
       'source': 'abk',
-      'entryKind': 'module_set',
-      'repoUrl':
+      'entry_kind': 'module_set',
+      'repo_url':
           'https://github.com/xingguangcuican6666/ABK_ABI_PATCH_SUITE.git',
     });
 
@@ -57,9 +57,9 @@ void main() {
       'name': 'Zygisk Next',
       'type': 'standard',
       'source': 'ksud',
-      'groupName': 'Not an ABK set',
-      'groupId': 'fake-group',
-      'groupRepoUrl': 'https://example.com/not-abk',
+      'group_name': 'Not an ABK set',
+      'group_id': 'fake-group',
+      'group_repo_url': 'https://example.com/not-abk',
     });
 
     expect(module.isStandardRuntimeModule, isTrue);

@@ -51,13 +51,16 @@ class AbkRuntimeStatus {
 
   factory AbkRuntimeStatus.fromJson(Map<String, dynamic> json) {
     final managerRaw = _readMap(json['manager']);
-    final backendRaw = _readMap(json['runtimeBackend']);
+    final backendRaw = _readMapAlias(json, <String>[
+      'runtimeBackend',
+      'runtime_backend',
+    ]);
     final buildRaw = _readMap(json['build']);
     return AbkRuntimeStatus(
       schema: _readInt(json['schema'], fallback: 1),
-      abkVersion: _readString(json['abkVersion']),
-      abkCommit: _readString(json['abkCommit']),
-      workMode: _readString(json['workMode']),
+      abkVersion: _readStringAlias(json, <String>['abkVersion', 'abk_version']),
+      abkCommit: _readStringAlias(json, <String>['abkCommit', 'abk_commit']),
+      workMode: _readStringAlias(json, <String>['workMode', 'work_mode']),
       manager: managerRaw.isEmpty
           ? null
           : AbkRuntimeManagerInfo.fromJson(managerRaw),
@@ -68,9 +71,10 @@ class AbkRuntimeStatus {
       modules: _readMapList(
         json['modules'],
       ).map(AbkRuntimeModule.fromJson).toList(growable: false),
-      extensionModules: _readMapList(
-        json['extensionModules'],
-      ).map(AbkRuntimeModule.fromJson).toList(growable: false),
+      extensionModules: _readMapListAlias(json, <String>[
+        'extensionModules',
+        'extension_modules',
+      ]).map(AbkRuntimeModule.fromJson).toList(growable: false),
     );
   }
 }
@@ -96,7 +100,10 @@ class AbkRuntimeManagerInfo {
 
   factory AbkRuntimeManagerInfo.fromJson(Map<String, dynamic> json) {
     return AbkRuntimeManagerInfo(
-      displayName: _readString(json['displayName']),
+      displayName: _readStringAlias(json, <String>[
+        'displayName',
+        'display_name',
+      ]),
       variant: _readString(json['variant']),
       backend: _readString(json['backend']),
       version: _readString(json['version']),
@@ -138,17 +145,38 @@ class AbkRuntimeBuildInfo {
 
   factory AbkRuntimeBuildInfo.fromJson(Map<String, dynamic> json) {
     return AbkRuntimeBuildInfo(
-      androidVersion: _readString(json['androidVersion']),
-      kernelVersion: _readString(json['kernelVersion']),
-      subLevel: _readString(json['subLevel']),
-      osPatchLevel: _readString(json['osPatchLevel']),
+      androidVersion: _readStringAlias(json, <String>[
+        'androidVersion',
+        'android_version',
+      ]),
+      kernelVersion: _readStringAlias(json, <String>[
+        'kernelVersion',
+        'kernel_version',
+      ]),
+      subLevel: _readStringAlias(json, <String>['subLevel', 'sub_level']),
+      osPatchLevel: _readStringAlias(json, <String>[
+        'osPatchLevel',
+        'os_patch_level',
+      ]),
       revision: _readString(json['revision']),
-      kernelsuVariant: _readString(json['kernelsuVariant']),
-      kernelsuBranch: _readString(json['kernelsuBranch']),
+      kernelsuVariant: _readStringAlias(json, <String>[
+        'kernelsuVariant',
+        'kernelsu_variant',
+      ]),
+      kernelsuBranch: _readStringAlias(json, <String>[
+        'kernelsuBranch',
+        'kernelsu_branch',
+      ]),
       version: _readString(json['version']),
-      buildTime: _readString(json['buildTime']),
-      virtualizationSupport: _readString(json['virtualizationSupport']),
-      zramExtraAlgos: _readString(json['zramExtraAlgos']),
+      buildTime: _readStringAlias(json, <String>['buildTime', 'build_time']),
+      virtualizationSupport: _readStringAlias(json, <String>[
+        'virtualizationSupport',
+        'virtualization_support',
+      ]),
+      zramExtraAlgos: _readStringAlias(json, <String>[
+        'zramExtraAlgos',
+        'zram_extra_algos',
+      ]),
       features: _readBoolMap(json['features']),
     );
   }
@@ -326,38 +354,80 @@ class AbkRuntimeModule {
       author: _readString(json['author']),
       type: _readString(json['type']),
       version: _readString(json['version']),
-      versionCode: _readInt(json['versionCode']),
+      versionCode: _readIntAlias(json, <String>['versionCode', 'version_code']),
       description: _readString(json['description']),
-      repoUrl: _readString(json['repoUrl']),
+      repoUrl: _readStringAlias(json, <String>['repoUrl', 'repo_url']),
       stage: _readString(json['stage']),
-      entryKind: _readString(json['entryKind']),
+      entryKind: _readStringAlias(json, <String>['entryKind', 'entry_kind']),
       source: _readString(json['source']),
-      extensionId: _readString(json['extensionId']),
-      companionPackage: _readString(json['companionPackage']),
-      companionDisplayName: _readString(json['companionDisplayName']),
-      companionAssetName: _readString(json['companionAssetName']),
-      companionDownloadUrl: _readString(json['companionDownloadUrl']),
-      serviceActivity: _readString(json['serviceActivity']),
-      moduleDir: _readString(json['moduleDir']),
-      webRoot: _readString(json['webRoot']),
+      extensionId: _readStringAlias(json, <String>[
+        'extensionId',
+        'extension_id',
+      ]),
+      companionPackage: _readStringAlias(json, <String>[
+        'companionPackage',
+        'companion_package',
+      ]),
+      companionDisplayName: _readStringAlias(json, <String>[
+        'companionDisplayName',
+        'companion_display_name',
+      ]),
+      companionAssetName: _readStringAlias(json, <String>[
+        'companionAssetName',
+        'companion_asset_name',
+      ]),
+      companionDownloadUrl: _readStringAlias(json, <String>[
+        'companionDownloadUrl',
+        'companion_download_url',
+      ]),
+      serviceActivity: _readStringAlias(json, <String>[
+        'serviceActivity',
+        'service_activity',
+      ]),
+      moduleDir: _readStringAlias(json, <String>['moduleDir', 'module_dir']),
+      webRoot: _readStringAlias(json, <String>['webRoot', 'web_root']),
       readonly: json['readonly'] == true,
       controllable: json['controllable'] == true,
       enabled: json['enabled'] != false,
       update: json['update'] == true,
       remove: json['remove'] == true,
-      hasWebUi: json['hasWebUi'] == true,
-      hasActionScript: json['hasActionScript'] == true,
-      actionSupported: json['actionSupported'] == true,
-      requiresCompanionApp: json['requiresCompanionApp'] == true,
-      settingsSupported: json['settingsSupported'] == true,
-      perAppSupported: json['perAppSupported'] == true,
-      oobePriority: _readInt(json['oobePriority']),
-      kpmArgs: _readString(json['kpmArgs']),
-      groupId: _readString(json['groupId']),
-      groupName: _readString(json['groupName']),
-      groupRole: _readString(json['groupRole']),
-      groupDescription: _readString(json['groupDescription']),
-      groupRepoUrl: _readString(json['groupRepoUrl']),
+      hasWebUi: _readBoolAlias(json, <String>['hasWebUi', 'has_web_ui']),
+      hasActionScript: _readBoolAlias(json, <String>[
+        'hasActionScript',
+        'has_action_script',
+      ]),
+      actionSupported: _readBoolAlias(json, <String>[
+        'actionSupported',
+        'action_supported',
+      ]),
+      requiresCompanionApp: _readBoolAlias(json, <String>[
+        'requiresCompanionApp',
+        'requires_companion_app',
+      ]),
+      settingsSupported: _readBoolAlias(json, <String>[
+        'settingsSupported',
+        'settings_supported',
+      ]),
+      perAppSupported: _readBoolAlias(json, <String>[
+        'perAppSupported',
+        'per_app_supported',
+      ]),
+      oobePriority: _readIntAlias(json, <String>[
+        'oobePriority',
+        'oobe_priority',
+      ]),
+      kpmArgs: _readStringAlias(json, <String>['kpmArgs', 'kpm_args']),
+      groupId: _readStringAlias(json, <String>['groupId', 'group_id']),
+      groupName: _readStringAlias(json, <String>['groupName', 'group_name']),
+      groupRole: _readStringAlias(json, <String>['groupRole', 'group_role']),
+      groupDescription: _readStringAlias(json, <String>[
+        'groupDescription',
+        'group_description',
+      ]),
+      groupRepoUrl: _readStringAlias(json, <String>[
+        'groupRepoUrl',
+        'group_repo_url',
+      ]),
     );
   }
 }
@@ -748,6 +818,53 @@ class SusfsSupportMatrix {
 
 String readPrettyJson(Map<String, dynamic> json) {
   return const JsonEncoder.withIndent('  ').convert(json);
+}
+
+dynamic _readAliasValue(Map<String, dynamic> json, List<String> keys) {
+  for (final key in keys) {
+    if (json.containsKey(key)) return json[key];
+  }
+  return null;
+}
+
+String _readStringAlias(
+  Map<String, dynamic> json,
+  List<String> keys, {
+  String fallback = '',
+}) {
+  return _readString(_readAliasValue(json, keys), fallback: fallback);
+}
+
+int _readIntAlias(
+  Map<String, dynamic> json,
+  List<String> keys, {
+  int fallback = 0,
+}) {
+  return _readInt(_readAliasValue(json, keys), fallback: fallback);
+}
+
+bool _readBoolAlias(
+  Map<String, dynamic> json,
+  List<String> keys, {
+  bool fallback = false,
+}) {
+  final value = _readAliasValue(json, keys);
+  if (value is bool) return value;
+  return fallback;
+}
+
+Map<String, dynamic> _readMapAlias(
+  Map<String, dynamic> json,
+  List<String> keys,
+) {
+  return _readMap(_readAliasValue(json, keys));
+}
+
+List<Map<String, dynamic>> _readMapListAlias(
+  Map<String, dynamic> json,
+  List<String> keys,
+) {
+  return _readMapList(_readAliasValue(json, keys));
 }
 
 String _readString(dynamic value, {String fallback = ''}) {
