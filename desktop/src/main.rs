@@ -11,7 +11,7 @@ use anyhow::{anyhow, Context, Result};
 use axum::body::{Body, Bytes};
 use axum::extract::{Path, Query, State};
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
-use axum::http::{HeaderMap, HeaderValue, Method, Response, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, Method, Response, StatusCode, Uri};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -482,6 +482,7 @@ async fn main() -> Result<()> {
         .route("/api/v1/tasks/{task_id}", get(get_task))
         .route("/api/v1/tasks/{task_id}/download", get(download_task_file))
         .route("/internal/insets.css", get(insets_css))
+        .fallback(proxy_webui_root_asset_fallback)
         .with_state(state.clone())
         .layer(
             CorsLayer::new()
@@ -1763,6 +1764,39 @@ async fn insets_css() -> impl IntoResponse {
     )
 }
 
+async fn proxy_webui_root_asset_fallback(
+    State(state): State<AppState>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+) -> Response<Body> {
+    if method != Method::GET && method != Method::HEAD {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let Some((module_id, relative_path)) = fallback_webui_asset_target(
+        uri.path(),
+        headers.get("referer").and_then(|value| value.to_str().ok()),
+    ) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let mut path = format!(
+        "/api/v1/runtime/modules/{}/webui/files/{}",
+        urlencoding::encode(module_id.trim()),
+        relative_path
+    );
+    if let Some(query) = uri.query() {
+        path.push('?');
+        path.push_str(query);
+    }
+
+    match proxy_binary_response(&state, Method::GET, &path, HeaderMap::new(), None).await {
+        Ok(response) => response,
+        Err(error) => error.into_response(),
+    }
+}
+
 async fn proxy_agent_json(
     state: &AppState,
     method: Method,
@@ -2506,6 +2540,47 @@ fn rewrite_root_asset_paths(text: &str, base_prefix: &str) -> String {
         .replace("url(/assets/", &format!("url({asset_prefix}"))
 }
 
+fn fallback_webui_asset_target(
+    request_path: &str,
+    referer: Option<&str>,
+) -> Option<(String, String)> {
+    let relative_path = request_path.trim().trim_start_matches('/').trim();
+    if relative_path.is_empty()
+        || relative_path.starts_with("api/")
+        || relative_path.starts_with("internal/")
+    {
+        return None;
+    }
+
+    let referer = referer?.trim();
+    if referer.is_empty() {
+        return None;
+    }
+    let referer_uri = Uri::try_from(referer).ok()?;
+    let segments = referer_uri
+        .path()
+        .trim_start_matches('/')
+        .split('/')
+        .collect::<Vec<_>>();
+    if segments.len() < 7
+        || segments[0] != "api"
+        || segments[1] != "v1"
+        || segments[2] != "runtime"
+        || segments[3] != "modules"
+        || segments[5] != "webui"
+        || segments[6] != "files"
+    {
+        return None;
+    }
+
+    let module_id = urlencoding::decode(segments[4]).ok()?.into_owned();
+    if module_id.trim().is_empty() {
+        return None;
+    }
+
+    Some((module_id, relative_path.to_string()))
+}
+
 fn forward_headers(headers: &HeaderMap) -> HeaderMap {
     let mut forwarded = HeaderMap::new();
     for (name, value) in headers {
@@ -2713,5 +2788,26 @@ mod tests {
         );
         assert!(script
             .contains(r#"'/api/v1/runtime/modules/abi_bridge/webui/files/assets/fallback.js'"#));
+    }
+
+    #[test]
+    fn resolves_root_asset_fallback_from_webui_referer() {
+        let resolved = fallback_webui_asset_target(
+            "/index-BphXklzb.js",
+            Some("http://127.0.0.1:38765/api/v1/runtime/modules/abi_bridge/webui/files"),
+        );
+
+        assert_eq!(
+            resolved,
+            Some(("abi_bridge".into(), "index-BphXklzb.js".into()))
+        );
+    }
+
+    #[test]
+    fn ignores_non_webui_referer_for_root_asset_fallback() {
+        let resolved =
+            fallback_webui_asset_target("/index-BphXklzb.js", Some("http://127.0.0.1:38765/home"));
+
+        assert_eq!(resolved, None);
     }
 }
