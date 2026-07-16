@@ -2489,7 +2489,7 @@ fn rewrite_module_webui_asset(
     let mut text = String::from_utf8_lossy(bytes).into_owned();
 
     if is_html_content(content_type, relative_path) {
-        text = inject_html_base_href(&text, &base_prefix);
+        text = inject_module_webui_html_prelude(module_id, &text, &base_prefix);
     }
 
     rewrite_root_asset_paths(&text, &base_prefix).into_bytes()
@@ -2522,33 +2522,202 @@ fn is_css_content(content_type: &str, relative_path: &str) -> bool {
     content_type.to_ascii_lowercase().contains("text/css") || relative_path.ends_with(".css")
 }
 
-fn inject_html_base_href(html: &str, base_prefix: &str) -> String {
-    if html.to_ascii_lowercase().contains("<base ") {
-        return html.to_string();
+fn inject_module_webui_html_prelude(module_id: &str, html: &str, base_prefix: &str) -> String {
+    let mut prelude = String::new();
+    if !html.to_ascii_lowercase().contains("<base ") {
+        prelude.push_str(&format!(r#"<base href="{base_prefix}">"#));
     }
+    prelude.push_str(r#"<script>"#);
+    prelude.push_str(&module_webui_bridge_script(module_id));
+    prelude.push_str(r#"</script>"#);
 
-    let base_tag = format!(r#"<base href="{base_prefix}">"#);
     let lower = html.to_ascii_lowercase();
     if let Some(head_index) = lower.find("<head") {
         if let Some(tag_end) = html[head_index..].find('>') {
             let insert_at = head_index + tag_end + 1;
-            let mut output = String::with_capacity(html.len() + base_tag.len());
+            let mut output = String::with_capacity(html.len() + prelude.len());
             output.push_str(&html[..insert_at]);
-            output.push_str(&base_tag);
+            output.push_str(&prelude);
             output.push_str(&html[insert_at..]);
             return output;
         }
     }
 
     if let Some(index) = lower.find("</head>") {
-        let mut output = String::with_capacity(html.len() + base_tag.len());
+        let mut output = String::with_capacity(html.len() + prelude.len());
         output.push_str(&html[..index]);
-        output.push_str(&base_tag);
+        output.push_str(&prelude);
         output.push_str(&html[index..]);
         return output;
     }
 
-    format!("{base_tag}{html}")
+    format!("{prelude}{html}")
+}
+
+fn module_webui_bridge_script(module_id: &str) -> String {
+    let api_root = format!(
+        "/api/v1/runtime/modules/{}/webui",
+        urlencoding::encode(module_id.trim())
+    );
+    let api_root_json =
+        serde_json::to_string(&api_root).unwrap_or_else(|_| "\"/api/v1/runtime/modules\"".into());
+    format!(
+        r#"(function() {{
+  if (window.ksu) return;
+  const API_ROOT = {api_root_json};
+  const jsonHeaders = {{ 'Content-Type': 'application/json' }};
+
+  function parseJson(text) {{
+    if (!text) return {{}};
+    try {{
+      return JSON.parse(text);
+    }} catch (_) {{
+      return {{}};
+    }}
+  }}
+
+  function syncRequest(method, path, body) {{
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, API_ROOT + '/' + path, false);
+    for (const [key, value] of Object.entries(jsonHeaders)) {{
+      xhr.setRequestHeader(key, value);
+    }}
+    xhr.send(body == null ? null : JSON.stringify(body));
+    const payload = parseJson(xhr.responseText);
+    if (xhr.status >= 200 && xhr.status < 300) {{
+      return payload;
+    }}
+    throw new Error(payload.error || payload.stderr || xhr.responseText || 'KernelSU bridge request failed');
+  }}
+
+  async function asyncRequest(method, path, body) {{
+    const response = await fetch(API_ROOT + '/' + path, {{
+      method,
+      headers: jsonHeaders,
+      body: body == null ? undefined : JSON.stringify(body),
+    }});
+    const text = await response.text();
+    const payload = parseJson(text);
+    if (response.ok) {{
+      return payload;
+    }}
+    throw new Error(payload.error || payload.stderr || text || ('KernelSU bridge request failed: ' + response.status));
+  }}
+
+  function resolveCallback(callback) {{
+    if (typeof callback === 'function') return callback;
+    if (typeof callback === 'string' && typeof window[callback] === 'function') {{
+      return window[callback];
+    }}
+    return null;
+  }}
+
+  function normalizeOptions(options) {{
+    if (options == null || options === '') return undefined;
+    if (typeof options === 'string') {{
+      try {{
+        return JSON.parse(options);
+      }} catch (_) {{
+        return undefined;
+      }}
+    }}
+    return options;
+  }}
+
+  function normalizeArgs(args) {{
+    if (args == null || args === '') return [];
+    if (Array.isArray(args)) return args;
+    if (typeof args === 'string') {{
+      try {{
+        const parsed = JSON.parse(args);
+        return Array.isArray(parsed) ? parsed : [];
+      }} catch (_) {{
+        return args ? [args] : [];
+      }}
+    }}
+    return [];
+  }}
+
+  function emitSpawn(callback, payload) {{
+    if (!callback) return;
+    const code = Number(payload?.code ?? (payload?.success ? 0 : 1));
+    const stdout = String(payload?.stdout ?? '');
+    const stderr = String(payload?.stderr ?? '');
+    if (typeof callback === 'function') {{
+      callback(code, stdout, stderr);
+      return;
+    }}
+    if (callback.stdout && typeof callback.stdout.emit === 'function') {{
+      callback.stdout.emit('data', stdout);
+    }}
+    if (callback.stderr && typeof callback.stderr.emit === 'function' && stderr) {{
+      callback.stderr.emit('data', stderr);
+    }}
+    if (typeof callback.emit === 'function') {{
+      callback.emit('exit', code);
+    }}
+  }}
+
+  const ksu = {{
+    exec(command, optionsOrCallback, callback) {{
+      if (arguments.length === 1) {{
+        const payload = syncRequest('POST', 'exec', {{ command }});
+        return String(payload?.stdout ?? '');
+      }}
+      let options;
+      let cb;
+      if (arguments.length === 2) {{
+        cb = optionsOrCallback;
+      }} else {{
+        options = normalizeOptions(optionsOrCallback);
+        cb = callback;
+      }}
+      const resolved = resolveCallback(cb);
+      asyncRequest('POST', 'exec', {{ command, options }})
+        .then((payload) => {{
+          resolved?.(Number(payload?.code ?? (payload?.success ? 0 : 1)), String(payload?.stdout ?? ''), String(payload?.stderr ?? ''));
+        }})
+        .catch((error) => {{
+          resolved?.(1, '', String(error?.message ?? error));
+        }});
+    }},
+    spawn(command, args, options, callback) {{
+      const resolved = typeof callback === 'string' ? window[callback] : callback;
+      asyncRequest('POST', 'spawn', {{
+        command,
+        args: normalizeArgs(args),
+        options: normalizeOptions(options),
+      }})
+        .then((payload) => emitSpawn(resolved, payload))
+        .catch((error) => emitSpawn(resolved, {{ code: 1, stdout: '', stderr: String(error?.message ?? error) }}));
+    }},
+    moduleInfo() {{
+      const payload = syncRequest('GET', 'module-info');
+      return typeof payload?.raw === 'string' ? payload.raw : '{{}}';
+    }},
+    toast(message) {{
+      console.info('[ABK Desktop toast]', message);
+    }},
+    exit() {{
+      try {{
+        window.close();
+      }} catch (_error) {{}}
+    }},
+    fullScreen(_enabled) {{}},
+    enableEdgeToEdge(_enabled) {{}},
+  }};
+
+  Object.defineProperty(window, 'ksu', {{
+    value: ksu,
+    configurable: true,
+    enumerable: false,
+    writable: false,
+  }});
+  window.KernelSU = ksu;
+  window.__ABK_DESKTOP_WEBUI__ = true;
+  console.info('KernelSU desktop webui bridge ready');
+}})();"#,
+    )
 }
 
 fn rewrite_root_asset_paths(text: &str, base_prefix: &str) -> String {
