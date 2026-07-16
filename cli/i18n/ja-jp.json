@@ -118,6 +118,7 @@
   "build_target_all_managers": "全マネージャー完全マトリクス",
   "help_subcommands": "コマンド (詳細は abk <command> --help)",
   "help_flag": "このヘルプを表示して終了",
+  "help_version": "CLI バージョンを表示して終了",
   "help_token": "GitHub Token (またはGITHUB_TOKEN)",
   "help_repo": "GitHubリポジトリ (デフォルト: forkを自動検出)",
   "help_verbose": "詳細出力",

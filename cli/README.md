@@ -74,6 +74,16 @@ abk logout
 
 ## 使用方法 / Usage
 
+### CLI 版本 / CLI Version
+
+```bash
+abk --version
+abk --json --version
+```
+
+全局 `abk --version` 显示 CLI 版本；现有的 `abk build --version VALUE`
+仍用于设置自定义内核版本，两者语义不变。
+
 ### 账户管理 / Account Management
 
 ```bash
@@ -241,10 +251,12 @@ CLI 与 Android App 使用相同的远程 Secret 和公钥资产，但启用/禁
 ### 机器可读 JSON / Machine-readable JSON
 
 自动化调用可使用全局前置参数 `--json`。命令执行时 stdout 始终只有一个
-`schemaVersion: 1` JSON 文档；该模式不会读取 stdin 或打开浏览器。
+包含 `schemaVersion: 1` 和 `cliVersion` 的 JSON 文档；该模式不会读取 stdin
+或打开浏览器。
 `--help` 仍是供人阅读的文本，不属于 JSON 合同：
 
 ```bash
+abk --json --version
 abk --json whoami
 abk --json status --limit 20
 abk --json build --matrix a14 --ksu ReSukiSU --force

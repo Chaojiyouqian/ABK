@@ -118,6 +118,7 @@
   "build_target_all_managers": "Ĉiuj Administrantoj Matrico",
   "help_subcommands": "Komandoj (detaloj: abk <command> --help)",
   "help_flag": "Montri ĉi tiun helpon kaj eliri",
+  "help_version": "Montri la CLI-version kaj eliri",
   "help_token": "GitHub Ĵetono (aŭ GITHUB_TOKEN)",
   "help_repo": "GitHub-deponejo (defaŭlte: aŭtomate detekti fork)",
   "help_verbose": "Detala eligo",

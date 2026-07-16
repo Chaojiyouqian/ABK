@@ -98,6 +98,7 @@ SIGNING_KEY_VERSION = 1
 SIGNING_STATE_CONFIG_KEY = "signing_keys"
 MAX_SIGNING_KEY_FILE_SIZE = 64 * 1024
 CONFIG_LOCK_FILE = ".config.lock"
+CLI_VERSION = "0.1.0"
 JSON_SCHEMA_VERSION = 1
 MAX_MANIFEST_SIZE = 1024 * 1024
 MAX_SIGNATURE_SIZE = 64 * 1024
@@ -4722,6 +4723,7 @@ class ABKArgumentParser(argparse.ArgumentParser):
                 command = candidate
             payload = {
                 "schemaVersion": JSON_SCHEMA_VERSION,
+                "cliVersion": CLI_VERSION,
                 "ok": False,
                 "command": command,
                 "error": message,
@@ -4733,6 +4735,37 @@ class ABKArgumentParser(argparse.ArgumentParser):
             )
             self.exit(2)
         super().error(message)
+
+
+class ABKVersionAction(argparse.Action):
+    def __init__(self, option_strings, dest, **kwargs):
+        super().__init__(option_strings, dest, nargs=0, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        raw_argv = sys.argv[1:]
+        option_argv = (
+            raw_argv[:raw_argv.index("--")]
+            if "--" in raw_argv
+            else raw_argv
+        )
+        if "--json" in option_argv:
+            payload = {
+                "schemaVersion": JSON_SCHEMA_VERSION,
+                "cliVersion": CLI_VERSION,
+                "ok": True,
+                "command": "version",
+                "error": None,
+                "errorCode": None,
+            }
+            message = json.dumps(
+                payload,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        else:
+            message = f"{parser.prog} {CLI_VERSION}"
+        parser._print_message(message + "\n", sys.stdout)
+        parser.exit()
 
 
 def _collect_json_secrets(args=None, argv=None):
@@ -4846,6 +4879,7 @@ def _run_json_command(args):
     payload = dict(payload)
     payload["ok"] = exit_code == 0 and payload.get("ok", True) is not False
     payload.setdefault("schemaVersion", JSON_SCHEMA_VERSION)
+    payload.setdefault("cliVersion", CLI_VERSION)
     payload.setdefault("command", args.command)
     payload.setdefault("error", None)
     payload.setdefault("errorCode", None)
@@ -4900,6 +4934,11 @@ def main():
         add_help=False)
     parser.add_argument("-h", "--help", action="help", default=argparse.SUPPRESS,
         help=t("help_flag"))
+    parser.add_argument(
+        "--version",
+        action=ABKVersionAction,
+        help=t("help_version"),
+    )
     parser.add_argument("--token", help=t("help_token"))
     parser.add_argument("--repo", type=repo_slug, help=t("help_repo"))
     parser.add_argument("--verbose", "-v", action="store_true", help=t("help_verbose"))

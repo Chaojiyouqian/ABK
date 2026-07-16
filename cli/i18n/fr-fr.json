@@ -118,6 +118,7 @@
   "build_target_all_managers": "Matrice de tous les managers",
   "help_subcommands": "Commandes (détails: abk <command> --help)",
   "help_flag": "Afficher cette aide et quitter",
+  "help_version": "Afficher la version de la CLI et quitter",
   "help_token": "GitHub Token (ou GITHUB_TOKEN)",
   "help_repo": "Dépôt GitHub (défaut: détection automatique du fork)",
   "help_verbose": "Sortie détaillée",

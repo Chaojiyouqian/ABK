@@ -142,6 +142,7 @@
   "build_target_all_managers": "全管理器全矩阵终极编译",
   "help_subcommands": "这些命令可以用（自己打 abk <command> --help 来看详细帮助，别总问我）",
   "help_flag": "救命用帮助菜单",
+  "help_version": "显示 CLI 版本然后跑路",
   "help_token": "GitHub Token（也可以藏在 GITHUB_TOKEN 环境变量里哦）",
   "help_repo": "GitHub 仓库（默认会自作聪明地自动检测 fork）",
   "help_verbose": "让废话变多（显示详细输出）",

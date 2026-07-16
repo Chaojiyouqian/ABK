@@ -136,7 +136,43 @@ class JsonContractTests(unittest.TestCase):
         output = stdout.getvalue()
         payload = json.loads(output)
         self.assertEqual(1, len(output.splitlines()), output)
+        self.assertEqual(abk.CLI_VERSION, payload["cliVersion"])
         return exit_code, payload, stderr.getvalue()
+
+    def test_human_version_flag_reports_the_cli_version(self):
+        for argv in (
+            ["abk", "--version"],
+            ["abk", "--version", "--", "--json"],
+        ):
+            with self.subTest(argv=argv):
+                stdout = io.StringIO()
+                stderr = io.StringIO()
+                with (
+                    mock.patch.object(sys, "argv", argv),
+                    contextlib.redirect_stdout(stdout),
+                    contextlib.redirect_stderr(stderr),
+                    self.assertRaises(SystemExit) as raised,
+                ):
+                    abk.main()
+
+                self.assertEqual(0, raised.exception.code)
+                self.assertEqual(f"abk {abk.CLI_VERSION}\n", stdout.getvalue())
+                self.assertEqual("", stderr.getvalue())
+
+    def test_json_version_flag_reports_one_machine_document(self):
+        for argv in (
+            ["abk", "--json", "--version"],
+            ["abk", "--version", "--json"],
+        ):
+            with self.subTest(argv=argv):
+                exit_code, payload, stderr = self._run_main(argv)
+
+                self.assertEqual(0, exit_code)
+                self.assertTrue(payload["ok"])
+                self.assertEqual("version", payload["command"])
+                self.assertIsNone(payload["error"])
+                self.assertIsNone(payload["errorCode"])
+                self.assertEqual("", stderr)
 
     def test_json_stdio_is_forced_to_utf8(self):
         stdout = mock.Mock()

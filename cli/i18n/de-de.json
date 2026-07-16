@@ -118,6 +118,7 @@
   "build_target_all_managers": "Alle Manager-Matrix",
   "help_subcommands": "Befehle (Details: abk <command> --help)",
   "help_flag": "Diese Hilfe anzeigen und beenden",
+  "help_version": "CLI-Version anzeigen und beenden",
   "help_token": "GitHub Token (oder GITHUB_TOKEN)",
   "help_repo": "GitHub-Repository (Standard: Fork automatisch erkennen)",
   "help_verbose": "Ausführliche Ausgabe",

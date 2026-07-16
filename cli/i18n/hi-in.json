@@ -118,6 +118,7 @@
   "build_target_all_managers": "सभी मैनेजर मैट्रिक्स",
   "help_subcommands": "कमांड (विवरण: abk <command> --help)",
   "help_flag": "यह सहायता दिखाएं और बाहर निकलें",
+  "help_version": "CLI संस्करण दिखाएं और बाहर निकलें",
   "help_token": "GitHub Token (या GITHUB_TOKEN)",
   "help_repo": "GitHub रिपॉजिटरी (डिफ़ॉल्ट: fork ऑटो-डिटेक्ट)",
   "help_verbose": "विस्तृत आउटपुट",

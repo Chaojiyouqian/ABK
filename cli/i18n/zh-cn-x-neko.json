@@ -118,6 +118,7 @@
   "build_target_all_managers": "全管理器全矩阵编译喵",
   "help_subcommands": "可用命令喵 (用 abk <command> --help 查看详情)",
   "help_flag": "显示帮助并退出喵",
+  "help_version": "显示 CLI 版本并退出喵",
   "help_token": "GitHub Token (或 GITHUB_TOKEN)",
   "help_repo": "GitHub 仓库喵 (默认: 自动检测 fork)",
   "help_verbose": "详细输出喵",

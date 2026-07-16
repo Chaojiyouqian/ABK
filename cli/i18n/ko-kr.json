@@ -118,6 +118,7 @@
   "build_target_all_managers": "전체 매니저 매트릭스",
   "help_subcommands": "명령어 (자세한 도움말: abk <command> --help)",
   "help_flag": "이 도움말을 표시하고 종료",
+  "help_version": "CLI 버전을 표시하고 종료",
   "help_token": "GitHub Token (또는 GITHUB_TOKEN)",
   "help_repo": "GitHub 저장소 (기본: fork 자동 감지)",
   "help_verbose": "상세 출력",

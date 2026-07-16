@@ -119,6 +119,7 @@
   "build_target_all_managers": "Полная матрица всех менеджеров",
   "help_subcommands": "Команды (abk <command> --help для справки)",
   "help_flag": "Показать эту справку и выйти",
+  "help_version": "Показать версию CLI и выйти",
   "help_token": "GitHub Token (или GITHUB_TOKEN)",
   "help_repo": "Репозитory GitHub (автоопределение fork)",
   "help_verbose": "Подробный вывод",
