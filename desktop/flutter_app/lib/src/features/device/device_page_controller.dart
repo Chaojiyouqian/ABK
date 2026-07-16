@@ -31,6 +31,9 @@ class DevicePageState {
     required this.packageInfoByPackage,
     required this.packageInfoLoadingPackage,
     required this.rootGrantSavingPackage,
+    required this.kernelFeatures,
+    required this.kernelFeatureError,
+    required this.kernelFeatureBusyIds,
     required this.susfs,
     required this.susfsError,
     required this.susfsConfigDraft,
@@ -64,6 +67,9 @@ class DevicePageState {
       packageInfoByPackage: <String, PackageInfoSummary>{},
       packageInfoLoadingPackage: null,
       rootGrantSavingPackage: null,
+      kernelFeatures: null,
+      kernelFeatureError: null,
+      kernelFeatureBusyIds: <String>{},
       susfs: null,
       susfsError: null,
       susfsConfigDraft: '',
@@ -96,6 +102,9 @@ class DevicePageState {
   final Map<String, PackageInfoSummary> packageInfoByPackage;
   final String? packageInfoLoadingPackage;
   final String? rootGrantSavingPackage;
+  final KernelFeaturesEnvelope? kernelFeatures;
+  final String? kernelFeatureError;
+  final Set<String> kernelFeatureBusyIds;
   final SusfsEnvelope? susfs;
   final String? susfsError;
   final String susfsConfigDraft;
@@ -139,6 +148,9 @@ class DevicePageState {
     Map<String, PackageInfoSummary>? packageInfoByPackage,
     Object? packageInfoLoadingPackage = _missing,
     Object? rootGrantSavingPackage = _missing,
+    Object? kernelFeatures = _missing,
+    Object? kernelFeatureError = _missing,
+    Set<String>? kernelFeatureBusyIds,
     Object? susfs = _missing,
     Object? susfsError = _missing,
     String? susfsConfigDraft,
@@ -176,13 +188,19 @@ class DevicePageState {
           : rootGrantError as String?,
       rootGrantLoading: rootGrantLoading ?? this.rootGrantLoading,
       packageInfoByPackage: packageInfoByPackage ?? this.packageInfoByPackage,
-      packageInfoLoadingPackage:
-          identical(packageInfoLoadingPackage, _missing)
+      packageInfoLoadingPackage: identical(packageInfoLoadingPackage, _missing)
           ? this.packageInfoLoadingPackage
           : packageInfoLoadingPackage as String?,
       rootGrantSavingPackage: identical(rootGrantSavingPackage, _missing)
           ? this.rootGrantSavingPackage
           : rootGrantSavingPackage as String?,
+      kernelFeatures: identical(kernelFeatures, _missing)
+          ? this.kernelFeatures
+          : kernelFeatures as KernelFeaturesEnvelope?,
+      kernelFeatureError: identical(kernelFeatureError, _missing)
+          ? this.kernelFeatureError
+          : kernelFeatureError as String?,
+      kernelFeatureBusyIds: kernelFeatureBusyIds ?? this.kernelFeatureBusyIds,
       susfs: identical(susfs, _missing) ? this.susfs : susfs as SusfsEnvelope?,
       susfsError: identical(susfsError, _missing)
           ? this.susfsError
@@ -235,7 +253,8 @@ class DevicePageController extends StateNotifier<DevicePageState> {
   final RuntimeModuleCatalogClient _catalogClient;
   final http.Client _downloadClient;
 
-  AppStrings get _strings => AppStrings.fromLocale(PlatformDispatcher.instance.locale);
+  AppStrings get _strings =>
+      AppStrings.fromLocale(PlatformDispatcher.instance.locale);
 
   void _seedRuntimeModuleRepositories() {
     if (state.runtimeModuleRepositories.isNotEmpty) {
@@ -286,6 +305,7 @@ class DevicePageController extends StateNotifier<DevicePageState> {
             ? state.susfsConfigDraft
             : susfs.prettyConfig(),
       );
+      await _refreshKernelFeaturesOnly();
       await refreshAllRuntimeRepositories();
     } on SidecarException catch (error) {
       if (!mounted) return;
@@ -304,7 +324,9 @@ class DevicePageController extends StateNotifier<DevicePageState> {
     try {
       final info = await api.getPackageInfo(cleanPackage);
       if (!mounted) return;
-      final updated = <String, PackageInfoSummary>{...state.packageInfoByPackage};
+      final updated = <String, PackageInfoSummary>{
+        ...state.packageInfoByPackage,
+      };
       if (info != null) {
         updated[cleanPackage] = info;
       }
@@ -333,34 +355,36 @@ class DevicePageController extends StateNotifier<DevicePageState> {
     try {
       final result = await api.setRootGrantAllowed(cleanPackage, allowed);
       if (!mounted) return;
-      final apps = state.rootGrants?.apps.map((app) {
-        if (app.packageName != cleanPackage) return app;
-        return RootGrantApp(
-          packageName: app.packageName,
-          label: app.label,
-          uid: app.uid,
-          userName: app.userName,
-          isSystemApp: app.isSystemApp,
-          profile: RootGrantProfile(
-            name: app.profile.name,
-            currentUid: app.profile.currentUid,
-            allowSu: allowed,
-            rootUseDefault: app.profile.rootUseDefault,
-            rootTemplate: app.profile.rootTemplate,
-            uid: app.profile.uid,
-            gid: app.profile.gid,
-            groups: app.profile.groups,
-            capabilities: app.profile.capabilities,
-            context: app.profile.context,
-            namespace: app.profile.namespace,
-            flags: app.profile.flags,
-            nonRootUseDefault: app.profile.nonRootUseDefault,
-            umountModules: app.profile.umountModules,
-            rules: app.profile.rules,
-          ),
-          profileLoaded: app.profileLoaded,
-        );
-      }).toList(growable: false);
+      final apps = state.rootGrants?.apps
+          .map((app) {
+            if (app.packageName != cleanPackage) return app;
+            return RootGrantApp(
+              packageName: app.packageName,
+              label: app.label,
+              uid: app.uid,
+              userName: app.userName,
+              isSystemApp: app.isSystemApp,
+              profile: RootGrantProfile(
+                name: app.profile.name,
+                currentUid: app.profile.currentUid,
+                allowSu: allowed,
+                rootUseDefault: app.profile.rootUseDefault,
+                rootTemplate: app.profile.rootTemplate,
+                uid: app.profile.uid,
+                gid: app.profile.gid,
+                groups: app.profile.groups,
+                capabilities: app.profile.capabilities,
+                context: app.profile.context,
+                namespace: app.profile.namespace,
+                flags: app.profile.flags,
+                nonRootUseDefault: app.profile.nonRootUseDefault,
+                umountModules: app.profile.umountModules,
+                rules: app.profile.rules,
+              ),
+              profileLoaded: app.profileLoaded,
+            );
+          })
+          .toList(growable: false);
       state = state.copyWith(
         rootGrantSavingPackage: null,
         rootGrants: state.rootGrants == null
@@ -378,6 +402,37 @@ class DevicePageController extends StateNotifier<DevicePageState> {
       state = state.copyWith(
         rootGrantSavingPackage: null,
         lastError: error.message,
+      );
+    }
+  }
+
+  Future<void> setKernelFeatureEnabled(String featureId, bool enabled) async {
+    final cleanId = featureId.trim();
+    if (cleanId.isEmpty) return;
+    if (state.kernelFeatureBusyIds.contains(cleanId)) return;
+    state = state.copyWith(
+      kernelFeatureBusyIds: <String>{...state.kernelFeatureBusyIds, cleanId},
+      lastError: null,
+      infoMessage: null,
+    );
+    try {
+      final result = await api.setKernelFeatureEnabled(cleanId, enabled);
+      if (!mounted) return;
+      state = state.copyWith(
+        kernelFeatureBusyIds: <String>{...state.kernelFeatureBusyIds}
+          ..remove(cleanId),
+        infoMessage: result.summary ?? _strings.deviceKernelFeatureUpdated,
+      );
+      await _refreshKernelFeaturesOnly();
+    } on SidecarException catch (error) {
+      if (!mounted) return;
+      state = state.copyWith(
+        kernelFeatureBusyIds: <String>{...state.kernelFeatureBusyIds}
+          ..remove(cleanId),
+        kernelFeatureError: error.statusCode == 404
+            ? _strings.deviceKernelFeaturesUnsupported
+            : error.message,
+        lastError: error.statusCode == 404 ? null : error.message,
       );
     }
   }
@@ -465,7 +520,10 @@ class DevicePageController extends StateNotifier<DevicePageState> {
       lastError: null,
     );
     try {
-      final result = await api.setRuntimeModulePendingUninstall(cleanId, pending);
+      final result = await api.setRuntimeModulePendingUninstall(
+        cleanId,
+        pending,
+      );
       if (!mounted) return;
       state = state.copyWith(
         modulePendingBusyIds: <String>{...state.modulePendingBusyIds}
@@ -541,7 +599,10 @@ class DevicePageController extends StateNotifier<DevicePageState> {
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       url: cleanUrl,
       indexJsonUrl: '',
-      name: moduleCatalogFallbackName(cleanUrl, _strings.deviceModuleRepoDefault),
+      name: moduleCatalogFallbackName(
+        cleanUrl,
+        _strings.deviceModuleRepoDefault,
+      ),
       modules: const <RuntimeModuleCatalogItem>[],
       lastUpdated: 0,
       error: null,
@@ -629,43 +690,57 @@ class DevicePageController extends StateNotifier<DevicePageState> {
     }
   }
 
-  Future<void> installRepositoryModule(MergedRuntimeCatalogModule module) async {
+  Future<void> installRepositoryModule(
+    MergedRuntimeCatalogModule module,
+  ) async {
     final key = module.module.id.trim().ifEmpty(module.module.zipUrl);
     if (state.installingCatalogModuleIds.contains(key)) return;
     state = state.copyWith(
-      installingCatalogModuleIds: <String>{...state.installingCatalogModuleIds, key},
+      installingCatalogModuleIds: <String>{
+        ...state.installingCatalogModuleIds,
+        key,
+      },
       lastError: null,
     );
     try {
-      final tempDir = await Directory.systemTemp.createTemp('abk-runtime-module-');
+      final tempDir = await Directory.systemTemp.createTemp(
+        'abk-runtime-module-',
+      );
       final fileName = _downloadFileNameForModule(module.module);
       final targetFile = File('${tempDir.path}/$fileName');
-      final response = await _downloadClient.get(Uri.parse(module.module.zipUrl));
+      final response = await _downloadClient.get(
+        Uri.parse(module.module.zipUrl),
+      );
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw SidecarException('Failed to download module: HTTP ${response.statusCode}');
+        throw SidecarException(
+          'Failed to download module: HTTP ${response.statusCode}',
+        );
       }
       await targetFile.writeAsBytes(response.bodyBytes);
       final accepted = await api.installModule(targetFile.path);
       if (!mounted) return;
       _upsertTask(accepted);
       state = state.copyWith(
-        installingCatalogModuleIds: <String>{...state.installingCatalogModuleIds}
-          ..remove(key),
+        installingCatalogModuleIds: <String>{
+          ...state.installingCatalogModuleIds,
+        }..remove(key),
         infoMessage: _strings.deviceTaskQueued,
       );
       unawaited(_trackTask(accepted.id));
     } on SidecarException catch (error) {
       if (!mounted) return;
       state = state.copyWith(
-        installingCatalogModuleIds: <String>{...state.installingCatalogModuleIds}
-          ..remove(key),
+        installingCatalogModuleIds: <String>{
+          ...state.installingCatalogModuleIds,
+        }..remove(key),
         lastError: error.message,
       );
     } on http.ClientException catch (error) {
       if (!mounted) return;
       state = state.copyWith(
-        installingCatalogModuleIds: <String>{...state.installingCatalogModuleIds}
-          ..remove(key),
+        installingCatalogModuleIds: <String>{
+          ...state.installingCatalogModuleIds,
+        }..remove(key),
         lastError: error.message,
       );
     }
@@ -702,7 +777,8 @@ class DevicePageController extends StateNotifier<DevicePageState> {
         if (!mounted) return;
         _upsertTask(task);
         if (task.isTerminal) {
-          if (task.kind == 'install.module' || task.kind == 'runtime.module.action') {
+          if (task.kind == 'install.module' ||
+              task.kind == 'runtime.module.action') {
             await refreshRuntimeOnly();
           } else if (task.kind == 'susfs.apply') {
             await _refreshSusfsOnly();
@@ -729,6 +805,24 @@ class DevicePageController extends StateNotifier<DevicePageState> {
     } on SidecarException catch (error) {
       if (!mounted) return;
       state = state.copyWith(susfsError: error.message);
+    }
+  }
+
+  Future<void> _refreshKernelFeaturesOnly() async {
+    try {
+      final kernelFeatures = await api.getKernelFeatures();
+      if (!mounted) return;
+      state = state.copyWith(
+        kernelFeatures: kernelFeatures,
+        kernelFeatureError: kernelFeatures.managerDiagnostic,
+      );
+    } on SidecarException catch (error) {
+      if (!mounted) return;
+      state = state.copyWith(
+        kernelFeatureError: error.statusCode == 404
+            ? _strings.deviceKernelFeaturesUnsupported
+            : error.message,
+      );
     }
   }
 

@@ -234,6 +234,42 @@ class AbkRuntimeModule {
   final String groupRepoUrl;
 
   String get displayName => name.trim().isNotEmpty ? name.trim() : id;
+  String get normalizedType {
+    final explicit = type.trim().toLowerCase();
+    if (explicit.isNotEmpty) return explicit;
+    final sources = source
+        .split(',')
+        .map((value) => value.trim().toLowerCase())
+        .where((value) => value.isNotEmpty);
+    if (sources.contains('kpm')) return 'kpm';
+    if (sources.contains('ksud')) return 'standard';
+    return 'builtin';
+  }
+
+  String get normalizedEntryKind {
+    final clean = entryKind.trim().toLowerCase();
+    return switch (clean) {
+      'set' || 'group_child' => 'module_set_child',
+      'module' || 'single' || '' => clean,
+      _ => clean,
+    };
+  }
+
+  bool get isCustomModule => normalizedEntryKind == 'module';
+  bool get isCustomModuleSetChild => normalizedEntryKind == 'module_set_child';
+  bool get isStandardRuntimeModule =>
+      !isCustomModule && !isCustomModuleSetChild;
+  String get moduleGroupKey {
+    final cleanRepo = groupRepoUrl.trim();
+    if (cleanRepo.isNotEmpty) return 'repo:${cleanRepo.toLowerCase()}';
+    final cleanGroupId = groupId.trim();
+    if (cleanGroupId.isNotEmpty) return 'group:${cleanGroupId.toLowerCase()}';
+    final cleanGroupName = groupName.trim();
+    if (cleanGroupName.isNotEmpty) {
+      return 'group-name:${cleanGroupName.toLowerCase()}';
+    }
+    return 'single:${id.toLowerCase()}';
+  }
 
   factory AbkRuntimeModule.fromJson(Map<String, dynamic> json) {
     return AbkRuntimeModule(
@@ -274,6 +310,57 @@ class AbkRuntimeModule {
       groupRole: _readString(json['groupRole']),
       groupDescription: _readString(json['groupDescription']),
       groupRepoUrl: _readString(json['groupRepoUrl']),
+    );
+  }
+}
+
+class KernelFeaturesEnvelope {
+  const KernelFeaturesEnvelope({
+    required this.rootGranted,
+    required this.managerAccessKind,
+    required this.managerDiagnostic,
+    required this.items,
+  });
+
+  final bool rootGranted;
+  final String managerAccessKind;
+  final String? managerDiagnostic;
+  final List<KernelFeatureItem> items;
+
+  factory KernelFeaturesEnvelope.fromJson(Map<String, dynamic> json) {
+    return KernelFeaturesEnvelope(
+      rootGranted: json['rootGranted'] == true,
+      managerAccessKind: _readString(json['managerAccessKind']),
+      managerDiagnostic: _nullableString(json['managerDiagnostic']),
+      items: _readMapList(
+        json['items'],
+      ).map(KernelFeatureItem.fromJson).toList(growable: false),
+    );
+  }
+}
+
+class KernelFeatureItem {
+  const KernelFeatureItem({
+    required this.id,
+    required this.checked,
+    required this.enabled,
+    required this.status,
+  });
+
+  final String id;
+  final bool checked;
+  final bool enabled;
+  final String status;
+
+  bool get isSupported => status == 'supported' || status == 'managed';
+  bool get isManaged => status == 'managed';
+
+  factory KernelFeatureItem.fromJson(Map<String, dynamic> json) {
+    return KernelFeatureItem(
+      id: _readString(json['id']),
+      checked: json['checked'] == true,
+      enabled: json['enabled'] == true,
+      status: _readString(json['status'], fallback: 'unsupported'),
     );
   }
 }
@@ -421,10 +508,7 @@ class PackageInfoSummary {
 }
 
 class ShellOperationResult {
-  const ShellOperationResult({
-    required this.success,
-    required this.output,
-  });
+  const ShellOperationResult({required this.success, required this.output});
 
   final bool success;
   final List<String> output;
@@ -456,9 +540,7 @@ class SusfsEnvelope {
     final statusRaw = _readMap(json['status']);
     return SusfsEnvelope(
       rootGranted: json['rootGranted'] == true,
-      status: statusRaw.isEmpty
-          ? null
-          : SusfsRuntimeStatus.fromJson(statusRaw),
+      status: statusRaw.isEmpty ? null : SusfsRuntimeStatus.fromJson(statusRaw),
       config: _readMap(json['config']),
       error: _nullableString(json['error']),
     );
@@ -666,7 +748,7 @@ List<int> _readIntList(dynamic value) {
 
 Map<String, bool> _readBoolMap(dynamic value) {
   if (value is! Map) return const <String, bool>{};
-  return Map<String, dynamic>.from(value).map(
-    (key, dynamic raw) => MapEntry(key, raw == true),
-  );
+  return Map<String, dynamic>.from(
+    value,
+  ).map((key, dynamic raw) => MapEntry(key, raw == true));
 }

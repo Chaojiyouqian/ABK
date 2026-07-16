@@ -41,6 +41,9 @@ internal class AbkAgentServer(
                 AbkAgentRoute.RootGrants -> requireMethod(session, Method.GET) {
                     jsonResponse(payload = AbkAgentFacade.rootGrants(context))
                 }
+                AbkAgentRoute.KernelFeatures -> requireMethod(session, Method.GET) {
+                    jsonResponse(payload = AbkAgentFacade.kernelFeatures(context))
+                }
                 AbkAgentRoute.PackageList -> requireMethod(session, Method.GET) {
                     val packageType = decode(session.parameters["type"]?.firstOrNull().orEmpty())
                     jsonResponse(payload = mapOf("packages" to AbkAgentFacade.listPackages(context, packageType)))
@@ -67,6 +70,18 @@ internal class AbkAgentServer(
                         bytes = icon,
                         contentType = "image/png",
                         fileName = "${decode(route.packageName)}.png",
+                    )
+                }
+                is AbkAgentRoute.KernelFeatureSet -> requireMethod(session, Method.POST) {
+                    val enabled = readJsonBody(session)?.get("enabled")?.asBoolean ?: false
+                    jsonResponse(
+                        payload = shellResultPayload(
+                            AbkAgentFacade.setKernelFeatureEnabled(
+                                context,
+                                decode(route.featureId),
+                                enabled,
+                            ),
+                        ),
                     )
                 }
                 AbkAgentRoute.InternalInsetsCss -> requireMethod(session, Method.GET) {

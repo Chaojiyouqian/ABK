@@ -142,9 +142,18 @@ class _DevicePageState extends ConsumerState<DevicePage> {
                     Expanded(
                       child: TabBarView(
                         children: <Widget>[
-                          _RootGrantsTab(state: deviceState, controller: controller),
-                          _ModulesTab(state: deviceState, controller: controller),
-                          _KernelTab(state: deviceState, controller: controller),
+                          _RootGrantsTab(
+                            state: deviceState,
+                            controller: controller,
+                          ),
+                          _ModulesTab(
+                            state: deviceState,
+                            controller: controller,
+                          ),
+                          _KernelTab(
+                            state: deviceState,
+                            controller: controller,
+                          ),
                         ],
                       ),
                     ),
@@ -189,7 +198,8 @@ class _BlockedDeviceState extends StatelessWidget {
               ),
               StatusPill(
                 label: strings.connectionModeLabel(
-                  dashboard.connection?.mode ?? DeviceConnectionMode.disconnected,
+                  dashboard.connection?.mode ??
+                      DeviceConnectionMode.disconnected,
                 ),
                 color: scheme.secondary,
                 icon: Icons.usb_rounded,
@@ -258,22 +268,27 @@ class _RootGrantsTabState extends ConsumerState<_RootGrantsTab> {
     final strings = context.strings;
     final api = ref.read(sidecarApiProvider);
     final rootGrants = widget.state.rootGrants;
-    final apps = rootGrants?.apps.where((app) {
-      if (!_showSystemApps && app.isSystemApp) {
-        return false;
-      }
-      final needle = _query.trim().toLowerCase();
-      if (needle.isEmpty) return true;
-      return app.label.toLowerCase().contains(needle) ||
-          app.packageName.toLowerCase().contains(needle) ||
-          app.uid.toString().contains(needle);
-    }).toList(growable: false) ??
+    final apps =
+        rootGrants?.apps
+            .where((app) {
+              if (!_showSystemApps && app.isSystemApp) {
+                return false;
+              }
+              final needle = _query.trim().toLowerCase();
+              if (needle.isEmpty) return true;
+              return app.label.toLowerCase().contains(needle) ||
+                  app.packageName.toLowerCase().contains(needle) ||
+                  app.uid.toString().contains(needle);
+            })
+            .toList(growable: false) ??
         const <RootGrantApp>[];
     final selectedApp = _selectedPackage == null
         ? null
         : apps.where((app) => app.packageName == _selectedPackage).firstOrNull;
     if (selectedApp != null &&
-        !widget.state.packageInfoByPackage.containsKey(selectedApp.packageName) &&
+        !widget.state.packageInfoByPackage.containsKey(
+          selectedApp.packageName,
+        ) &&
         widget.state.packageInfoLoadingPackage != selectedApp.packageName) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         widget.controller.loadPackageInfo(selectedApp.packageName);
@@ -377,14 +392,17 @@ class _RootGrantsTabState extends ConsumerState<_RootGrantsTab> {
                   contentPadding: EdgeInsets.zero,
                   title: Text(strings.deviceRootAllow),
                   value: selectedApp.profile.allowSu,
-                  onChanged: widget.state.rootGrantSavingPackage == selectedApp.packageName
+                  onChanged:
+                      widget.state.rootGrantSavingPackage ==
+                          selectedApp.packageName
                       ? null
                       : (value) => widget.controller.setRootGrantAllowed(
                           selectedApp.packageName,
                           value,
                         ),
                 ),
-                if (widget.state.packageInfoLoadingPackage == selectedApp.packageName)
+                if (widget.state.packageInfoLoadingPackage ==
+                    selectedApp.packageName)
                   const Padding(
                     padding: EdgeInsets.only(top: 8),
                     child: CircularProgressIndicator(),
@@ -557,6 +575,55 @@ class _ModulesTabState extends ConsumerState<_ModulesTab> {
   Widget build(BuildContext context) {
     final strings = context.strings;
     final api = ref.read(sidecarApiProvider);
+    final filteredInstalledModules = widget.state.installedModules
+        .where((module) {
+          final needle = _installedQuery.trim().toLowerCase();
+          if (needle.isEmpty) return true;
+          return [
+            module.id,
+            module.name,
+            module.author,
+            module.description,
+            module.groupName,
+            module.groupDescription,
+          ].join(' ').toLowerCase().contains(needle);
+        })
+        .toList(growable: false);
+    final standardModules = filteredInstalledModules
+        .where((module) => module.isStandardRuntimeModule)
+        .toList(growable: false);
+    final customModules = filteredInstalledModules
+        .where((module) => module.isCustomModule)
+        .toList(growable: false);
+    final moduleSetGroups =
+        filteredInstalledModules
+            .where((module) => module.isCustomModuleSetChild)
+            .fold<Map<String, List<AbkRuntimeModule>>>(
+              <String, List<AbkRuntimeModule>>{},
+              (groups, module) {
+                groups.putIfAbsent(
+                  module.moduleGroupKey,
+                  () => <AbkRuntimeModule>[],
+                );
+                groups[module.moduleGroupKey]!.add(module);
+                return groups;
+              },
+            )
+            .values
+            .map(
+              (modules) => modules.toList(growable: false)
+                ..sort(
+                  (left, right) =>
+                      left.displayName.compareTo(right.displayName),
+                ),
+            )
+            .toList(growable: false)
+          ..sort(
+            (left, right) => left.first.groupName
+                .trim()
+                .toLowerCase()
+                .compareTo(right.first.groupName.trim().toLowerCase()),
+          );
     return DefaultTabController(
       length: 3,
       child: Column(
@@ -585,50 +652,39 @@ class _ModulesTabState extends ConsumerState<_ModulesTab> {
                           labelText: strings.deviceModuleSearch,
                           prefixIcon: const Icon(Icons.search_rounded),
                         ),
-                        onChanged: (value) => setState(() => _installedQuery = value),
+                        onChanged: (value) =>
+                            setState(() => _installedQuery = value),
                       ),
                       const SizedBox(height: 12),
-                      if (widget.state.installedModules.isEmpty)
-                        PanelCard(
-                          title: strings.deviceModuleTabInstalled,
-                          subtitle: strings.deviceModuleNoInstalled,
-                          icon: Icons.extension_rounded,
-                          child: const SizedBox.shrink(),
-                        )
-                      else
-                        ...widget.state.installedModules
-                            .where((module) {
-                              final needle = _installedQuery.trim().toLowerCase();
-                              if (needle.isEmpty) return true;
-                              return [
-                                module.id,
-                                module.name,
-                                module.author,
-                                module.description,
-                              ].join(' ').toLowerCase().contains(needle);
-                            })
-                            .map(
-                              (module) => Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: _InstalledModuleCard(
-                                  module: module,
-                                  state: widget.state,
-                                  api: api,
-                                  onEnabledChange: (enabled) => widget.controller
-                                      .setRuntimeModuleEnabled(module.id, enabled),
-                                  onPendingUninstallChange: (pending) => widget
-                                      .controller
-                                      .setRuntimeModulePendingUninstall(
-                                        module.id,
-                                        pending,
-                                      ),
-                                  onRunAction: module.actionSupported
-                                      ? () => widget.controller
-                                            .runRuntimeModuleAction(module.id)
-                                      : null,
-                                ),
-                              ),
-                            ),
+                      _InstalledModuleSection(
+                        title: strings.deviceModuleStandardTitle,
+                        subtitle: strings.deviceModuleStandardSubtitle,
+                        emptyLabel: strings.deviceModuleNoStandard,
+                        modules: standardModules,
+                        state: widget.state,
+                        api: api,
+                        controller: widget.controller,
+                      ),
+                      const SizedBox(height: 12),
+                      _InstalledModuleSection(
+                        title: strings.deviceModuleCustomTitle,
+                        subtitle: strings.deviceModuleCustomSubtitle,
+                        emptyLabel: strings.deviceModuleNoCustom,
+                        modules: customModules,
+                        state: widget.state,
+                        api: api,
+                        controller: widget.controller,
+                      ),
+                      const SizedBox(height: 12),
+                      _ModuleSetSection(
+                        title: strings.deviceModuleSetTitle,
+                        subtitle: strings.deviceModuleSetSubtitle,
+                        emptyLabel: strings.deviceModuleNoModuleSets,
+                        groups: moduleSetGroups,
+                        state: widget.state,
+                        api: api,
+                        controller: widget.controller,
+                      ),
                       const SizedBox(height: 16),
                       _DeviceTasksCard(state: widget.state),
                     ],
@@ -637,35 +693,49 @@ class _ModulesTabState extends ConsumerState<_ModulesTab> {
                 SingleChildScrollView(
                   child: Column(
                     children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: TextField(
-                              decoration: InputDecoration(
-                                labelText: strings.deviceModuleRepoUrl,
-                              ),
-                              onChanged: widget.controller.updateRepositoryUrlDraft,
-                              controller: TextEditingController(
-                                text: widget.state.repositoryUrlDraft,
-                              ),
+                      PanelCard(
+                        title: strings.deviceModuleRuntimeRepoTitle,
+                        subtitle: strings.deviceModuleRuntimeRepoSubtitle,
+                        icon: Icons.library_books_rounded,
+                        child: Column(
+                          children: <Widget>[
+                            Row(
+                              children: <Widget>[
+                                Expanded(
+                                  child: TextField(
+                                    decoration: InputDecoration(
+                                      labelText: strings.deviceModuleRepoUrl,
+                                    ),
+                                    onChanged: widget
+                                        .controller
+                                        .updateRepositoryUrlDraft,
+                                    controller: TextEditingController(
+                                      text: widget.state.repositoryUrlDraft,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                FilledButton.tonal(
+                                  onPressed: widget.state.repositoryLoading
+                                      ? null
+                                      : widget
+                                            .controller
+                                            .addRuntimeModuleRepository,
+                                  child: Text(strings.deviceModuleAddRepo),
+                                ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          FilledButton.tonal(
-                            onPressed: widget.state.repositoryLoading
-                                ? null
-                                : widget.controller.addRuntimeModuleRepository,
-                            child: Text(strings.deviceModuleAddRepo),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        decoration: InputDecoration(
-                          labelText: strings.deviceModuleSearch,
-                          prefixIcon: const Icon(Icons.search_rounded),
+                            const SizedBox(height: 12),
+                            TextField(
+                              decoration: InputDecoration(
+                                labelText: strings.deviceModuleSearch,
+                                prefixIcon: const Icon(Icons.search_rounded),
+                              ),
+                              onChanged: (value) =>
+                                  setState(() => _repositoryQuery = value),
+                            ),
+                          ],
                         ),
-                        onChanged: (value) => setState(() => _repositoryQuery = value),
                       ),
                       const SizedBox(height: 12),
                       ...widget.state.runtimeModuleRepositories.map(
@@ -675,14 +745,16 @@ class _ModulesTabState extends ConsumerState<_ModulesTab> {
                             repository: repository,
                             state: widget.state,
                             query: _repositoryQuery,
-                            onRefresh: () => widget.controller.refreshRuntimeModuleRepository(
-                              repository.id,
-                            ),
-                            onDelete: repository.id == officialRuntimeModuleRepositoryId
+                            onRefresh: () => widget.controller
+                                .refreshRuntimeModuleRepository(repository.id),
+                            onDelete:
+                                repository.id ==
+                                    officialRuntimeModuleRepositoryId
                                 ? null
-                                : () => widget.controller.removeRuntimeModuleRepository(
-                                    repository.id,
-                                  ),
+                                : () => widget.controller
+                                      .removeRuntimeModuleRepository(
+                                        repository.id,
+                                      ),
                             onOpenModule: (module) {
                               final url = module.module.website.isNotEmpty
                                   ? module.module.website
@@ -693,16 +765,184 @@ class _ModulesTabState extends ConsumerState<_ModulesTab> {
                                 _openUrl(url);
                               }
                             },
-                            onInstallModule: (module) =>
-                                widget.controller.installRepositoryModule(module),
+                            onInstallModule: (module) => widget.controller
+                                .installRepositoryModule(module),
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                _LocalInstallTab(controller: widget.controller, state: widget.state),
+                _LocalInstallTab(
+                  controller: widget.controller,
+                  state: widget.state,
+                ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InstalledModuleSection extends StatelessWidget {
+  const _InstalledModuleSection({
+    required this.title,
+    required this.subtitle,
+    required this.emptyLabel,
+    required this.modules,
+    required this.state,
+    required this.api,
+    required this.controller,
+  });
+
+  final String title;
+  final String subtitle;
+  final String emptyLabel;
+  final List<AbkRuntimeModule> modules;
+  final DevicePageState state;
+  final AbkSidecarApi api;
+  final DevicePageController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return PanelCard(
+      title: title,
+      subtitle: subtitle,
+      icon: Icons.widgets_rounded,
+      child: modules.isEmpty
+          ? Text(emptyLabel)
+          : Column(
+              children: modules
+                  .map(
+                    (module) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _InstalledModuleCard(
+                        module: module,
+                        state: state,
+                        api: api,
+                        onEnabledChange: (enabled) => controller
+                            .setRuntimeModuleEnabled(module.id, enabled),
+                        onPendingUninstallChange: (pending) =>
+                            controller.setRuntimeModulePendingUninstall(
+                              module.id,
+                              pending,
+                            ),
+                        onRunAction:
+                            module.actionSupported || module.hasActionScript
+                            ? () => controller.runRuntimeModuleAction(module.id)
+                            : null,
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+    );
+  }
+}
+
+class _ModuleSetSection extends StatelessWidget {
+  const _ModuleSetSection({
+    required this.title,
+    required this.subtitle,
+    required this.emptyLabel,
+    required this.groups,
+    required this.state,
+    required this.api,
+    required this.controller,
+  });
+
+  final String title;
+  final String subtitle;
+  final String emptyLabel;
+  final List<List<AbkRuntimeModule>> groups;
+  final DevicePageState state;
+  final AbkSidecarApi api;
+  final DevicePageController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return PanelCard(
+      title: title,
+      subtitle: subtitle,
+      icon: Icons.view_module_rounded,
+      child: groups.isEmpty
+          ? Text(emptyLabel)
+          : Column(
+              children: groups
+                  .map(
+                    (group) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _ModuleSetGroupCard(
+                        modules: group,
+                        state: state,
+                        api: api,
+                        controller: controller,
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+    );
+  }
+}
+
+class _ModuleSetGroupCard extends StatelessWidget {
+  const _ModuleSetGroupCard({
+    required this.modules,
+    required this.state,
+    required this.api,
+    required this.controller,
+  });
+
+  final List<AbkRuntimeModule> modules;
+  final DevicePageState state;
+  final AbkSidecarApi api;
+  final DevicePageController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final first = modules.first;
+    final title = first.groupName.trim().ifEmpty(first.displayName);
+    final subtitle = first.groupDescription.trim().ifEmpty(first.groupRepoUrl);
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(
+          context,
+        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: Theme.of(
+            context,
+          ).colorScheme.outlineVariant.withValues(alpha: 0.28),
+        ),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          if (subtitle.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 4),
+            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+          ],
+          const SizedBox(height: 12),
+          ...modules.map(
+            (module) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _InstalledModuleCard(
+                module: module,
+                state: state,
+                api: api,
+                onEnabledChange: (enabled) =>
+                    controller.setRuntimeModuleEnabled(module.id, enabled),
+                onPendingUninstallChange: (pending) => controller
+                    .setRuntimeModulePendingUninstall(module.id, pending),
+                onRunAction: module.actionSupported || module.hasActionScript
+                    ? () => controller.runRuntimeModuleAction(module.id)
+                    : null,
+              ),
             ),
           ),
         ],
@@ -732,6 +972,8 @@ class _InstalledModuleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = context.strings;
     final scheme = Theme.of(context).colorScheme;
+    final canOpenWebUi =
+        module.hasWebUi && module.enabled && !module.remove && !module.update;
     return PanelCard(
       title: module.displayName,
       subtitle: module.description.ifEmpty(module.id),
@@ -739,9 +981,12 @@ class _InstalledModuleCard extends StatelessWidget {
       actions: <Widget>[
         if (module.hasWebUi)
           IconButton(
-            onPressed: () => _openUrl(api.runtimeModuleWebUiUri(module.id).toString()),
+            onPressed: canOpenWebUi
+                ? () =>
+                      _openUrl(api.runtimeModuleWebUiUri(module.id).toString())
+                : null,
             icon: const Icon(Icons.open_in_browser_rounded),
-            tooltip: strings.deviceModuleWebUi,
+            tooltip: strings.deviceModuleWebUiDesktop,
           ),
       ],
       child: Column(
@@ -769,6 +1014,23 @@ class _InstalledModuleCard extends StatelessWidget {
                   color: scheme.outline,
                   icon: Icons.lock_outline_rounded,
                 ),
+              StatusPill(
+                label: module.normalizedType,
+                color: scheme.secondary,
+                icon: Icons.category_rounded,
+              ),
+              if (module.stage.trim().isNotEmpty)
+                StatusPill(
+                  label: module.stage.trim(),
+                  color: scheme.tertiary,
+                  icon: Icons.linear_scale_rounded,
+                ),
+              if (module.source.trim().isNotEmpty)
+                StatusPill(
+                  label: module.source.trim(),
+                  color: scheme.surfaceTint,
+                  icon: Icons.route_rounded,
+                ),
               if (module.hasActionScript || module.actionSupported)
                 StatusPill(
                   label: strings.deviceModuleAction,
@@ -782,7 +1044,10 @@ class _InstalledModuleCard extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             title: Text(strings.deviceModuleEnable),
             value: module.enabled,
-            onChanged: state.moduleBusyIds.contains(module.id)
+            onChanged:
+                !module.controllable ||
+                    module.readonly ||
+                    state.moduleBusyIds.contains(module.id)
                 ? null
                 : onEnabledChange,
           ),
@@ -797,6 +1062,18 @@ class _InstalledModuleCard extends StatelessWidget {
             ),
           Row(
             children: <Widget>[
+              if (module.hasWebUi)
+                FilledButton.tonalIcon(
+                  onPressed: canOpenWebUi
+                      ? () => _openUrl(
+                          api.runtimeModuleWebUiUri(module.id).toString(),
+                        )
+                      : null,
+                  icon: const Icon(Icons.web_rounded),
+                  label: Text(strings.deviceModuleWebUi),
+                ),
+              if (module.hasWebUi && onRunAction != null)
+                const SizedBox(width: 12),
               if (onRunAction != null)
                 FilledButton.tonalIcon(
                   onPressed: state.moduleActionBusyIds.contains(module.id)
@@ -841,9 +1118,9 @@ class _RepositoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
-    final modules = mergeRuntimeCatalogModules(
-      <RuntimeModuleRepository>[repository],
-    ).where((module) => module.matchesQuery(query)).toList(growable: false);
+    final modules = mergeRuntimeCatalogModules(<RuntimeModuleRepository>[
+      repository,
+    ]).where((module) => module.matchesQuery(query)).toList(growable: false);
     return PanelCard(
       title: repository.name,
       subtitle: repository.url,
@@ -878,9 +1155,10 @@ class _RepositoryCard extends StatelessWidget {
                       padding: const EdgeInsets.only(bottom: 10),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.26),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest
+                              .withValues(alpha: 0.26),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         padding: const EdgeInsets.all(12),
@@ -892,20 +1170,31 @@ class _RepositoryCard extends StatelessWidget {
                                 children: <Widget>[
                                   Text(
                                     module.module.name,
-                                    style: Theme.of(context).textTheme.titleSmall,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleSmall,
                                   ),
-                                  if (module.module.metaLine().isNotEmpty) ...<Widget>[
+                                  if (module.module
+                                      .metaLine()
+                                      .isNotEmpty) ...<Widget>[
                                     const SizedBox(height: 4),
                                     Text(
                                       module.module.metaLine(),
-                                      style: Theme.of(context).textTheme.bodySmall,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall,
                                     ),
                                   ],
-                                  if (module.module.description.isNotEmpty) ...<Widget>[
+                                  if (module
+                                      .module
+                                      .description
+                                      .isNotEmpty) ...<Widget>[
                                     const SizedBox(height: 4),
                                     Text(
                                       module.module.description,
-                                      style: Theme.of(context).textTheme.bodySmall,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall,
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -920,14 +1209,20 @@ class _RepositoryCard extends StatelessWidget {
                               tooltip: strings.deviceModuleOpenRepo,
                             ),
                             FilledButton.tonal(
-                              onPressed: state.installingCatalogModuleIds.contains(
-                                module.module.id.ifEmpty(module.module.zipUrl),
-                              )
+                              onPressed:
+                                  state.installingCatalogModuleIds.contains(
+                                    module.module.id.ifEmpty(
+                                      module.module.zipUrl,
+                                    ),
+                                  )
                                   ? null
                                   : () => onInstallModule(module),
-                              child: state.installingCatalogModuleIds.contains(
-                                      module.module.id.ifEmpty(module.module.zipUrl),
-                                    )
+                              child:
+                                  state.installingCatalogModuleIds.contains(
+                                    module.module.id.ifEmpty(
+                                      module.module.zipUrl,
+                                    ),
+                                  )
                                   ? const SizedBox(
                                       width: 18,
                                       height: 18,
@@ -995,7 +1290,8 @@ class _LocalInstallTabState extends State<_LocalInstallTab> {
                 ),
                 const SizedBox(width: 12),
                 FilledButton(
-                  onPressed: widget.state.localModulePath == null ||
+                  onPressed:
+                      widget.state.localModulePath == null ||
                           widget.state.localInstallBusy
                       ? null
                       : widget.controller.installLocalModule,
@@ -1016,52 +1312,18 @@ class _LocalInstallTabState extends State<_LocalInstallTab> {
   }
 }
 
-class _KernelTab extends StatefulWidget {
+class _KernelTab extends StatelessWidget {
   const _KernelTab({required this.state, required this.controller});
 
   final DevicePageState state;
   final DevicePageController controller;
 
   @override
-  State<_KernelTab> createState() => _KernelTabState();
-}
-
-class _KernelTabState extends State<_KernelTab> {
-  late final TextEditingController _susfsDraftController;
-
-  @override
-  void initState() {
-    super.initState();
-    _susfsDraftController = TextEditingController(
-      text: widget.state.susfsConfigDraft,
-    );
-  }
-
-  @override
-  void didUpdateWidget(covariant _KernelTab oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (_susfsDraftController.text != widget.state.susfsConfigDraft) {
-      _susfsDraftController.value = _susfsDraftController.value.copyWith(
-        text: widget.state.susfsConfigDraft,
-        selection: TextSelection.collapsed(
-          offset: widget.state.susfsConfigDraft.length,
-        ),
-        composing: TextRange.empty,
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    _susfsDraftController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final strings = context.strings;
-    final runtime = widget.state.runtime?.runtimeStatus;
-    final susfs = widget.state.susfs;
+    final runtime = state.runtime?.runtimeStatus;
+    final susfs = state.susfs;
+    final kernelFeatures = state.kernelFeatures;
     return SingleChildScrollView(
       child: Column(
         children: <Widget>[
@@ -1086,7 +1348,8 @@ class _KernelTabState extends State<_KernelTab> {
                             icon: Icons.info_rounded,
                           ),
                           StatusPill(
-                            label: runtime.manager?.displayName.isNotEmpty == true
+                            label:
+                                runtime.manager?.displayName.isNotEmpty == true
                                 ? runtime.manager!.displayName
                                 : strings.unknownValue,
                             color: Theme.of(context).colorScheme.secondary,
@@ -1112,81 +1375,80 @@ class _KernelTabState extends State<_KernelTab> {
           ),
           const SizedBox(height: 16),
           PanelCard(
-            title: strings.deviceSusfsTitle,
-            subtitle: strings.deviceSusfsSubtitle,
+            title: strings.deviceKernelEntryTitle,
+            subtitle: strings.deviceKernelEntrySubtitle,
             icon: Icons.tune_rounded,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
+                if (kernelFeatures?.items.isNotEmpty == true) ...<Widget>[
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: <Widget>[
+                      ...kernelFeatures!.items
+                          .take(4)
+                          .map(
+                            (feature) => StatusPill(
+                              label: strings.deviceKernelFeatureTitle(
+                                feature.id,
+                              ),
+                              color: feature.checked
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context).colorScheme.outline,
+                              icon: feature.checked
+                                  ? Icons.toggle_on_rounded
+                                  : Icons.toggle_off_rounded,
+                            ),
+                          ),
+                    ],
+                  ),
+                ] else if (state.kernelFeatureError != null) ...<Widget>[
+                  const SizedBox(height: 12),
+                  Text(
+                    state.kernelFeatureError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    FilledButton.tonal(
+                      onPressed: () => context.go('/device/kernel'),
+                      child: Text(strings.deviceKernelOpenFeatures),
+                    ),
+                    const SizedBox(width: 12),
+                    FilledButton(
+                      onPressed: () => context.go('/device/susfs'),
+                      child: Text(strings.deviceSusfsOpenPage),
+                    ),
+                  ],
+                ),
                 if (susfs?.status != null) ...<Widget>[
+                  const SizedBox(height: 18),
                   Wrap(
                     spacing: 10,
                     runSpacing: 10,
                     children: <Widget>[
                       StatusPill(
-                        label: susfs!.status!.available ? 'available' : 'unavailable',
+                        label: susfs!.status!.available
+                            ? 'available'
+                            : 'unavailable',
                         color: Theme.of(context).colorScheme.primary,
                         icon: Icons.check_circle_rounded,
                       ),
                       StatusPill(
-                        label: susfs.status!.kernelVersion.ifEmpty(strings.unknownValue),
+                        label: susfs.status!.kernelVersion.ifEmpty(
+                          strings.unknownValue,
+                        ),
                         color: Theme.of(context).colorScheme.secondary,
                         icon: Icons.memory_rounded,
                       ),
                     ],
                   ),
-                  if (susfs.status!.diagnostics.isNotEmpty) ...<Widget>[
-                    const SizedBox(height: 12),
-                    ...susfs.status!.diagnostics.map((line) => Text(line)),
-                  ],
                 ],
-                if (widget.state.susfsError != null) ...<Widget>[
-                  const SizedBox(height: 12),
-                  Text(
-                    widget.state.susfsError!,
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _susfsDraftController,
-                  onChanged: widget.controller.updateSusfsDraft,
-                  minLines: 10,
-                  maxLines: 20,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                  ),
-                  style: const TextStyle(fontFamily: 'monospace'),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: <Widget>[
-                    FilledButton.tonal(
-                      onPressed: widget.state.susfsSaving
-                          ? null
-                          : widget.controller.resetSusfsDraft,
-                      child: Text(strings.deviceSusfsReset),
-                    ),
-                    const SizedBox(width: 12),
-                    FilledButton(
-                      onPressed: widget.state.susfsSaving
-                          ? null
-                          : widget.controller.applySusfsDraft,
-                      child: widget.state.susfsSaving
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2.2),
-                            )
-                          : Text(strings.deviceSusfsApply),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _DeviceTasksCard(
-                  state: widget.state,
-                  kinds: const <String>{'susfs.apply'},
-                ),
               ],
             ),
           ),
@@ -1196,11 +1458,413 @@ class _KernelTabState extends State<_KernelTab> {
   }
 }
 
-class _DeviceTasksCard extends StatelessWidget {
-  const _DeviceTasksCard({
-    required this.state,
-    this.kinds,
+class KernelFeaturesPage extends ConsumerStatefulWidget {
+  const KernelFeaturesPage({super.key});
+
+  @override
+  ConsumerState<KernelFeaturesPage> createState() => _KernelFeaturesPageState();
+}
+
+class _KernelFeaturesPageState extends ConsumerState<KernelFeaturesPage> {
+  bool _requestedInitialLoad = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final dashboard = ref.watch(dashboardControllerProvider);
+    final state = ref.watch(devicePageControllerProvider);
+    final controller = ref.read(devicePageControllerProvider.notifier);
+    final strings = context.strings;
+    final scheme = Theme.of(context).colorScheme;
+    final abkReady =
+        dashboard.connection?.connected == true &&
+        dashboard.connection?.mode == DeviceConnectionMode.abk;
+
+    if (abkReady && !_requestedInitialLoad) {
+      _requestedInitialLoad = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.refreshAll();
+      });
+    }
+    if (!abkReady) {
+      _requestedInitialLoad = false;
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(28, 24, 28, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      strings.deviceKernelFeaturesTitle,
+                      style: Theme.of(context).textTheme.headlineLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      strings.deviceKernelFeaturesIntro,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: <Widget>[
+                  FilledButton.tonalIcon(
+                    onPressed: () => context.go('/device'),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    label: Text(strings.navDevice),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: abkReady && !state.isRefreshing
+                        ? controller.refreshAll
+                        : null,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: Text(strings.deviceRefreshAll),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (!abkReady) ...<Widget>[
+            const SizedBox(height: 16),
+            _BlockedDeviceState(
+              dashboard: dashboard,
+              onOpenDetection: () => context.go('/detect'),
+            ),
+          ] else ...<Widget>[
+            if (state.kernelFeatureError != null) ...<Widget>[
+              const SizedBox(height: 16),
+              _MessageBanner(
+                title: strings.deviceKernelFeaturesTitle,
+                message: state.kernelFeatureError!,
+                color: scheme.errorContainer,
+                foreground: scheme.onErrorContainer,
+              ),
+            ],
+            const SizedBox(height: 16),
+            PanelCard(
+              title: strings.deviceKernelFeaturesTitle,
+              subtitle: strings.deviceKernelEntrySubtitle,
+              icon: Icons.tune_rounded,
+              child: state.kernelFeatures == null
+                  ? Text(strings.deviceKernelFeaturesUnsupported)
+                  : Column(
+                      children: state.kernelFeatures!.items
+                          .map(
+                            (feature) => Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _KernelFeatureTile(
+                                feature: feature,
+                                busy: state.kernelFeatureBusyIds.contains(
+                                  feature.id,
+                                ),
+                                onChanged: feature.enabled
+                                    ? (enabled) =>
+                                          controller.setKernelFeatureEnabled(
+                                            feature.id,
+                                            enabled,
+                                          )
+                                    : null,
+                              ),
+                            ),
+                          )
+                          .toList(growable: false),
+                    ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class SusfsPage extends ConsumerStatefulWidget {
+  const SusfsPage({super.key});
+
+  @override
+  ConsumerState<SusfsPage> createState() => _SusfsPageState();
+}
+
+class _SusfsPageState extends ConsumerState<SusfsPage> {
+  bool _requestedInitialLoad = false;
+  late final TextEditingController _susfsDraftController;
+
+  @override
+  void initState() {
+    super.initState();
+    _susfsDraftController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _susfsDraftController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dashboard = ref.watch(dashboardControllerProvider);
+    final state = ref.watch(devicePageControllerProvider);
+    final controller = ref.read(devicePageControllerProvider.notifier);
+    final strings = context.strings;
+    final scheme = Theme.of(context).colorScheme;
+    final abkReady =
+        dashboard.connection?.connected == true &&
+        dashboard.connection?.mode == DeviceConnectionMode.abk;
+
+    if (abkReady && !_requestedInitialLoad) {
+      _requestedInitialLoad = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.refreshAll();
+      });
+    }
+    if (!abkReady) {
+      _requestedInitialLoad = false;
+    }
+    if (_susfsDraftController.text != state.susfsConfigDraft) {
+      _susfsDraftController.value = _susfsDraftController.value.copyWith(
+        text: state.susfsConfigDraft,
+        selection: TextSelection.collapsed(
+          offset: state.susfsConfigDraft.length,
+        ),
+        composing: TextRange.empty,
+      );
+    }
+
+    final susfs = state.susfs;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(28, 24, 28, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      strings.deviceSusfsPageTitle,
+                      style: Theme.of(context).textTheme.headlineLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      strings.deviceSusfsPageIntro,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: <Widget>[
+                  FilledButton.tonalIcon(
+                    onPressed: () => context.go('/device'),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    label: Text(strings.navDevice),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: abkReady && !state.isRefreshing
+                        ? controller.refreshAll
+                        : null,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: Text(strings.deviceRefreshAll),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (!abkReady) ...<Widget>[
+            const SizedBox(height: 16),
+            _BlockedDeviceState(
+              dashboard: dashboard,
+              onOpenDetection: () => context.go('/detect'),
+            ),
+          ] else ...<Widget>[
+            if (state.susfsError != null) ...<Widget>[
+              const SizedBox(height: 16),
+              _MessageBanner(
+                title: strings.deviceSusfsTitle,
+                message: state.susfsError!,
+                color: scheme.errorContainer,
+                foreground: scheme.onErrorContainer,
+              ),
+            ],
+            const SizedBox(height: 16),
+            PanelCard(
+              title: strings.deviceSusfsTitle,
+              subtitle: strings.deviceSusfsSubtitle,
+              icon: Icons.tune_rounded,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  if (susfs?.status != null) ...<Widget>[
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: <Widget>[
+                        StatusPill(
+                          label: susfs!.status!.available
+                              ? 'available'
+                              : 'unavailable',
+                          color: Theme.of(context).colorScheme.primary,
+                          icon: Icons.check_circle_rounded,
+                        ),
+                        StatusPill(
+                          label: susfs.status!.kernelVersion.ifEmpty(
+                            strings.unknownValue,
+                          ),
+                          color: Theme.of(context).colorScheme.secondary,
+                          icon: Icons.memory_rounded,
+                        ),
+                      ],
+                    ),
+                    if (susfs.status!.diagnostics.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 12),
+                      ...susfs.status!.diagnostics.map((line) => Text(line)),
+                    ],
+                  ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _susfsDraftController,
+                    onChanged: controller.updateSusfsDraft,
+                    minLines: 10,
+                    maxLines: 20,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                    ),
+                    style: const TextStyle(fontFamily: 'monospace'),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: <Widget>[
+                      FilledButton.tonal(
+                        onPressed: state.susfsSaving
+                            ? null
+                            : controller.resetSusfsDraft,
+                        child: Text(strings.deviceSusfsReset),
+                      ),
+                      const SizedBox(width: 12),
+                      FilledButton(
+                        onPressed: state.susfsSaving
+                            ? null
+                            : controller.applySusfsDraft,
+                        child: state.susfsSaving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.2,
+                                ),
+                              )
+                            : Text(strings.deviceSusfsApply),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _DeviceTasksCard(
+                    state: state,
+                    kinds: const <String>{'susfs.apply'},
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _KernelFeatureTile extends StatelessWidget {
+  const _KernelFeatureTile({
+    required this.feature,
+    required this.busy,
+    required this.onChanged,
   });
+
+  final KernelFeatureItem feature;
+  final bool busy;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.28),
+        ),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  strings.deviceKernelFeatureTitle(feature.id),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  strings.deviceKernelFeatureSubtitle(feature.id),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                StatusPill(
+                  label: strings.deviceKernelFeatureStatusLabel(feature.status),
+                  color: feature.isSupported ? scheme.primary : scheme.outline,
+                  icon: feature.isSupported
+                      ? Icons.verified_rounded
+                      : Icons.block_rounded,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          if (busy)
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.2),
+            )
+          else
+            Switch(
+              value: feature.checked,
+              onChanged: feature.enabled ? onChanged : null,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeviceTasksCard extends StatelessWidget {
+  const _DeviceTasksCard({required this.state, this.kinds});
 
   final DevicePageState state;
   final Set<String>? kinds;

@@ -39,6 +39,8 @@ abstract interface class AbkSidecarApi {
 
   Future<RootGrantsEnvelope> getRootGrants();
 
+  Future<KernelFeaturesEnvelope> getKernelFeatures();
+
   Future<PackageInfoSummary?> getPackageInfo(String packageName);
 
   Future<ShellOperationResult> setRootGrantAllowed(
@@ -51,6 +53,11 @@ abstract interface class AbkSidecarApi {
   Future<SusfsEnvelope> getSusfs();
 
   Future<DesktopTaskSnapshot> applySusfs(Map<String, dynamic> config);
+
+  Future<ShellOperationResult> setKernelFeatureEnabled(
+    String featureId,
+    bool enabled,
+  );
 
   Future<ShellOperationResult> setRuntimeModuleEnabled(
     String moduleId,
@@ -240,6 +247,12 @@ class HttpAbkSidecarClient implements AbkSidecarApi {
   }
 
   @override
+  Future<KernelFeaturesEnvelope> getKernelFeatures() async {
+    final json = await _requestJson('GET', 'api/v1/kernel-features');
+    return KernelFeaturesEnvelope.fromJson(json);
+  }
+
+  @override
   Future<PackageInfoSummary?> getPackageInfo(String packageName) async {
     final json = await _requestJson(
       'POST',
@@ -293,12 +306,21 @@ class HttpAbkSidecarClient implements AbkSidecarApi {
 
   @override
   Future<DesktopTaskSnapshot> applySusfs(Map<String, dynamic> config) async {
+    final json = await _requestJson('POST', 'api/v1/susfs/apply', body: config);
+    return DesktopTaskSnapshot.fromJson(json);
+  }
+
+  @override
+  Future<ShellOperationResult> setKernelFeatureEnabled(
+    String featureId,
+    bool enabled,
+  ) async {
     final json = await _requestJson(
       'POST',
-      'api/v1/susfs/apply',
-      body: config,
+      'api/v1/kernel-features/${Uri.encodeComponent(featureId)}',
+      body: <String, dynamic>{'enabled': enabled},
     );
-    return DesktopTaskSnapshot.fromJson(json);
+    return ShellOperationResult.fromJson(json);
   }
 
   @override
@@ -399,9 +421,7 @@ class HttpAbkSidecarClient implements AbkSidecarApi {
     final json = await _requestJson(
       'POST',
       'api/v1/builds/runs/$runId/artifacts/download',
-      body: <String, dynamic>{
-        'artifactId': artifactId,
-      },
+      body: <String, dynamic>{'artifactId': artifactId},
     );
     return DesktopTaskSnapshot.fromJson(json);
   }
@@ -420,7 +440,9 @@ class HttpAbkSidecarClient implements AbkSidecarApi {
 
   @override
   Uri taskDownloadUri(String taskId) {
-    return _baseUri.resolve('api/v1/tasks/${Uri.encodeComponent(taskId)}/download');
+    return _baseUri.resolve(
+      'api/v1/tasks/${Uri.encodeComponent(taskId)}/download',
+    );
   }
 
   @override

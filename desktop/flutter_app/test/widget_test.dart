@@ -710,6 +710,23 @@ class _FakeSidecarApi implements AbkSidecarApi {
   }
 
   @override
+  Future<KernelFeaturesEnvelope> getKernelFeatures() async {
+    return const KernelFeaturesEnvelope(
+      rootGranted: false,
+      managerAccessKind: 'no_root',
+      managerDiagnostic: null,
+      items: <KernelFeatureItem>[
+        KernelFeatureItem(
+          id: 'adb_root',
+          checked: false,
+          enabled: true,
+          status: 'supported',
+        ),
+      ],
+    );
+  }
+
+  @override
   Future<PackageInfoSummary?> getPackageInfo(String packageName) async => null;
 
   @override
@@ -745,6 +762,14 @@ class _FakeSidecarApi implements AbkSidecarApi {
       downloadName: null,
       downloadContentType: null,
     );
+  }
+
+  @override
+  Future<ShellOperationResult> setKernelFeatureEnabled(
+    String featureId,
+    bool enabled,
+  ) async {
+    return const ShellOperationResult(success: true, output: <String>['ok']);
   }
 
   @override

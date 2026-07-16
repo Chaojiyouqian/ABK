@@ -457,8 +457,8 @@ class AppStrings {
       isChinese ? 'GitHub 登录已超时。' : 'GitHub login timed out.';
   String get deviceTitle => isChinese ? '设备' : 'Device';
   String get deviceIntro => isChinese
-      ? '这一页承载设备已经进入 ABK 后的联动能力：Root 授权、模块管理、内核功能。'
-      : 'This page holds the ABK-linked device capabilities after the device enters ABK: root grants, module management, and kernel features.';
+      ? '这一页承载设备已经进入 ABK 后的联动能力：Root 授权、模块管理，以及进入内核功能与 SUSFS 的入口。'
+      : 'This page holds the ABK-linked capabilities after the device enters ABK: root grants, module management, and entry points into kernel features and SUSFS.';
   String get deviceRefreshAll => isChinese ? '刷新设备页' : 'Refresh device page';
   String get deviceBlockedTitle =>
       isChinese ? '设备页需要 ABK 在线' : 'ABK must be online';
@@ -487,24 +487,55 @@ class AppStrings {
   String get deviceRootUpdated =>
       isChinese ? 'Root 授权状态已更新。' : 'The root grant state was updated.';
   String get deviceModuleTabInstalled => isChinese ? '已安装' : 'Installed';
-  String get deviceModuleTabRepository => isChinese ? '仓库' : 'Repository';
+  String get deviceModuleTabRepository =>
+      isChinese ? '运行时模块仓库' : 'Runtime repositories';
   String get deviceModuleTabLocalInstall =>
       isChinese ? '本地安装' : 'Local install';
   String get deviceModuleOfficialRepo =>
-      isChinese ? '普通模块仓库' : 'Standard Module Repo';
-  String get deviceModuleRepoDefault => isChinese ? '模块仓库' : 'Module Repo';
+      isChinese ? '官方运行时模块仓库' : 'Official runtime module repo';
+  String get deviceModuleRepoDefault =>
+      isChinese ? '运行时模块仓库' : 'Runtime module repo';
   String get deviceModuleRepoUrl =>
-      isChinese ? '模块仓库 JSON URL' : 'Module repository JSON URL';
-  String get deviceModuleAddRepo => isChinese ? '添加仓库' : 'Add repository';
-  String get deviceModuleOpenRepo => isChinese ? '打开仓库' : 'Open repo';
+      isChinese ? '运行时模块仓库 JSON URL' : 'Runtime module repository JSON URL';
+  String get deviceModuleAddRepo =>
+      isChinese ? '添加运行时仓库' : 'Add runtime repository';
+  String get deviceModuleOpenRepo => isChinese ? '打开模块页' : 'Open module page';
   String get deviceModuleNoRepositories =>
-      isChinese ? '当前没有模块仓库' : 'No runtime module repositories';
+      isChinese ? '当前没有运行时模块仓库' : 'No runtime module repositories';
   String get deviceModuleNoCatalogModules =>
       isChinese ? '当前仓库没有可用模块' : 'No modules available in this repository';
   String get deviceModuleSearch =>
       isChinese ? '搜索模块 / 作者 / 描述' : 'Search module / author / description';
   String get deviceModuleNoInstalled =>
       isChinese ? '当前没有已安装运行时模块' : 'No installed runtime modules';
+  String get deviceModuleInstalledSubtitle => isChinese
+      ? '把设备当前运行时模块拆成普通模块、自定义模块和自定义模块集三类看。'
+      : 'Split the currently installed runtime modules into standard modules, custom modules, and custom module sets.';
+  String get deviceModuleStandardTitle =>
+      isChinese ? '普通模块' : 'Standard modules';
+  String get deviceModuleStandardSubtitle => isChinese
+      ? '常规运行时模块，包括标准 KernelSU / KPM / 内建模块。'
+      : 'Regular runtime modules, including standard KernelSU, KPM, and built-in modules.';
+  String get deviceModuleCustomTitle => isChinese ? '自定义模块' : 'Custom modules';
+  String get deviceModuleCustomSubtitle => isChinese
+      ? 'ABK 自定义外部模块会单独列在这里，不和普通模块混排。'
+      : 'ABK custom external modules are listed here instead of being mixed into the standard module list.';
+  String get deviceModuleSetTitle =>
+      isChinese ? '自定义模块集' : 'Custom module sets';
+  String get deviceModuleSetSubtitle => isChinese
+      ? '同一个模块集的子模块会聚合展示，便于统一看 WebUI、action 和启停状态。'
+      : 'Child modules from the same custom module set are grouped together so WebUI, action, and enable state stay readable.';
+  String get deviceModuleNoStandard =>
+      isChinese ? '当前没有普通运行时模块' : 'No standard runtime modules';
+  String get deviceModuleNoCustom =>
+      isChinese ? '当前没有自定义模块' : 'No custom modules';
+  String get deviceModuleNoModuleSets =>
+      isChinese ? '当前没有自定义模块集' : 'No custom module sets';
+  String get deviceModuleRuntimeRepoTitle =>
+      isChinese ? '运行时模块仓库' : 'Runtime module repositories';
+  String get deviceModuleRuntimeRepoSubtitle => isChinese
+      ? '这里只管理设备运行时模块仓库，不是构建页里的 ABK 模块仓库。'
+      : 'This area manages runtime module repositories for the connected device, not the ABK build-module catalog from the Build page.';
   String get deviceModuleNoCatalogResults =>
       isChinese ? '没有匹配的仓库模块' : 'No matching repository modules';
   String get deviceModuleEnable => isChinese ? '启用' : 'Enable';
@@ -512,6 +543,8 @@ class AppStrings {
       isChinese ? '待卸载' : 'Pending uninstall';
   String get deviceModuleAction => isChinese ? '执行动作' : 'Run action';
   String get deviceModuleWebUi => isChinese ? '打开 WebUI' : 'Open WebUI';
+  String get deviceModuleWebUiDesktop =>
+      isChinese ? '在桌面浏览器打开 WebUI' : 'Open WebUI in desktop browser';
   String get deviceModuleInstall => isChinese ? '安装模块' : 'Install module';
   String get deviceModuleChooseZip => isChinese ? '选择 ZIP' : 'Choose ZIP';
   String get deviceModuleNoLocalZip =>
@@ -525,10 +558,62 @@ class AppStrings {
       : 'Render the runtime information returned by the agent directly instead of inventing a new interpretation layer here.';
   String get deviceKernelNoRuntime =>
       isChinese ? '当前没有可用的运行时摘要' : 'No runtime summary is available right now';
+  String get deviceKernelEntryTitle =>
+      isChinese ? '内核功能入口' : 'Kernel feature entry';
+  String get deviceKernelEntrySubtitle => isChinese
+      ? 'ADB Root、SULog、内核卸载模块等开关移到单独页面；这里保留入口和摘要。'
+      : 'ADB Root, SU log, kernel unmount, and related toggles live on a dedicated page; this tab keeps the entry and summary.';
+  String get deviceKernelOpenFeatures =>
+      isChinese ? '打开内核功能页' : 'Open kernel features';
+  String get deviceKernelFeaturesTitle =>
+      isChinese ? '内核功能' : 'Kernel features';
+  String get deviceKernelFeaturesIntro => isChinese
+      ? '把 ADB Root、SULog、SELinux 隐藏与默认卸载模块等开关单独拎出来，按 Android ABK 的管理方式展示。'
+      : 'ADB Root, SU log, SELinux hide, default unmount, and related toggles are surfaced here in an Android-ABK-style management page.';
+  String get deviceKernelFeaturesUnsupported => isChinese
+      ? '当前连接的设备侧 ABK 还没有暴露内核功能接口，请升级设备侧 ABK 并重新连接。'
+      : 'The connected device-side ABK does not expose kernel feature controls yet. Upgrade the device-side ABK and reconnect.';
+  String get deviceKernelFeatureUpdated =>
+      isChinese ? '内核功能状态已更新。' : 'The kernel feature state was updated.';
+  String get deviceKernelFeatureAdbRootTitle =>
+      isChinese ? 'ADB Root' : 'ADB Root';
+  String get deviceKernelFeatureAdbRootSubtitle =>
+      isChinese ? '以 root 权限运行 adbd 守护进程。' : 'Run the adbd daemon as root.';
+  String get deviceKernelFeatureSulogTitle =>
+      isChinese ? '超级用户访问日志' : 'Superuser access log';
+  String get deviceKernelFeatureSulogSubtitle => isChinese
+      ? '记录与 Root 有关的事件到 KernelSU 的超级用户访问日志。'
+      : 'Record root-related events to the KernelSU superuser access log.';
+  String get deviceKernelFeatureKernelUmountTitle =>
+      isChinese ? '卸载模块（内核级）' : 'Unmount modules (kernel level)';
+  String get deviceKernelFeatureKernelUmountSubtitle => isChinese
+      ? '让内核为需要的应用处理模块卸载。'
+      : 'Let the kernel handle module unmount for apps that need it.';
+  String get deviceKernelFeatureSelinuxHideTitle =>
+      isChinese ? '隐藏 SELinux 修改' : 'Hide SELinux changes';
+  String get deviceKernelFeatureSelinuxHideSubtitle => isChinese
+      ? '阻止应用检测 SELinux 修改。'
+      : 'Prevent apps from detecting SELinux changes.';
+  String get deviceKernelFeatureDefaultUmountTitle =>
+      isChinese ? '默认卸载模块' : 'Default unmount modules';
+  String get deviceKernelFeatureDefaultUmountSubtitle => isChinese
+      ? '作为 App Profile 里“卸载模块”的全局默认值。'
+      : 'Use this as the global default for “Unmount modules” in App Profile.';
+  String get deviceKernelFeatureStatusSupported =>
+      isChinese ? '支持' : 'Supported';
+  String get deviceKernelFeatureStatusManaged => isChinese ? '受管' : 'Managed';
+  String get deviceKernelFeatureStatusUnsupported =>
+      isChinese ? '不支持' : 'Unsupported';
   String get deviceSusfsTitle => isChinese ? 'SUSFS 控制' : 'SUSFS control';
   String get deviceSusfsSubtitle => isChinese
       ? '先展示 SUSFS 运行状态，再用 JSON 草稿编辑配置并应用。'
       : 'Show the SUSFS runtime state first, then let the user edit and apply the JSON config draft.';
+  String get deviceSusfsPageTitle => isChinese ? 'SUSFS' : 'SUSFS';
+  String get deviceSusfsPageIntro => isChinese
+      ? 'SUSFS 单独落成一页，保留运行状态、诊断和 JSON 草稿编辑。'
+      : 'SUSFS lives on its own page with runtime status, diagnostics, and JSON-draft editing.';
+  String get deviceSusfsOpenPage =>
+      isChinese ? '打开 SUSFS 页面' : 'Open SUSFS page';
   String get deviceSusfsApply =>
       isChinese ? '应用 SUSFS 配置' : 'Apply SUSFS config';
   String get deviceSusfsReset => isChinese ? '重置草稿' : 'Reset draft';
@@ -655,6 +740,36 @@ class AppStrings {
     return switch (stage) {
       'before_build' => buildModuleStageBeforeBuild,
       _ => buildModuleStageAfterPatch,
+    };
+  }
+
+  String deviceKernelFeatureTitle(String id) {
+    return switch (id) {
+      'adb_root' => deviceKernelFeatureAdbRootTitle,
+      'sulog' => deviceKernelFeatureSulogTitle,
+      'kernel_umount' => deviceKernelFeatureKernelUmountTitle,
+      'selinux_hide' => deviceKernelFeatureSelinuxHideTitle,
+      'default_umount' => deviceKernelFeatureDefaultUmountTitle,
+      _ => id,
+    };
+  }
+
+  String deviceKernelFeatureSubtitle(String id) {
+    return switch (id) {
+      'adb_root' => deviceKernelFeatureAdbRootSubtitle,
+      'sulog' => deviceKernelFeatureSulogSubtitle,
+      'kernel_umount' => deviceKernelFeatureKernelUmountSubtitle,
+      'selinux_hide' => deviceKernelFeatureSelinuxHideSubtitle,
+      'default_umount' => deviceKernelFeatureDefaultUmountSubtitle,
+      _ => '',
+    };
+  }
+
+  String deviceKernelFeatureStatusLabel(String status) {
+    return switch (status) {
+      'supported' => deviceKernelFeatureStatusSupported,
+      'managed' => deviceKernelFeatureStatusManaged,
+      _ => deviceKernelFeatureStatusUnsupported,
     };
   }
 

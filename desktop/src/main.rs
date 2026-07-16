@@ -136,6 +136,12 @@ struct InstallModuleRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct KernelFeatureRequest {
+    enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct InstallApkRequest {
     apk_path: String,
 }
@@ -416,11 +422,16 @@ async fn main() -> Result<()> {
         .route("/api/v1/session", get(proxy_session))
         .route("/api/v1/runtime", get(proxy_runtime))
         .route("/api/v1/root-grants", get(proxy_root_grants))
+        .route("/api/v1/kernel-features", get(proxy_kernel_features))
         .route("/api/v1/packages", get(proxy_packages))
         .route("/api/v1/packages/info", post(proxy_package_info))
         .route(
             "/api/v1/root-grants/{package_name}/allow",
             post(proxy_root_grant_allow),
+        )
+        .route(
+            "/api/v1/kernel-features/{feature_id}",
+            post(proxy_kernel_feature_set),
         )
         .route(
             "/api/v1/root-grants/{package_name}/icon",
@@ -1361,6 +1372,12 @@ async fn proxy_root_grants(State(state): State<AppState>) -> Result<Json<Value>,
     ))
 }
 
+async fn proxy_kernel_features(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
+    Ok(Json(
+        proxy_agent_json(&state, Method::GET, "/api/v1/kernel-features", None).await?,
+    ))
+}
+
 async fn proxy_packages(
     State(state): State<AppState>,
     Query(query): Query<PackageQuery>,
@@ -1395,6 +1412,26 @@ async fn proxy_root_grant_allow(
     );
     Ok(Json(
         proxy_agent_json(&state, Method::POST, &path, Some(payload)).await?,
+    ))
+}
+
+async fn proxy_kernel_feature_set(
+    State(state): State<AppState>,
+    Path(feature_id): Path<String>,
+    Json(payload): Json<KernelFeatureRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let path = format!(
+        "/api/v1/kernel-features/{}",
+        urlencoding::encode(feature_id.trim())
+    );
+    Ok(Json(
+        proxy_agent_json(
+            &state,
+            Method::POST,
+            &path,
+            Some(json!({ "enabled": payload.enabled })),
+        )
+        .await?,
     ))
 }
 

@@ -78,7 +78,9 @@ void main() {
           hasWebUi: false,
           magiskModuleName: '',
           magiskModuleDownloadUrl: '',
-        ): <String>['before_build'],
+        ): <String>[
+          'before_build',
+        ],
       },
       fromCatalog: true,
     );
@@ -269,6 +271,16 @@ class _FakeBuildApi implements AbkSidecarApi {
   }
 
   @override
+  Future<KernelFeaturesEnvelope> getKernelFeatures() async {
+    return const KernelFeaturesEnvelope(
+      rootGranted: false,
+      managerAccessKind: 'no_root',
+      managerDiagnostic: null,
+      items: <KernelFeatureItem>[],
+    );
+  }
+
+  @override
   Future<PackageInfoSummary?> getPackageInfo(String packageName) async => null;
 
   @override
@@ -295,6 +307,14 @@ class _FakeBuildApi implements AbkSidecarApi {
   @override
   Future<DesktopTaskSnapshot> applySusfs(Map<String, dynamic> config) {
     throw UnimplementedError();
+  }
+
+  @override
+  Future<ShellOperationResult> setKernelFeatureEnabled(
+    String featureId,
+    bool enabled,
+  ) async {
+    return const ShellOperationResult(success: true, output: <String>['ok']);
   }
 
   @override

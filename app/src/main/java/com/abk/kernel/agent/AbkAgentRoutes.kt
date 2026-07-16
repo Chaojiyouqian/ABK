@@ -9,6 +9,8 @@ internal sealed interface AbkAgentRoute {
     data object PackageInfo : AbkAgentRoute
     data class RootGrantAllow(val packageName: String) : AbkAgentRoute
     data class RootGrantIcon(val packageName: String) : AbkAgentRoute
+    data object KernelFeatures : AbkAgentRoute
+    data class KernelFeatureSet(val featureId: String) : AbkAgentRoute
     data object InternalInsetsCss : AbkAgentRoute
     data object Susfs : AbkAgentRoute
     data object ApplySusfs : AbkAgentRoute
@@ -39,6 +41,7 @@ internal object AbkAgentRoutes {
     private val runtimeWebUiModuleInfo = Regex("""^/api/v1/runtime/modules/([^/]+)/webui/module-info$""")
     private val rootGrantAllow = Regex("""^/api/v1/root-grants/([^/]+)/allow$""")
     private val rootGrantIcon = Regex("""^/api/v1/root-grants/([^/]+)/icon$""")
+    private val kernelFeatureSet = Regex("""^/api/v1/kernel-features/([^/]+)$""")
     private val task = Regex("""^/api/v1/tasks/([^/]+)$""")
     private val taskDownload = Regex("""^/api/v1/tasks/([^/]+)/download$""")
 
@@ -53,6 +56,7 @@ internal object AbkAgentRoutes {
             "/api/v1/session" -> AbkAgentRoute.Session
             "/api/v1/runtime" -> AbkAgentRoute.Runtime
             "/api/v1/root-grants" -> AbkAgentRoute.RootGrants
+            "/api/v1/kernel-features" -> AbkAgentRoute.KernelFeatures
             "/api/v1/packages" -> AbkAgentRoute.PackageList
             "/api/v1/packages/info" -> AbkAgentRoute.PackageInfo
             "/internal/insets.css" -> AbkAgentRoute.InternalInsetsCss
@@ -95,6 +99,9 @@ internal object AbkAgentRoutes {
                 }
                 rootGrantIcon.matchEntire(clean)?.groupValues?.getOrNull(1)?.let {
                     return AbkAgentRoute.RootGrantIcon(it)
+                }
+                kernelFeatureSet.matchEntire(clean)?.groupValues?.getOrNull(1)?.let {
+                    return AbkAgentRoute.KernelFeatureSet(it)
                 }
                 taskDownload.matchEntire(clean)?.groupValues?.getOrNull(1)?.let {
                     return AbkAgentRoute.TaskDownload(it)

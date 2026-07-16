@@ -42,6 +42,14 @@ class AbkDesktopApp extends ConsumerWidget {
               builder: (context, state) => const DevicePage(),
             ),
             GoRoute(
+              path: '/device/kernel',
+              builder: (context, state) => const KernelFeaturesPage(),
+            ),
+            GoRoute(
+              path: '/device/susfs',
+              builder: (context, state) => const SusfsPage(),
+            ),
+            GoRoute(
               path: '/settings',
               builder: (context, state) => const SettingsPage(),
             ),

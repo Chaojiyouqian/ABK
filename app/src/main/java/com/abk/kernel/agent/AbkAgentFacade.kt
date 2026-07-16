@@ -77,6 +77,20 @@ internal data class AbkAgentSusfsResponse(
     @SerializedName("error") val error: String? = null,
 )
 
+internal data class AbkAgentKernelFeaturesResponse(
+    @SerializedName("rootGranted") val rootGranted: Boolean,
+    @SerializedName("managerAccessKind") val managerAccessKind: String,
+    @SerializedName("managerDiagnostic") val managerDiagnostic: String? = null,
+    @SerializedName("items") val items: List<AbkAgentKernelFeatureItem> = emptyList(),
+)
+
+internal data class AbkAgentKernelFeatureItem(
+    @SerializedName("id") val id: String,
+    @SerializedName("checked") val checked: Boolean,
+    @SerializedName("enabled") val enabled: Boolean,
+    @SerializedName("status") val status: String,
+)
+
 internal object AbkAgentFacade {
     private val gson = Gson()
     private val ksuModuleListType = object : TypeToken<List<Map<String, Any?>>>() {}.type
@@ -346,6 +360,17 @@ internal object AbkAgentFacade {
         }
     }
 
+    fun kernelFeatures(context: Context): AbkAgentKernelFeaturesResponse {
+        val rootGranted = RootUtils.isRootAvailable()
+        val access = RootUtils.resolveManagerAccess(rootGranted)
+        return AbkAgentKernelFeaturesResponse(
+            rootGranted = rootGranted,
+            managerAccessKind = access.kind.name.lowercase(),
+            managerDiagnostic = managerAccessError(context, access, rootGranted),
+            items = buildKernelFeatureItems(),
+        )
+    }
+
     fun applySusfsConfig(
         config: SusfsConfig,
         onOutput: (String) -> Unit,
@@ -410,6 +435,29 @@ internal object AbkAgentFacade {
     fun flashImage(imagePath: String, partition: String, onOutput: (String) -> Unit): RootUtils.ShellResult =
         RootUtils.flashImage(imagePath, partition, onOutput)
 
+    fun setKernelFeatureEnabled(context: Context, featureId: String, enabled: Boolean): RootUtils.ShellResult {
+        return when (featureId.trim()) {
+            "adb_root", "sulog", "kernel_umount", "selinux_hide" ->
+                RootUtils.setKsuFeatureEnabled(featureId.trim(), enabled)
+            "default_umount" -> {
+                if (!RootUtils.isNativeManagerActive()) {
+                    RootUtils.ShellResult(
+                        false,
+                        listOf(context.getString(R.string.vm_setting_native_manager_required)),
+                    )
+                } else if (RootUtils.setDefaultUmountModules(enabled)) {
+                    RootUtils.ShellResult(
+                        true,
+                        listOf("updated default_umount"),
+                    )
+                } else {
+                    RootUtils.ShellResult(false, listOf("failed to update default_umount"))
+                }
+            }
+            else -> RootUtils.ShellResult(false, listOf("unknown kernel feature: $featureId"))
+        }
+    }
+
     suspend fun exportDiagnostics(context: Context): Pair<java.io.File, List<String>> {
         val rootGranted = RootUtils.isRootAvailable()
         val access = RootUtils.resolveManagerAccess(rootGranted)
@@ -437,6 +485,61 @@ internal object AbkAgentFacade {
         )
     }
 
+    private fun buildKernelFeatureItems(): List<AbkAgentKernelFeatureItem> {
+        val items = mutableListOf<AbkAgentKernelFeatureItem>()
+        items += featureItem(
+            id = "kernel_umount",
+            state = RootUtils.readKsuFeature("kernel_umount"),
+            checked = { value != 0L },
+        )
+        if (Build.VERSION.SDK_INT > Build.VERSION_CODES.Q) {
+            items += featureItem(
+                id = "adb_root",
+                state = RootUtils.readKsuFeature("adb_root"),
+                checked = { (configValue ?: value ?: 0L) != 0L },
+            )
+        }
+        items += featureItem(
+            id = "sulog",
+            state = RootUtils.readKsuFeature("sulog"),
+            checked = { value != 0L },
+        )
+        val selinuxHide = RootUtils.readKsuFeature("selinux_hide")
+        if (selinuxHide.support != RootUtils.KsuFeatureSupport.UNSUPPORTED) {
+            items += featureItem(
+                id = "selinux_hide",
+                state = selinuxHide,
+                checked = { value != 0L },
+            )
+        }
+        if (RootUtils.isNativeManagerActive()) {
+            items += AbkAgentKernelFeatureItem(
+                id = "default_umount",
+                checked = RootUtils.isDefaultUmountModules(),
+                enabled = true,
+                status = "supported",
+            )
+        }
+        return items
+    }
+
+    private inline fun featureItem(
+        id: String,
+        state: RootUtils.KsuFeatureState,
+        checked: RootUtils.KsuFeatureState.() -> Boolean,
+    ): AbkAgentKernelFeatureItem {
+        return AbkAgentKernelFeatureItem(
+            id = id,
+            checked = state.checked(),
+            enabled = state.support == RootUtils.KsuFeatureSupport.SUPPORTED,
+            status = when (state.support) {
+                RootUtils.KsuFeatureSupport.SUPPORTED -> "supported"
+                RootUtils.KsuFeatureSupport.MANAGED -> "managed"
+                RootUtils.KsuFeatureSupport.UNSUPPORTED -> "unsupported"
+            },
+        )
+    }
+
     private fun declaredCapabilities(
         rootGranted: Boolean,
         access: RootUtils.ManagerAccessInfo,
@@ -447,6 +550,7 @@ internal object AbkAgentFacade {
             "runtime.read",
             "root.refresh",
             "diagnostics.export",
+            "kernel_features.read",
         )
         if (rootGranted) {
             capabilities += listOf(
@@ -455,6 +559,7 @@ internal object AbkAgentFacade {
                 "install.module",
                 "install.apk",
                 "flash.image",
+                "kernel_features.write",
             )
         }
         if (runtime?.modules?.isNotEmpty() == true) {
