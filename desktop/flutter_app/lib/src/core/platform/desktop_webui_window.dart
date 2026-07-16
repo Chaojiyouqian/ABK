@@ -10,16 +10,15 @@ class DesktopMultiWindowWebUiWindow implements DesktopWebUiWindow {
   @override
   Future<bool> open({required String url, required String title}) async {
     try {
-      final controller = await WindowController.create(
+      await WindowController.create(
         WindowConfiguration(
-          hiddenAtLaunch: true,
+          hiddenAtLaunch: false,
           arguments: DesktopWindowLaunch.webui(
             url: url,
             title: title,
           ).toWindowArguments(),
         ),
       );
-      await controller.show();
       return true;
     } catch (_) {
       return false;

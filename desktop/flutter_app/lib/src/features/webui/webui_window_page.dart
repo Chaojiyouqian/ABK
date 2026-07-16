@@ -17,6 +17,12 @@ class _WebUiWindowPageState extends State<WebUiWindowPage> {
   String? _lastError;
 
   @override
+  void initState() {
+    super.initState();
+    debugPrint('[WebUIWindow] init ${widget.title} ${widget.url}');
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
@@ -51,6 +57,7 @@ class _WebUiWindowPageState extends State<WebUiWindowPage> {
               isElementFullscreenEnabled: true,
             ),
             onWebViewCreated: (controller) {
+              debugPrint('[WebUIWindow] created ${widget.title}');
               _controller = controller;
             },
             onProgressChanged: (controller, progress) {
@@ -64,6 +71,9 @@ class _WebUiWindowPageState extends State<WebUiWindowPage> {
               );
             },
             onReceivedError: (controller, request, error) {
+              debugPrint(
+                '[WebUIWindow] load error ${widget.title} ${error.type} ${error.description}',
+              );
               setState(() {
                 _lastError =
                     'WebUI load failed: ${error.type} ${error.description}'
@@ -71,6 +81,9 @@ class _WebUiWindowPageState extends State<WebUiWindowPage> {
               });
             },
             onReceivedHttpError: (controller, request, errorResponse) {
+              debugPrint(
+                '[WebUIWindow] http error ${widget.title} ${errorResponse.statusCode} ${errorResponse.reasonPhrase}',
+              );
               setState(() {
                 _lastError =
                     'WebUI HTTP ${errorResponse.statusCode ?? 0} ${errorResponse.reasonPhrase ?? ''}'
