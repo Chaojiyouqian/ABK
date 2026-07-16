@@ -255,10 +255,28 @@ class AbkRuntimeModule {
     };
   }
 
-  bool get isCustomModule => normalizedEntryKind == 'module';
-  bool get isCustomModuleSetChild => normalizedEntryKind == 'module_set_child';
-  bool get isStandardRuntimeModule =>
-      !isCustomModule && !isCustomModuleSetChild;
+  bool get hasModuleSetPresentation =>
+      normalizedEntryKind == 'module_set_child' ||
+      groupRepoUrl.trim().isNotEmpty ||
+      groupId.trim().isNotEmpty ||
+      groupName.trim().isNotEmpty;
+  bool get isCustomModuleSetChild => hasModuleSetPresentation;
+
+  bool get isStandardRuntimeModule {
+    if (hasModuleSetPresentation) return false;
+    final sources = source
+        .split(',')
+        .map((value) => value.trim().toLowerCase())
+        .where((value) => value.isNotEmpty)
+        .toSet();
+    return normalizedType == 'standard' ||
+        normalizedType == 'kpm' ||
+        sources.contains('ksud') ||
+        sources.contains('kpm');
+  }
+
+  bool get isCustomModule =>
+      !hasModuleSetPresentation && !isStandardRuntimeModule;
   String get moduleGroupKey {
     final cleanRepo = groupRepoUrl.trim();
     if (cleanRepo.isNotEmpty) return 'repo:${cleanRepo.toLowerCase()}';
