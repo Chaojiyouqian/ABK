@@ -1781,20 +1781,26 @@ async fn proxy_webui_root_asset_fallback(
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    let mut path = format!(
-        "/api/v1/runtime/modules/{}/webui/files/{}",
-        urlencoding::encode(module_id.trim()),
-        relative_path
-    );
-    if let Some(query) = uri.query() {
-        path.push('?');
-        path.push_str(query);
+    let candidates = fallback_webui_asset_candidates(&relative_path);
+    for candidate in candidates {
+        let mut path = format!(
+            "/api/v1/runtime/modules/{}/webui/files/{}",
+            urlencoding::encode(module_id.trim()),
+            candidate
+        );
+        if let Some(query) = uri.query() {
+            path.push('?');
+            path.push_str(query);
+        }
+
+        match proxy_binary_response(&state, Method::GET, &path, HeaderMap::new(), None).await {
+            Ok(response) if response.status() != StatusCode::NOT_FOUND => return response,
+            Ok(_) => continue,
+            Err(error) => return error.into_response(),
+        }
     }
 
-    match proxy_binary_response(&state, Method::GET, &path, HeaderMap::new(), None).await {
-        Ok(response) => response,
-        Err(error) => error.into_response(),
-    }
+    StatusCode::NOT_FOUND.into_response()
 }
 
 async fn proxy_agent_json(
@@ -2522,7 +2528,19 @@ fn inject_html_base_href(html: &str, base_prefix: &str) -> String {
     }
 
     let base_tag = format!(r#"<base href="{base_prefix}">"#);
-    if let Some(index) = html.to_ascii_lowercase().find("</head>") {
+    let lower = html.to_ascii_lowercase();
+    if let Some(head_index) = lower.find("<head") {
+        if let Some(tag_end) = html[head_index..].find('>') {
+            let insert_at = head_index + tag_end + 1;
+            let mut output = String::with_capacity(html.len() + base_tag.len());
+            output.push_str(&html[..insert_at]);
+            output.push_str(&base_tag);
+            output.push_str(&html[insert_at..]);
+            return output;
+        }
+    }
+
+    if let Some(index) = lower.find("</head>") {
         let mut output = String::with_capacity(html.len() + base_tag.len());
         output.push_str(&html[..index]);
         output.push_str(&base_tag);
@@ -2579,6 +2597,19 @@ fn fallback_webui_asset_target(
     }
 
     Some((module_id, relative_path.to_string()))
+}
+
+fn fallback_webui_asset_candidates(relative_path: &str) -> Vec<String> {
+    let clean = relative_path.trim().trim_start_matches('/').trim();
+    if clean.is_empty() {
+        return Vec::new();
+    }
+
+    let mut candidates = vec![clean.to_string()];
+    if !clean.contains('/') && !clean.starts_with("assets/") {
+        candidates.push(format!("assets/{clean}"));
+    }
+    candidates
 }
 
 fn forward_headers(headers: &HeaderMap) -> HeaderMap {
@@ -2768,6 +2799,7 @@ mod tests {
         let html = String::from_utf8(rewritten).unwrap();
 
         assert!(html.contains(r#"<base href="/api/v1/runtime/modules/abi_bridge/webui/files/">"#));
+        assert!(html.find("<base ").unwrap() < html.find("<script").unwrap());
         assert!(html
             .contains(r#"src="/api/v1/runtime/modules/abi_bridge/webui/files/assets/index.js""#));
         assert!(html.contains(r#"href="assets/index.css""#));
@@ -2809,5 +2841,20 @@ mod tests {
             fallback_webui_asset_target("/index-BphXklzb.js", Some("http://127.0.0.1:38765/home"));
 
         assert_eq!(resolved, None);
+    }
+
+    #[test]
+    fn expands_root_asset_fallback_to_assets_directory() {
+        assert_eq!(
+            fallback_webui_asset_candidates("index-BphXklzb.js"),
+            vec![
+                "index-BphXklzb.js".to_string(),
+                "assets/index-BphXklzb.js".to_string(),
+            ]
+        );
+        assert_eq!(
+            fallback_webui_asset_candidates("assets/index-BphXklzb.js"),
+            vec!["assets/index-BphXklzb.js".to_string()]
+        );
     }
 }
