@@ -85,7 +85,7 @@ internal object AbkAgentFacade {
         val rootGranted = RootUtils.isRootAvailable()
         val access = RootUtils.resolveManagerAccess(rootGranted)
         val runtime = currentRuntimeSnapshot(rootGranted, access)
-        return mapOf(
+        return mutableMapOf<String, Any>(
             "status" to "ok",
             "protocolVersion" to "abk-agent-v1",
             "port" to port,
@@ -93,9 +93,12 @@ internal object AbkAgentFacade {
             "appVersionCode" to BuildConfig.APP_VERSION_CODE,
             "rootGranted" to rootGranted,
             "managerAccessKind" to access.kind.name.lowercase(),
-            "managerDiagnostic" to managerAccessError(context, access, rootGranted),
             "capabilities" to declaredCapabilities(rootGranted, access, runtime),
-        )
+        ).apply {
+            managerAccessError(context, access, rootGranted)?.let {
+                put("managerDiagnostic", it)
+            }
+        }
     }
 
     fun session(context: Context, host: String, port: Int): AbkAgentSessionResponse {
