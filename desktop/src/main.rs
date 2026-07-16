@@ -1590,15 +1590,16 @@ async fn proxy_module_webui_file_impl(
     module_id: String,
     relative_path: String,
 ) -> Result<Response<Body>, ApiError> {
+    let clean_module_id = module_id.trim().to_string();
     let path = if relative_path.trim().is_empty() {
         format!(
             "/api/v1/runtime/modules/{}/webui/files",
-            urlencoding::encode(module_id.trim())
+            urlencoding::encode(&clean_module_id)
         )
     } else {
         format!(
             "/api/v1/runtime/modules/{}/webui/files/{}",
-            urlencoding::encode(module_id.trim()),
+            urlencoding::encode(&clean_module_id),
             relative_path
         )
     };
@@ -1629,6 +1630,8 @@ async fn proxy_module_webui_file_impl(
         .bytes()
         .await
         .context("failed to read module webui asset")?;
+    let body_bytes =
+        rewrite_module_webui_asset(&clean_module_id, &relative_path, &content_type, &bytes);
 
     let mut builder = Response::builder().status(status);
     builder = builder
@@ -1638,7 +1641,7 @@ async fn proxy_module_webui_file_impl(
                 .unwrap_or(HeaderValue::from_static("application/octet-stream")),
         )
         .header(CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    Ok(builder.body(Body::from(bytes)).expect("response"))
+    Ok(builder.body(Body::from(body_bytes)).expect("response"))
 }
 
 async fn proxy_install_module(
@@ -2429,6 +2432,80 @@ fn guess_content_type(relative_path: &str) -> &'static str {
         .unwrap_or("application/octet-stream")
 }
 
+fn rewrite_module_webui_asset(
+    module_id: &str,
+    relative_path: &str,
+    content_type: &str,
+    bytes: &[u8],
+) -> Vec<u8> {
+    if !is_rewritable_webui_asset(content_type, relative_path) {
+        return bytes.to_vec();
+    }
+
+    let base_prefix = format!(
+        "/api/v1/runtime/modules/{}/webui/files/",
+        urlencoding::encode(module_id.trim())
+    );
+    let mut text = String::from_utf8_lossy(bytes).into_owned();
+
+    if is_html_content(content_type, relative_path) {
+        text = inject_html_base_href(&text, &base_prefix);
+    }
+
+    rewrite_root_asset_paths(&text, &base_prefix).into_bytes()
+}
+
+fn is_rewritable_webui_asset(content_type: &str, relative_path: &str) -> bool {
+    is_html_content(content_type, relative_path)
+        || is_javascript_content(content_type, relative_path)
+        || is_css_content(content_type, relative_path)
+}
+
+fn is_html_content(content_type: &str, relative_path: &str) -> bool {
+    let lower = content_type.to_ascii_lowercase();
+    lower.contains("text/html")
+        || lower.contains("application/xhtml+xml")
+        || relative_path.trim().is_empty()
+        || relative_path.ends_with(".html")
+        || relative_path.ends_with(".htm")
+}
+
+fn is_javascript_content(content_type: &str, relative_path: &str) -> bool {
+    let lower = content_type.to_ascii_lowercase();
+    lower.contains("javascript")
+        || lower.contains("ecmascript")
+        || relative_path.ends_with(".js")
+        || relative_path.ends_with(".mjs")
+}
+
+fn is_css_content(content_type: &str, relative_path: &str) -> bool {
+    content_type.to_ascii_lowercase().contains("text/css") || relative_path.ends_with(".css")
+}
+
+fn inject_html_base_href(html: &str, base_prefix: &str) -> String {
+    if html.to_ascii_lowercase().contains("<base ") {
+        return html.to_string();
+    }
+
+    let base_tag = format!(r#"<base href="{base_prefix}">"#);
+    if let Some(index) = html.to_ascii_lowercase().find("</head>") {
+        let mut output = String::with_capacity(html.len() + base_tag.len());
+        output.push_str(&html[..index]);
+        output.push_str(&base_tag);
+        output.push_str(&html[index..]);
+        return output;
+    }
+
+    format!("{base_tag}{html}")
+}
+
+fn rewrite_root_asset_paths(text: &str, base_prefix: &str) -> String {
+    let asset_prefix = format!("{base_prefix}assets/");
+    text.replace("\"/assets/", &format!("\"{asset_prefix}"))
+        .replace("'/assets/", &format!("'{asset_prefix}"))
+        .replace("url(/assets/", &format!("url({asset_prefix}"))
+}
+
 fn forward_headers(headers: &HeaderMap) -> HeaderMap {
     let mut forwarded = HeaderMap::new();
     for (name, value) in headers {
@@ -2603,5 +2680,38 @@ mod tests {
         assert_eq!(matched.len(), 2);
         assert_eq!(extract_run_id(&matched[0]), Some(203));
         assert_eq!(extract_run_id(&matched[1]), Some(202));
+    }
+
+    #[test]
+    fn rewrites_module_webui_html_assets_with_base_prefix() {
+        let rewritten = rewrite_module_webui_asset(
+            "abi_bridge",
+            "",
+            "text/html; charset=utf-8",
+            br#"<!doctype html><html><head><script type="module" src="/assets/index.js"></script><link rel="stylesheet" href="assets/index.css"></head><body></body></html>"#,
+        );
+        let html = String::from_utf8(rewritten).unwrap();
+
+        assert!(html.contains(r#"<base href="/api/v1/runtime/modules/abi_bridge/webui/files/">"#));
+        assert!(html
+            .contains(r#"src="/api/v1/runtime/modules/abi_bridge/webui/files/assets/index.js""#));
+        assert!(html.contains(r#"href="assets/index.css""#));
+    }
+
+    #[test]
+    fn rewrites_module_webui_javascript_root_asset_paths() {
+        let rewritten = rewrite_module_webui_asset(
+            "abi_bridge",
+            "assets/index.js",
+            "application/javascript",
+            br#"const a="/assets/index.css";const b='/assets/fallback.js';"#,
+        );
+        let script = String::from_utf8(rewritten).unwrap();
+
+        assert!(
+            script.contains(r#""/api/v1/runtime/modules/abi_bridge/webui/files/assets/index.css""#)
+        );
+        assert!(script
+            .contains(r#"'/api/v1/runtime/modules/abi_bridge/webui/files/assets/fallback.js'"#));
     }
 }
