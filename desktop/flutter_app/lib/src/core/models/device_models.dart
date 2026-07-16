@@ -255,24 +255,26 @@ class AbkRuntimeModule {
     };
   }
 
+  Set<String> get normalizedSources => source
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .where((value) => value.isNotEmpty)
+      .toSet();
+
   bool get hasModuleSetPresentation =>
-      normalizedEntryKind == 'module_set_child' ||
-      groupRepoUrl.trim().isNotEmpty ||
-      groupId.trim().isNotEmpty ||
-      groupName.trim().isNotEmpty;
+      normalizedSources.contains('abk') &&
+      (normalizedEntryKind == 'module_set_child' ||
+          groupRepoUrl.trim().isNotEmpty ||
+          groupId.trim().isNotEmpty ||
+          groupName.trim().isNotEmpty);
   bool get isCustomModuleSetChild => hasModuleSetPresentation;
 
   bool get isStandardRuntimeModule {
     if (hasModuleSetPresentation) return false;
-    final sources = source
-        .split(',')
-        .map((value) => value.trim().toLowerCase())
-        .where((value) => value.isNotEmpty)
-        .toSet();
     return normalizedType == 'standard' ||
         normalizedType == 'kpm' ||
-        sources.contains('ksud') ||
-        sources.contains('kpm');
+        normalizedSources.contains('ksud') ||
+        normalizedSources.contains('kpm');
   }
 
   bool get isCustomModule =>
