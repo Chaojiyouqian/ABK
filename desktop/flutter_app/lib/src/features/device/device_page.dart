@@ -11,6 +11,7 @@ import '../../core/localization/app_strings.dart';
 import '../../core/models/build_models.dart';
 import '../../core/models/device_models.dart';
 import '../../core/models/sidecar_models.dart';
+import '../../core/platform/desktop_webui_api.dart';
 import '../../core/state/dashboard_controller.dart';
 import '../../widgets/panel_card.dart';
 import '../../widgets/status_pill.dart';
@@ -982,8 +983,7 @@ class _InstalledModuleCard extends StatelessWidget {
         if (module.hasWebUi)
           IconButton(
             onPressed: canOpenWebUi
-                ? () =>
-                      _openUrl(api.runtimeModuleWebUiUri(module.id).toString())
+                ? () => _openModuleWebUi(api, module)
                 : null,
             icon: const Icon(Icons.open_in_browser_rounded),
             tooltip: strings.deviceModuleWebUiDesktop,
@@ -1065,9 +1065,7 @@ class _InstalledModuleCard extends StatelessWidget {
               if (module.hasWebUi)
                 FilledButton.tonalIcon(
                   onPressed: canOpenWebUi
-                      ? () => _openUrl(
-                          api.runtimeModuleWebUiUri(module.id).toString(),
-                        )
+                      ? () => _openModuleWebUi(api, module)
                       : null,
                   icon: const Icon(Icons.web_rounded),
                   label: Text(strings.deviceModuleWebUi),
@@ -1990,6 +1988,20 @@ class _DeviceTaskLogDialog extends StatelessWidget {
 
 Future<void> _openUrl(String url) async {
   await Process.start('xdg-open', <String>[url]);
+}
+
+Future<void> _openModuleWebUi(
+  AbkSidecarApi api,
+  AbkRuntimeModule module,
+) async {
+  final url = api.runtimeModuleWebUiUri(module.id).toString();
+  final opened = await MethodChannelDesktopWebUiApi().openWebUiWindow(
+    url: url,
+    title: module.displayName,
+  );
+  if (!opened) {
+    await _openUrl(url);
+  }
 }
 
 Future<String?> _pickZipPath() async {

@@ -544,7 +544,7 @@ class AppStrings {
   String get deviceModuleAction => isChinese ? '执行动作' : 'Run action';
   String get deviceModuleWebUi => isChinese ? '打开 WebUI' : 'Open WebUI';
   String get deviceModuleWebUiDesktop =>
-      isChinese ? '在桌面浏览器打开 WebUI' : 'Open WebUI in desktop browser';
+      isChinese ? '在桌面独立窗口打开 WebUI' : 'Open WebUI in a separate desktop window';
   String get deviceModuleInstall => isChinese ? '安装模块' : 'Install module';
   String get deviceModuleChooseZip => isChinese ? '选择 ZIP' : 'Choose ZIP';
   String get deviceModuleNoLocalZip =>
