@@ -195,6 +195,11 @@ static gboolean open_webui_window_on_main(gpointer user_data) {
     return G_SOURCE_REMOVE;
   }
 
+  // Wayland + WebKitGTK can crash with protocol error 71 when the DMABUF
+  // renderer picks an unsupported buffer path. Force the safer fallback
+  // before the first WebKit view is created in this process.
+  g_setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1", FALSE);
+
   MyApplication* self = pending->application;
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(self)));
