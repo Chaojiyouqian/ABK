@@ -3,12 +3,10 @@
 #include <cstring>
 #include <flutter_linux/flutter_linux.h>
 #include <gio/gio.h>
+#include <webkit2/webkit2.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
-
-#include <desktop_multi_window/desktop_multi_window_plugin.h>
-#include <zikzak_inappwebview_linux/in_app_web_view_flutter_plugin.h>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -18,6 +16,12 @@ struct _MyApplication {
   FlView* view;
   FlMethodChannel* platform_channel;
 };
+
+typedef struct {
+  MyApplication* application;
+  gchar* url;
+  gchar* title;
+} PendingWebUiWindow;
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
@@ -109,7 +113,8 @@ static gchar* get_wallpaper_path() {
   return nullptr;
 }
 
-static FlMethodResponse* handle_platform_method_call(FlMethodCall* method_call) {
+static FlMethodResponse* handle_platform_method_call(MyApplication* self,
+                                                     FlMethodCall* method_call) {
   const gchar* method = fl_method_call_get_name(method_call);
   if (strcmp(method, "getWallpaperPath") == 0) {
     g_autofree gchar* wallpaper_path = get_wallpaper_path();
@@ -119,14 +124,48 @@ static FlMethodResponse* handle_platform_method_call(FlMethodCall* method_call) 
     return FL_METHOD_RESPONSE(fl_method_success_response_new(result));
   }
 
+  if (strcmp(method, "openWebUiWindow") == 0) {
+    FlValue* args = fl_method_call_get_args(method_call);
+    if (args == nullptr || fl_value_get_type(args) != FL_VALUE_TYPE_MAP) {
+      return FL_METHOD_RESPONSE(fl_method_error_response_new(
+          "bad_args", "openWebUiWindow requires a map", nullptr));
+    }
+
+    FlValue* url_value = fl_value_lookup_string(args, "url");
+    const gchar* url =
+        url_value != nullptr &&
+                fl_value_get_type(url_value) == FL_VALUE_TYPE_STRING
+            ? fl_value_get_string(url_value)
+            : nullptr;
+    FlValue* title_value = fl_value_lookup_string(args, "title");
+    const gchar* title =
+        title_value != nullptr &&
+                fl_value_get_type(title_value) == FL_VALUE_TYPE_STRING
+            ? fl_value_get_string(title_value)
+            : "ABK WebUI";
+    if (url == nullptr || url[0] == '\0') {
+      return FL_METHOD_RESPONSE(fl_method_error_response_new(
+          "bad_args", "openWebUiWindow requires a non-empty url", nullptr));
+    }
+    if (self == nullptr) {
+      return FL_METHOD_RESPONSE(fl_method_error_response_new(
+          "unavailable", "application instance unavailable", nullptr));
+    }
+
+    my_application_open_webui_window(self, url, title);
+    return FL_METHOD_RESPONSE(
+        fl_method_success_response_new(fl_value_new_bool(true)));
+  }
+
   return FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
 }
 
 static void platform_method_call_cb(FlMethodChannel* channel,
                                     FlMethodCall* method_call,
                                     gpointer user_data) {
+  MyApplication* self = MY_APPLICATION(user_data);
   g_autoptr(FlMethodResponse) response =
-      handle_platform_method_call(method_call);
+      handle_platform_method_call(self, method_call);
   g_autoptr(GError) error = nullptr;
   if (!fl_method_call_respond(method_call, response, &error)) {
     g_warning("Failed to send platform response: %s", error->message);
@@ -144,11 +183,74 @@ static void create_channels(MyApplication* self) {
       self->platform_channel, platform_method_call_cb, self, nullptr);
 }
 
-static void register_subwindow_plugins(FlPluginRegistry* registry) {
-  g_autoptr(FlPluginRegistrar) zikzak_registrar =
-      fl_plugin_registry_get_registrar_for_plugin(
-          registry, "InAppWebViewFlutterPlugin");
-  in_app_web_view_flutter_plugin_register_with_registrar(zikzak_registrar);
+static void webui_window_destroy_cb(GtkWidget* widget, gpointer user_data) {
+  (void)widget;
+  WebKitUserContentManager* manager = WEBKIT_USER_CONTENT_MANAGER(user_data);
+  g_object_unref(manager);
+}
+
+static gboolean open_webui_window_on_main(gpointer user_data) {
+  PendingWebUiWindow* pending = static_cast<PendingWebUiWindow*>(user_data);
+  if (pending == nullptr) {
+    return G_SOURCE_REMOVE;
+  }
+
+  MyApplication* self = pending->application;
+  GtkWindow* window =
+      GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(self)));
+  gtk_window_set_default_size(window, 1280, 820);
+  gtk_window_set_title(window,
+                       pending->title != nullptr && pending->title[0] != '\0'
+                           ? pending->title
+                           : "ABK WebUI");
+
+  GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
+  gtk_widget_show(GTK_WIDGET(header_bar));
+  gtk_header_bar_set_title(
+      header_bar, pending->title != nullptr && pending->title[0] != '\0'
+                      ? pending->title
+                      : "ABK WebUI");
+  gtk_header_bar_set_show_close_button(header_bar, TRUE);
+  gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
+
+  WebKitUserContentManager* manager = webkit_user_content_manager_new();
+  g_object_ref(manager);
+  WebKitWebView* web_view = WEBKIT_WEB_VIEW(
+      webkit_web_view_new_with_user_content_manager(manager));
+  WebKitSettings* settings = webkit_web_view_get_settings(web_view);
+  webkit_settings_set_enable_developer_extras(settings, TRUE);
+  webkit_settings_set_javascript_can_access_clipboard(settings, TRUE);
+  webkit_settings_set_enable_write_console_messages_to_stdout(settings, TRUE);
+
+  gtk_widget_show(GTK_WIDGET(web_view));
+  gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(web_view));
+  g_signal_connect(window, "destroy", G_CALLBACK(webui_window_destroy_cb),
+                   manager);
+
+  webkit_web_view_load_uri(web_view, pending->url);
+  gtk_widget_show(GTK_WIDGET(window));
+
+  g_object_unref(self);
+  g_free(pending->url);
+  g_free(pending->title);
+  g_free(pending);
+  return G_SOURCE_REMOVE;
+}
+
+void my_application_open_webui_window(MyApplication* self,
+                                      const gchar* url,
+                                      const gchar* title) {
+  if (self == nullptr || url == nullptr || url[0] == '\0') {
+    return;
+  }
+
+  PendingWebUiWindow* pending = g_new0(PendingWebUiWindow, 1);
+  pending->application = MY_APPLICATION(g_object_ref(self));
+  pending->url = g_strdup(url);
+  pending->title =
+      g_strdup(title != nullptr && title[0] != '\0' ? title : "ABK WebUI");
+
+  g_main_context_invoke(nullptr, open_webui_window_on_main, pending);
 }
 
 // Called when first Flutter frame received.
@@ -211,8 +313,6 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_realize(GTK_WIDGET(self->view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(self->view));
-  desktop_multi_window_plugin_set_window_created_callback(
-      [](FlPluginRegistry* registry) { register_subwindow_plugins(registry); });
   create_channels(self);
 
   gtk_widget_grab_focus(GTK_WIDGET(self->view));
