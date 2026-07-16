@@ -423,7 +423,7 @@ class DevicePageController extends StateNotifier<DevicePageState> {
           ..remove(cleanId),
         infoMessage: result.summary ?? _strings.deviceKernelFeatureUpdated,
       );
-      await _refreshKernelFeaturesOnly();
+      await _refreshDeviceStatusAfterKernelFeatureChange();
     } on SidecarException catch (error) {
       if (!mounted) return;
       state = state.copyWith(
@@ -822,6 +822,43 @@ class DevicePageController extends StateNotifier<DevicePageState> {
         kernelFeatureError: error.statusCode == 404
             ? _strings.deviceKernelFeaturesUnsupported
             : error.message,
+      );
+    }
+  }
+
+  Future<void> _refreshDeviceStatusAfterKernelFeatureChange() async {
+    try {
+      final results = await Future.wait<Object?>(<Future<Object?>>[
+        api.getRuntime(),
+        api.getRootGrants(),
+        api.getSusfs(),
+        api.getKernelFeatures(),
+      ]);
+      if (!mounted) return;
+      final runtime = results[0] as AbkRuntimeEnvelope;
+      final rootGrants = results[1] as RootGrantsEnvelope;
+      final susfs = results[2] as SusfsEnvelope;
+      final kernelFeatures = results[3] as KernelFeaturesEnvelope;
+      state = state.copyWith(
+        runtime: runtime,
+        runtimeError: runtime.managerDiagnostic,
+        rootGrants: rootGrants,
+        rootGrantError: rootGrants.managerDiagnostic,
+        susfs: susfs,
+        susfsError: susfs.error,
+        susfsConfigDraft: state.susfsDraftDirty
+            ? state.susfsConfigDraft
+            : susfs.prettyConfig(),
+        kernelFeatures: kernelFeatures,
+        kernelFeatureError: kernelFeatures.managerDiagnostic,
+      );
+    } on SidecarException catch (error) {
+      if (!mounted) return;
+      state = state.copyWith(
+        lastError: error.message,
+        kernelFeatureError: error.statusCode == 404
+            ? _strings.deviceKernelFeaturesUnsupported
+            : state.kernelFeatureError,
       );
     }
   }
