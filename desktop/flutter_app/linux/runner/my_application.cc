@@ -8,6 +8,7 @@
 #endif
 
 #include <desktop_multi_window/desktop_multi_window_plugin.h>
+#include <zikzak_inappwebview_linux/in_app_web_view_flutter_plugin.h>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -143,6 +144,13 @@ static void create_channels(MyApplication* self) {
       self->platform_channel, platform_method_call_cb, self, nullptr);
 }
 
+static void register_subwindow_plugins(FlPluginRegistry* registry) {
+  g_autoptr(FlPluginRegistrar) zikzak_registrar =
+      fl_plugin_registry_get_registrar_for_plugin(
+          registry, "InAppWebViewFlutterPlugin");
+  in_app_web_view_flutter_plugin_register_with_registrar(zikzak_registrar);
+}
+
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
@@ -204,7 +212,7 @@ static void my_application_activate(GApplication* application) {
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(self->view));
   desktop_multi_window_plugin_set_window_created_callback(
-      [](FlPluginRegistry* registry) { fl_register_plugins(registry); });
+      [](FlPluginRegistry* registry) { register_subwindow_plugins(registry); });
   create_channels(self);
 
   gtk_widget_grab_focus(GTK_WIDGET(self->view));
