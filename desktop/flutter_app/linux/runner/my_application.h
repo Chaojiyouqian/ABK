@@ -18,8 +18,4 @@ G_DECLARE_FINAL_TYPE(MyApplication,
  */
 MyApplication* my_application_new();
 
-void my_application_open_webui_window(MyApplication* self,
-                                      const gchar* url,
-                                      const gchar* title);
-
 #endif  // FLUTTER_MY_APPLICATION_H_

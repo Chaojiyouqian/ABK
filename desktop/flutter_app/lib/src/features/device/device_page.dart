@@ -11,7 +11,7 @@ import '../../core/localization/app_strings.dart';
 import '../../core/models/build_models.dart';
 import '../../core/models/device_models.dart';
 import '../../core/models/sidecar_models.dart';
-import '../../core/platform/desktop_webui_api.dart';
+import '../../core/platform/desktop_webui_window.dart';
 import '../../core/state/dashboard_controller.dart';
 import '../../widgets/panel_card.dart';
 import '../../widgets/status_pill.dart';
@@ -1995,7 +1995,7 @@ Future<void> _openModuleWebUi(
   AbkRuntimeModule module,
 ) async {
   final url = api.runtimeModuleWebUiUri(module.id).toString();
-  final opened = await MethodChannelDesktopWebUiApi().openWebUiWindow(
+  final opened = await DesktopMultiWindowWebUiWindow().open(
     url: url,
     title: module.displayName,
   );
