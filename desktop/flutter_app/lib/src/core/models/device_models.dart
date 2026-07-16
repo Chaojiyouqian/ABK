@@ -249,7 +249,11 @@ class AbkRuntimeModule {
   String get normalizedEntryKind {
     final clean = entryKind.trim().toLowerCase();
     return switch (clean) {
-      'set' || 'group_child' => 'module_set_child',
+      'set' ||
+      'module_set' ||
+      'module-set' ||
+      'moduleset' ||
+      'group_child' => 'module_set_child',
       'module' || 'single' || '' => clean,
       _ => clean,
     };
@@ -279,6 +283,26 @@ class AbkRuntimeModule {
 
   bool get isCustomModule =>
       !hasModuleSetPresentation && !isStandardRuntimeModule;
+
+  String get repoName {
+    final cleanRepo = repoUrl.trim();
+    if (cleanRepo.isEmpty) return '';
+    return cleanRepo
+        .trimRight()
+        .replaceAll(RegExp(r'/+$'), '')
+        .replaceAll(RegExp(r'\.git$'), '')
+        .split('/')
+        .last;
+  }
+
+  String get moduleSetDisplayName {
+    final cleanGroupName = groupName.trim();
+    if (cleanGroupName.isNotEmpty) return cleanGroupName;
+    final cleanRepoName = repoName.trim();
+    if (cleanRepoName.isNotEmpty) return cleanRepoName;
+    return displayName;
+  }
+
   String get moduleGroupKey {
     final cleanRepo = groupRepoUrl.trim();
     if (cleanRepo.isNotEmpty) return 'repo:${cleanRepo.toLowerCase()}';
@@ -287,6 +311,10 @@ class AbkRuntimeModule {
     final cleanGroupName = groupName.trim();
     if (cleanGroupName.isNotEmpty) {
       return 'group-name:${cleanGroupName.toLowerCase()}';
+    }
+    final cleanModuleRepo = repoUrl.trim();
+    if (hasModuleSetPresentation && cleanModuleRepo.isNotEmpty) {
+      return 'repo:${cleanModuleRepo.toLowerCase()}';
     }
     return 'single:${id.toLowerCase()}';
   }

@@ -904,7 +904,7 @@ class _ModuleSetGroupCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final first = modules.first;
-    final title = first.groupName.trim().ifEmpty(first.displayName);
+    final title = first.moduleSetDisplayName;
     final subtitle = first.groupDescription.trim().ifEmpty(first.groupRepoUrl);
     return Container(
       decoration: BoxDecoration(

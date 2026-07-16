@@ -19,6 +19,25 @@ void main() {
     expect(module.isCustomModule, isFalse);
   });
 
+  test('treats abk module_set entries as module sets and groups by repo', () {
+    final module = AbkRuntimeModule.fromJson(const <String, dynamic>{
+      'id': 'abi_bridge',
+      'name': 'ABK ABI Bridge',
+      'type': 'builtin',
+      'source': 'abk',
+      'entryKind': 'module_set',
+      'repoUrl':
+          'https://github.com/xingguangcuican6666/ABK_ABI_PATCH_SUITE.git',
+    });
+
+    expect(module.isCustomModuleSetChild, isTrue);
+    expect(
+      module.moduleGroupKey,
+      'repo:https://github.com/xingguangcuican6666/abk_abi_patch_suite.git',
+    );
+    expect(module.moduleSetDisplayName, 'ABK_ABI_PATCH_SUITE');
+  });
+
   test('treats ksud modules without group metadata as standard modules', () {
     final module = AbkRuntimeModule.fromJson(const <String, dynamic>{
       'id': 'zygisk-next',
