@@ -196,6 +196,26 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertEqual(normalized_public, renormalized_public)
         self.assertRegex(fingerprint, r"\A[0-9a-f]{64}\Z")
 
+    def test_signing_setup_canonicalizes_pycryptodome_publication(self):
+        try:
+            from Cryptodome.PublicKey import RSA as fallback_rsa
+        except ImportError:
+            try:
+                from Crypto.PublicKey import RSA as fallback_rsa
+            except ImportError:
+                self.skipTest("PyCryptodome unavailable")
+        client = SigningClient()
+
+        with (
+            mock.patch.object(abk, "_CRYPTO_BACKEND", "pycryptodome"),
+            mock.patch.object(abk, "RSA", fallback_rsa, create=True),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            public_key = abk.ensure_signing_key(client)
+
+        self.assertTrue(public_key.endswith("\n"))
+        self.assertEqual([public_key], client.publications)
+
     def test_custom_signing_key_import_rejects_mismatched_pair(self):
         if not abk._CRYPTO_BACKEND:
             self.skipTest("RSA backend unavailable")

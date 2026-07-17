@@ -1580,7 +1580,10 @@ def generate_signing_keypair():
         key = RSA.generate(2048)
         private_key_der = key.export_key('DER', passphrase=None, pkcs=8)
         public_key_pem = key.publickey().export_key('PEM').decode()
-    return base64.b64encode(private_key_der).decode("ascii"), public_key_pem
+    return (
+        base64.b64encode(private_key_der).decode("ascii"),
+        public_key_pem.rstrip("\r\n") + "\n",
+    )
 
 
 def _decode_signing_pem(value, pem_type):
