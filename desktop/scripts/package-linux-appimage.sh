@@ -65,7 +65,13 @@ install -Dm644 "$ROOT_DIR/app/signing/abk-manager-cert.env" "$APPDIR/usr/share/a
 install -Dm755 "$DESKTOP_DIR/packaging/linux/AppRun" "$APPDIR/AppRun"
 install -Dm644 \
   "$DESKTOP_DIR/packaging/linux/com.abk.abk_desktop.desktop" \
+  "$APPDIR/com.abk.abk_desktop.desktop"
+install -Dm644 \
+  "$DESKTOP_DIR/packaging/linux/com.abk.abk_desktop.desktop" \
   "$APPDIR/usr/share/applications/com.abk.abk_desktop.desktop"
+install -Dm644 \
+  "$FLUTTER_DIR/assets/images/android_abk_foreground.png" \
+  "$APPDIR/com.abk.abk_desktop.png"
 install -Dm644 \
   "$FLUTTER_DIR/assets/images/android_abk_foreground.png" \
   "$APPDIR/usr/share/icons/hicolor/256x256/apps/com.abk.abk_desktop.png"
