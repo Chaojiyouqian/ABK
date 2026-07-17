@@ -284,6 +284,132 @@ class AppStrings {
   String get buildForkSync => isChinese ? '同步 fork' : 'Sync fork';
   String get buildRefreshAll => isChinese ? '刷新全部' : 'Refresh all';
   String get buildRefreshRuns => isChinese ? '刷新构建列表' : 'Refresh builds';
+  String get buildTabRemote => isChinese ? '远程 CI 编译' : 'Remote CI build';
+  String get buildTabLocal => isChinese ? '本地编译' : 'Local build';
+  String get buildLocalRefresh => isChinese ? '刷新本地状态' : 'Refresh local status';
+  String get buildLocalInitAction =>
+      isChinese ? '初始化 AOSP 源码' : 'Initialize AOSP sources';
+  String get buildLocalRebuildAction =>
+      isChinese ? '开始本地编译' : 'Start local build';
+  String get buildLocalSourceTitle =>
+      isChinese ? 'Backend、源码与工作区' : 'Backend, sources, and workspace';
+  String get buildLocalSourceSubtitle => isChinese
+      ? '这里统一管理 backend 选择、支持线、source instance 和当前 materialized 工作区。'
+      : 'Manage backend selection, supported kernel lines, source instances, and the current materialized working tree here.';
+  String get buildLocalScriptsReady =>
+      isChinese ? 'Backend 可用' : 'Backend available';
+  String get buildLocalScriptsMissing =>
+      isChinese ? 'Backend 不可用' : 'Backend unavailable';
+  String get buildLocalWorkspaceReady =>
+      isChinese ? '工作区已初始化' : 'Workspace ready';
+  String get buildLocalWorkspaceMissing =>
+      isChinese ? '工作区未初始化' : 'Workspace not initialized';
+  String get buildLocalSupportedLinesTitle =>
+      isChinese ? '可用 AOSP 内核线' : 'Supported AOSP lines';
+  String get buildLocalNoSupportedTemplates => isChinese
+      ? '当前没有发现可用的 AOSP 模板目录。'
+      : 'No supported AOSP template directories were found.';
+  String get buildLocalSelectionUnsupported => isChinese
+      ? '当前表单里的 Android / kernel 组合没有对应的本地 AOSP 模板，请先选择上方支持的内核线。'
+      : 'The current Android / kernel selection does not match any local AOSP template. Pick one of the supported lines above first.';
+  String get buildLocalBranchMonthLabel =>
+      isChinese ? 'AOSP 分支月份' : 'AOSP branch month';
+  String get buildLocalBranchMonthHint => isChinese
+      ? '格式为 YYYY-MM，例如 2026-07。这里用于 `common-a14-6.1-YYYY-MM` 这类 AOSP manifest 分支。'
+      : 'Use YYYY-MM, for example 2026-07. This is used for AOSP manifest branches such as `common-a14-6.1-YYYY-MM`.';
+  String get buildLocalBranchMonthRequired => isChinese
+      ? '本地源码初始化需要填写分支月份。'
+      : 'A branch month is required before local source initialization.';
+  String get buildLocalForceInit =>
+      isChinese ? '强制重建环境' : 'Force recreate environment';
+  String get buildLocalForceInitSubtitle => isChinese
+      ? '重新 materialize 当前 source instance，并覆盖已有 working tree。'
+      : 'Re-materialize the current source instance and replace the existing working tree.';
+  String get buildLocalSkipDeps =>
+      isChinese ? '跳过依赖同步' : 'Skip dependency sync';
+  String get buildLocalSkipDepsSubtitle => isChinese
+      ? '只初始化 AOSP 模板与工作区，不更新 AnyKernel3、patches、SUSFS 等依赖仓库。'
+      : 'Initialize only the AOSP template and workspace without updating AnyKernel3, patches, SUSFS, and other dependency repositories.';
+  String get buildLocalDirectoriesTitle =>
+      isChinese ? '本地目录设置' : 'Local directory settings';
+  String get buildLocalDirectoriesSubtitle => isChinese
+      ? '可在这里改模板脚本目录、工作区目录和 profile 存储目录。留空时回退到默认路径。'
+      : 'Override the template/script root, workspace directory, and profile storage directory here. Leave a field empty to use the default path.';
+  String get buildLocalGlobalBackendLabel =>
+      isChinese ? '全局默认 backend' : 'Global default backend';
+  String get buildLocalScriptRootLabel =>
+      isChinese ? '模板 / 脚本目录' : 'Template / script root';
+  String get buildLocalWorkspaceDirSettingLabel =>
+      isChinese ? '工作区目录' : 'Workspace directory';
+  String get buildLocalProfileStoreDirLabel =>
+      isChinese ? 'Profile 存储目录' : 'Profile storage directory';
+  String get buildLocalSaveDirectories =>
+      isChinese ? '保存目录设置' : 'Save directory settings';
+  String get buildLocalRestoreDirectories =>
+      isChinese ? '恢复默认' : 'Restore defaults';
+  String get buildLocalDirectorySettingsSaved =>
+      isChinese ? '本地目录设置已保存。' : 'The local directory settings were saved.';
+  String get buildLocalTemplateLabel => isChinese ? '当前模板' : 'Current template';
+  String get buildLocalBranchLabel => isChinese ? '模板分支' : 'Template branch';
+  String get buildLocalWorkspaceLabel => isChinese ? '工作区路径' : 'Workspace path';
+  String get buildLocalOpenWorkspace => isChinese ? '打开工作区' : 'Open workspace';
+  String get buildLocalOpenArtifacts => isChinese ? '打开产物目录' : 'Open artifacts';
+  String get buildLocalOpenLogs => isChinese ? '打开日志目录' : 'Open logs';
+  String get buildLocalFormTitle =>
+      isChinese ? '本地构建参数' : 'Local build parameters';
+  String get buildLocalFormSubtitle => isChinese
+      ? '这里沿用远程构建的大部分参数，但源码线与 patch 月份由上面的本地工作区卡片负责。'
+      : 'This reuses most remote build parameters, while the source line and patch month are managed by the local workspace card above.';
+  String get buildLocalActionTitle =>
+      isChinese ? '本地编译动作' : 'Local build actions';
+  String get buildLocalActionSubtitle => isChinese
+      ? '在这里选择 profile、backend 覆盖和构建动作，桌面端会把这些编排成统一的本地任务。'
+      : 'Choose the profile, backend override, and build actions here. The desktop orchestrates them as unified local tasks.';
+  String get buildLocalCleanOut =>
+      isChinese ? '编译前清空输出' : 'Clean outputs before build';
+  String get buildLocalCleanOutSubtitle => isChinese
+      ? '先清理 out / bazel 产物，再开始本地构建。'
+      : 'Clean out and bazel artifacts before starting the local build.';
+  String get buildLocalReseed => isChinese ? '按模板重播源码' : 'Reseed from template';
+  String get buildLocalReseedSubtitle => isChinese
+      ? '把工作区重新同步回模板基线，再套用 ABK 构建流程。'
+      : 'Resync the workspace back to the template baseline before applying the ABK build flow.';
+  String get buildLocalNoPackage =>
+      isChinese ? '仅编译，不打包' : 'Compile only, skip packaging';
+  String get buildLocalNoPackageSubtitle => isChinese
+      ? '跳过 AnyKernel3 和 boot image 打包，只停在内核编译阶段。'
+      : 'Skip AnyKernel3 and boot image packaging, and stop at kernel compilation only.';
+  String get buildLocalLatestLogLabel => isChinese ? '最近日志' : 'Latest log';
+  String get buildLocalQueueTitle => isChinese ? '本地构建任务' : 'Local build tasks';
+  String get buildLocalQueueSubtitle => isChinese
+      ? '这里只展示本地源码初始化和本地重建任务，不混入 GitHub workflow。'
+      : 'This list shows only local source initialization and local rebuild tasks, without mixing in GitHub workflows.';
+  String get buildLocalTaskScope => isChinese ? '本地工作区' : 'Local workspace';
+  String get buildLocalInitQueued => isChinese
+      ? '本地源码初始化任务已加入队列。'
+      : 'The local source initialization task was queued.';
+  String get buildLocalRebuildQueued =>
+      isChinese ? '本地重建任务已加入队列。' : 'The local rebuild task was queued.';
+  String get buildLocalActivityTitle =>
+      isChinese ? '本地任务进行中' : 'Local task in progress';
+  String get buildLocalActivitySubtitle => isChinese
+      ? '任务提交后，这里会立刻显示当前步骤，并随着轮询自动刷新。'
+      : 'After a local task is submitted, this area updates immediately and refreshes with polling.';
+  String get buildLocalInitRunningAction =>
+      isChinese ? '正在初始化源码' : 'Initializing sources';
+  String get buildLocalBuildRunningAction =>
+      isChinese ? '正在执行本地编译' : 'Running local build';
+  String get buildLocalRefreshRunningAction =>
+      isChinese ? '正在刷新本地状态' : 'Refreshing local status';
+  String get buildLocalAuthorizationTitle =>
+      isChinese ? '请求本地提权' : 'Request local elevation';
+  String get buildLocalAuthorizationSubtitle => isChinese
+      ? '当前 backend 需要 sudo 才能访问容器引擎。输入本机密码后，这次任务会以提权方式执行。'
+      : 'The current backend needs sudo to access the container engine. Enter your local password to elevate this task.';
+  String get buildLocalAuthorizationPasswordLabel =>
+      isChinese ? '本机 sudo 密码' : 'Local sudo password';
+  String get buildLocalAuthorizationAction =>
+      isChinese ? '授权并继续' : 'Authorize and continue';
   String get buildTargetTitle => isChinese ? '构建目标' : 'Build target';
   String get buildKsuTitle => isChinese ? 'KernelSU' : 'KernelSU';
   String get buildVersionTitle => isChinese ? '版本信息' : 'Version info';
@@ -349,6 +475,7 @@ class AppStrings {
       ? '最新提交的构建任务会先显示在这里，状态来自桌面本地任务与 GitHub run。'
       : 'The latest submitted build tasks appear here first. Status comes from local tasks and GitHub runs.';
   String get buildTaskOpenLogs => isChinese ? '查看日志' : 'View logs';
+  String get buildTaskCancelAction => isChinese ? '取消任务' : 'Cancel task';
   String get buildTaskDetailsTitle => isChinese ? '任务日志' : 'Task logs';
   String get buildTaskOverviewTitle => isChinese ? '任务概览' : 'Task overview';
   String get buildTaskConsoleTitle => isChinese ? '控制台输出' : 'Console output';
@@ -606,12 +733,12 @@ class AppStrings {
       isChinese ? '不支持' : 'Unsupported';
   String get deviceSusfsTitle => isChinese ? 'SUSFS 控制' : 'SUSFS control';
   String get deviceSusfsSubtitle => isChinese
-      ? '先展示 SUSFS 运行状态，再用 JSON 草稿编辑配置并应用。'
-      : 'Show the SUSFS runtime state first, then let the user edit and apply the JSON config draft.';
+      ? '默认先走表单化配置，原始 JSON 只作为高级模式保留。'
+      : 'The default path is form-driven configuration. Raw JSON stays as an advanced mode.';
   String get deviceSusfsPageTitle => isChinese ? 'SUSFS' : 'SUSFS';
   String get deviceSusfsPageIntro => isChinese
-      ? 'SUSFS 单独落成一页，保留运行状态、诊断和 JSON 草稿编辑。'
-      : 'SUSFS lives on its own page with runtime status, diagnostics, and JSON-draft editing.';
+      ? 'SUSFS 单独落成一页，先给出状态和常用配置，再把规则与原始 JSON 往后收。'
+      : 'SUSFS has its own page. Status and common controls come first, while rules and raw JSON stay further down.';
   String get deviceSusfsOpenPage =>
       isChinese ? '打开 SUSFS 页面' : 'Open SUSFS page';
   String get deviceSusfsApply =>
@@ -621,6 +748,160 @@ class AppStrings {
       isChinese ? 'SUSFS 配置 JSON 无效' : 'The SUSFS config JSON is invalid';
   String get deviceSusfsDraftEmpty =>
       isChinese ? 'SUSFS 配置草稿为空' : 'The SUSFS config draft is empty';
+  String get deviceSusfsFormErrorTitle => isChinese ? '表单错误' : 'Form error';
+  String get deviceSusfsOverviewTitle =>
+      isChinese ? '运行状态' : 'Runtime overview';
+  String get deviceSusfsOverviewSubtitle => isChinese
+      ? '先确认当前内核、二进制和能力矩阵，再决定要不要改规则。'
+      : 'Check the kernel, bundled binary, and support matrix before changing rules.';
+  String get deviceSusfsStatusAvailable => isChinese ? '可用' : 'Available';
+  String get deviceSusfsStatusUnavailable => isChinese ? '不可用' : 'Unavailable';
+  String deviceSusfsFeatureFlagCount(int count) =>
+      isChinese ? '$count 个特性标志' : '$count feature flags';
+  String get deviceSusfsKernelVersionLabel =>
+      isChinese ? '内核版本' : 'Kernel version';
+  String get deviceSusfsBinaryLabel => isChinese ? '打包二进制' : 'Bundled binary';
+  String get deviceSusfsConfigPathLabel => isChinese ? '配置路径' : 'Config path';
+  String get deviceSusfsDiagnosticsTitle => isChinese ? '诊断信息' : 'Diagnostics';
+  String get deviceSusfsActionTitle =>
+      isChinese ? '应用配置' : 'Apply configuration';
+  String get deviceSusfsActionSubtitle => isChinese
+      ? '常用路径应该是改表单、应用配置、观察任务队列，而不是直接改 JSON。'
+      : 'The common path should be editing the form, applying the config, and watching the task queue instead of editing JSON directly.';
+  String get deviceSusfsDraftEdited => isChinese ? '表单已编辑' : 'Form edited';
+  String get deviceSusfsDraftClean => isChinese ? '与设备一致' : 'Matches device';
+  String get deviceSusfsReadyToApply => isChinese ? '可直接应用' : 'Ready to apply';
+  String get deviceSusfsActionHint => isChinese
+      ? '先完成表单，再提交到设备。原始 JSON 放在页面下半部分。'
+      : 'Finish the form first, then submit it to the device. Raw JSON is lower on the page.';
+  String get deviceSusfsApplyForm => isChinese ? '应用表单配置' : 'Apply form config';
+  String get deviceSusfsResetToDevice =>
+      isChinese ? '恢复为设备当前配置' : 'Reset to device config';
+  String get deviceSusfsSyncJsonFromForm =>
+      isChinese ? '用表单生成 JSON 草稿' : 'Generate JSON draft from form';
+  String get deviceSusfsLoadFormFromJson =>
+      isChinese ? '从 JSON 载入表单' : 'Load form from JSON';
+  String get deviceSusfsApplyRawJson =>
+      isChinese ? '按原始 JSON 应用' : 'Apply raw JSON';
+  String get deviceSusfsBasicTitle =>
+      isChinese ? '基础配置' : 'Basic configuration';
+  String get deviceSusfsBasicSubtitle => isChinese
+      ? '把开关、挂载隐藏策略和 uname 伪装放在一层。'
+      : 'Keep the primary toggles, mount hiding policy, and uname spoofing in one place.';
+  String get deviceSusfsAutoReplayTitle => isChinese ? '自动回放' : 'Auto replay';
+  String get deviceSusfsAutoReplaySubtitle => isChinese
+      ? '开机后自动重放 SUSFS 规则。'
+      : 'Replay SUSFS rules automatically after boot.';
+  String get deviceSusfsLogTitle => isChinese ? '启用日志' : 'Enable logging';
+  String get deviceSusfsLogSubtitle => isChinese
+      ? '让 SUSFS 输出运行日志，便于排障。'
+      : 'Let SUSFS emit runtime logs for diagnostics.';
+  String get deviceSusfsAvcSpoofTitle =>
+      isChinese ? '伪装 AVC 日志' : 'Spoof AVC logs';
+  String get deviceSusfsAvcSpoofSubtitle => isChinese
+      ? '隐藏与内核修改相关的 AVC 线索。'
+      : 'Hide AVC hints related to kernel changes.';
+  String get deviceSusfsHideMountModeTitle =>
+      isChinese ? '挂载隐藏模式' : 'Mount hiding mode';
+  String get deviceSusfsSpoofUnameStageTitle =>
+      isChinese ? 'uname 伪装时机' : 'uname spoof stage';
+  String get deviceSusfsOptionOff => isChinese ? '关闭' : 'Off';
+  String get deviceSusfsOptionAllProcesses =>
+      isChinese ? '所有进程' : 'All processes';
+  String get deviceSusfsOptionNonSuProcesses =>
+      isChinese ? '仅非 SU 进程' : 'Non-SU processes';
+  String get deviceSusfsOptionPostFsData =>
+      isChinese ? 'post-fs-data' : 'post-fs-data';
+  String get deviceSusfsOptionBootCompleted =>
+      isChinese ? 'boot-completed' : 'boot-completed';
+  String get deviceSusfsUnameValueLabel =>
+      isChinese ? 'uname 伪装值' : 'uname value';
+  String get deviceSusfsBuildTimeValueLabel =>
+      isChinese ? '构建时间伪装值' : 'Build time value';
+  String get deviceSusfsSdcardRootLabel =>
+      isChinese ? 'sdcard 根路径' : 'sdcard root path';
+  String get deviceSusfsAndroidDataRootLabel =>
+      isChinese ? 'Android/data 根路径' : 'Android/data root path';
+  String get deviceSusfsPresetTitle =>
+      isChinese ? '兼容预设' : 'Compatibility presets';
+  String get deviceSusfsPresetSubtitle => isChinese
+      ? '这些开关是常见 ROM / App 场景的快捷预设。'
+      : 'These toggles are shortcuts for common ROM and app compatibility cases.';
+  String get deviceSusfsHideCustomRomLevelLabel =>
+      isChinese ? '隐藏定制 ROM 等级' : 'Hide custom ROM level';
+  String get deviceSusfsEmulateVoldLabel =>
+      isChinese ? '模拟 vold app data' : 'Emulate vold app data';
+  String deviceSusfsEmulateVoldOption(int value) {
+    return switch (value) {
+      1 => 'sus_path',
+      2 => 'sus_path_loop',
+      _ => deviceSusfsOptionOff,
+    };
+  }
+
+  String get deviceSusfsHideVendorSepolicyTitle =>
+      isChinese ? '隐藏 vendor sepolicy' : 'Hide vendor sepolicy';
+  String get deviceSusfsHideCompatMatrixTitle =>
+      isChinese ? '隐藏兼容矩阵' : 'Hide compatibility matrix';
+  String get deviceSusfsHideGappsTitle =>
+      isChinese ? '隐藏 GApps 痕迹' : 'Hide GApps traces';
+  String get deviceSusfsHideRevancedTitle =>
+      isChinese ? '隐藏 ReVanced 痕迹' : 'Hide ReVanced traces';
+  String get deviceSusfsSpoofCmdlineTitle =>
+      isChinese ? '伪装 cmdline / bootconfig' : 'Spoof cmdline / bootconfig';
+  String get deviceSusfsHideLoopsTitle =>
+      isChinese ? '隐藏 loop 设备' : 'Hide loop devices';
+  String get deviceSusfsForceHideLsposedTitle =>
+      isChinese ? '强制隐藏 LSPosed' : 'Force hide LSPosed';
+  String get deviceSusfsAutoTryUmountTitle =>
+      isChinese ? '自动尝试卸载' : 'Auto try umount';
+  String get deviceSusfsSkipLegitMountsTitle =>
+      isChinese ? '跳过合法挂载点' : 'Skip legit mounts';
+  String get deviceSusfsUmountForZygoteTitle =>
+      isChinese ? 'zygote 隔离服务执行卸载' : 'Umount for zygote iso service';
+  String get deviceSusfsRulesTitle => isChinese ? '规则配置' : 'Rule configuration';
+  String get deviceSusfsRulesSubtitle => isChinese
+      ? '规则项按行编辑，比直接改 JSON 更容易定位问题。'
+      : 'Edit rule entries line by line instead of patching raw JSON directly.';
+  String deviceSusfsRuleCount(int count) =>
+      isChinese ? '$count 条 path 规则' : '$count path rules';
+  String deviceSusfsMountCount(int count) =>
+      isChinese ? '$count 条 mount 规则' : '$count mount rules';
+  String deviceSusfsMapCount(int count) =>
+      isChinese ? '$count 条 map 规则' : '$count map rules';
+  String get deviceSusfsPathRulesLabel =>
+      isChinese ? 'sus_path 规则' : 'sus_path rules';
+  String get deviceSusfsLoopPathRulesLabel =>
+      isChinese ? 'sus_path_loop 规则' : 'sus_path_loop rules';
+  String get deviceSusfsPathRulesHint => isChinese
+      ? '每行一个路径，可在后面追加重试次数，例如 `/system/bin 3`。'
+      : 'One path per line. Optionally append a retry count, for example `/system/bin 3`.';
+  String get deviceSusfsMapsLabel =>
+      isChinese ? 'sus_maps 规则' : 'sus_maps rules';
+  String get deviceSusfsMountsLabel =>
+      isChinese ? 'sus_mount 规则' : 'sus_mount rules';
+  String get deviceSusfsTryUmountLabel =>
+      isChinese ? 'try_umount 规则' : 'try_umount rules';
+  String get deviceSusfsLegitMountsLabel =>
+      isChinese ? '合法挂载点白名单' : 'Legit mounts allowlist';
+  String get deviceSusfsAdvancedTitle => isChinese ? '高级规则' : 'Advanced rules';
+  String get deviceSusfsAdvancedSubtitle => isChinese
+      ? 'open redirect 和 kstat 保留在高级层，避免默认路径过重。'
+      : 'Open redirect and kstat stay in the advanced layer so the default path stays light.';
+  String get deviceSusfsOpenRedirectLabel =>
+      isChinese ? 'open redirect 规则' : 'Open redirect rules';
+  String get deviceSusfsOpenRedirectHint => isChinese
+      ? '每行 `original redirected stage [uid_scheme]`。'
+      : 'Each line is `original redirected stage [uid_scheme]`.';
+  String get deviceSusfsKstatLabel =>
+      isChinese ? '静态 kstat JSON' : 'Static kstat JSON';
+  String get deviceSusfsRawJsonTitle => isChinese ? '原始 JSON' : 'Raw JSON';
+  String get deviceSusfsRawJsonSubtitle => isChinese
+      ? '这里只保留高级模式。通常先改表单，再决定要不要落到原始 JSON。'
+      : 'This is the advanced mode. Most of the time you should edit the form first and only drop to raw JSON when needed.';
+  String get deviceSusfsRawJsonHint => isChinese
+      ? '这里是完整草稿；如果手改过 JSON，可以再把它载回上面的表单。'
+      : 'This is the full draft. If you edit the JSON manually, you can load it back into the form above.';
   String get deviceTaskQueued =>
       isChinese ? '任务已加入队列。' : 'The task was queued.';
   String get deviceTaskTitle => isChinese ? '设备任务' : 'Device tasks';
@@ -652,6 +933,17 @@ class AppStrings {
   String get settingsSaveDirectory => isChinese ? '保存目录' : 'Save directory';
   String get settingsDirectorySaved =>
       isChinese ? '默认下载目录已保存。' : 'The default download directory was saved.';
+  String get settingsProxyTitle => isChinese ? '代理' : 'Proxy';
+  String get settingsProxySubtitle => isChinese
+      ? '为 GitHub、上游源码同步和其他桌面侧网络请求配置代理。'
+      : 'Configure a proxy for GitHub, upstream source sync, and other desktop-side network requests.';
+  String get settingsHttpProxy => isChinese ? 'HTTP_PROXY' : 'HTTP_PROXY';
+  String get settingsHttpsProxy => isChinese ? 'HTTPS_PROXY' : 'HTTPS_PROXY';
+  String get settingsAllProxy => isChinese ? 'ALL_PROXY' : 'ALL_PROXY';
+  String get settingsNoProxy => isChinese ? 'NO_PROXY' : 'NO_PROXY';
+  String get settingsSaveProxy => isChinese ? '保存代理' : 'Save proxy';
+  String get settingsProxySaved =>
+      isChinese ? '代理设置已保存。' : 'The proxy settings were saved.';
   String get settingsDiagnosticsTitle => isChinese ? '诊断' : 'Diagnostics';
   String get settingsDiagnosticsSubtitle => isChinese
       ? '导出桌面壳与设备代理的诊断包，排障时直接从这里拿。'
@@ -709,7 +1001,44 @@ class AppStrings {
       'artifact.download' => isChinese ? '产物下载' : 'Artifact download',
       'diagnostics.export' => isChinese ? '诊断导出' : 'Diagnostics export',
       'workflow.download' => isChinese ? '工作流下载' : 'Workflow download',
+      'local.build.init' => isChinese ? 'AOSP 源码初始化' : 'AOSP source init',
+      'local.build.source.sync' => isChinese ? '源码同步' : 'Source sync',
+      'local.build.rebuild' => isChinese ? '本地内核编译' : 'Local kernel build',
+      'local.build.profile.build' => isChinese ? 'Profile 构建' : 'Profile build',
       _ => kind,
+    };
+  }
+
+  String buildTaskMessageLabel(String message) {
+    final normalized = message.trim().toLowerCase();
+    return switch (normalized) {
+      'syncing local source instance' =>
+        isChinese ? '正在同步本地源码实例' : 'Syncing local source instance',
+      'initializing local aosp workspace' =>
+        isChinese ? '正在初始化本地 AOSP 工作区' : 'Initializing local AOSP workspace',
+      'local build workspace initialized' =>
+        isChinese ? '本地工作区初始化完成' : 'Local workspace initialized',
+      'local build init failed' =>
+        isChinese ? '本地初始化失败' : 'Local initialization failed',
+      'local kernel rebuild running' =>
+        isChinese ? '正在执行本地内核编译' : 'Running local kernel build',
+      'local kernel rebuild finished' =>
+        isChinese ? '本地内核编译完成' : 'Local kernel build finished',
+      'local kernel rebuild failed' =>
+        isChinese ? '本地内核编译失败' : 'Local kernel build failed',
+      'running local build profile' =>
+        isChinese ? '正在执行本地 profile 构建' : 'Running local build profile',
+      'local build profile finished' =>
+        isChinese ? '本地 profile 构建完成' : 'Local build profile finished',
+      'local build profile failed' =>
+        isChinese ? '本地 profile 构建失败' : 'Local build profile failed',
+      'cancellation requested' =>
+        isChinese ? '已请求取消' : 'Cancellation requested',
+      'local source sync cancelled' =>
+        isChinese ? '本地源码同步已取消' : 'Local source sync cancelled',
+      'local build task cancelled' =>
+        isChinese ? '本地构建任务已取消' : 'Local build task cancelled',
+      _ => message,
     };
   }
 
@@ -719,6 +1048,7 @@ class AppStrings {
       'running' => isChinese ? '进行中' : 'Running',
       'succeeded' => isChinese ? '已完成' : 'Succeeded',
       'failed' => isChinese ? '失败' : 'Failed',
+      'cancelled' => isChinese ? '已取消' : 'Cancelled',
       _ => state,
     };
   }

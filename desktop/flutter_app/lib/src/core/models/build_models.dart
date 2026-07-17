@@ -126,6 +126,560 @@ class RuntimeBuildSummary {
   }
 }
 
+class LocalBuildTemplate {
+  const LocalBuildTemplate({
+    required this.name,
+    required this.androidVersion,
+    required this.kernelVersion,
+    required this.templatePath,
+  });
+
+  final String name;
+  final String androidVersion;
+  final String kernelVersion;
+  final String templatePath;
+
+  String get displayLabel => '$androidVersion / $kernelVersion';
+
+  factory LocalBuildTemplate.fromJson(Map<String, dynamic> json) {
+    return LocalBuildTemplate(
+      name: _readString(json['name']),
+      androidVersion: _readString(json['androidVersion']),
+      kernelVersion: _readString(json['kernelVersion']),
+      templatePath: _readString(json['templatePath']),
+    );
+  }
+}
+
+class LocalBuildStatus {
+  const LocalBuildStatus({
+    required this.available,
+    required this.scriptRoot,
+    required this.initScriptPath,
+    required this.rebuildScriptPath,
+    required this.envFilePath,
+    required this.stateDir,
+    required this.sourcesDir,
+    required this.workspaceDir,
+    required this.artifactsDir,
+    required this.logsDir,
+    required this.cacheDir,
+    required this.kernelRoot,
+    required this.hasEnvFile,
+    required this.workspaceReady,
+    required this.templateRoot,
+    required this.templateName,
+    required this.templateAndroidVersion,
+    required this.templateKernelVersion,
+    required this.subLevel,
+    required this.osPatchLevel,
+    required this.templateBranch,
+    required this.templateCommonBranch,
+    required this.branchMonth,
+    required this.customExternalModulesRoot,
+    required this.customExternalModulesManifest,
+    required this.latestLogPath,
+    required this.supportedTemplates,
+  });
+
+  final bool available;
+  final String scriptRoot;
+  final String initScriptPath;
+  final String rebuildScriptPath;
+  final String envFilePath;
+  final String stateDir;
+  final String sourcesDir;
+  final String workspaceDir;
+  final String artifactsDir;
+  final String logsDir;
+  final String cacheDir;
+  final String kernelRoot;
+  final bool hasEnvFile;
+  final bool workspaceReady;
+  final String? templateRoot;
+  final String? templateName;
+  final String? templateAndroidVersion;
+  final String? templateKernelVersion;
+  final String? subLevel;
+  final String? osPatchLevel;
+  final String? templateBranch;
+  final String? templateCommonBranch;
+  final String? branchMonth;
+  final String? customExternalModulesRoot;
+  final String? customExternalModulesManifest;
+  final String? latestLogPath;
+  final List<LocalBuildTemplate> supportedTemplates;
+
+  bool get isInitialized => hasEnvFile && workspaceReady;
+
+  bool supportsSelection(String androidVersion, String kernelVersion) {
+    return supportedTemplates.any(
+      (template) =>
+          template.androidVersion == androidVersion &&
+          template.kernelVersion == kernelVersion,
+    );
+  }
+
+  factory LocalBuildStatus.fromJson(Map<String, dynamic> json) {
+    return LocalBuildStatus(
+      available: json['available'] == true,
+      scriptRoot: _readString(json['scriptRoot']),
+      initScriptPath: _readString(json['initScriptPath']),
+      rebuildScriptPath: _readString(json['rebuildScriptPath']),
+      envFilePath: _readString(json['envFilePath']),
+      stateDir: _readString(json['stateDir']),
+      sourcesDir: _readString(json['sourcesDir']),
+      workspaceDir: _readString(json['workspaceDir']),
+      artifactsDir: _readString(json['artifactsDir']),
+      logsDir: _readString(json['logsDir']),
+      cacheDir: _readString(json['cacheDir']),
+      kernelRoot: _readString(json['kernelRoot']),
+      hasEnvFile: json['hasEnvFile'] == true,
+      workspaceReady: json['workspaceReady'] == true,
+      templateRoot: _nullableString(json['templateRoot']),
+      templateName: _nullableString(json['templateName']),
+      templateAndroidVersion: _nullableString(json['templateAndroidVersion']),
+      templateKernelVersion: _nullableString(json['templateKernelVersion']),
+      subLevel: _nullableString(json['subLevel']),
+      osPatchLevel: _nullableString(json['osPatchLevel']),
+      templateBranch: _nullableString(json['templateBranch']),
+      templateCommonBranch: _nullableString(json['templateCommonBranch']),
+      branchMonth: _nullableString(json['branchMonth']),
+      customExternalModulesRoot: _nullableString(
+        json['customExternalModulesRoot'],
+      ),
+      customExternalModulesManifest: _nullableString(
+        json['customExternalModulesManifest'],
+      ),
+      latestLogPath: _nullableString(json['latestLogPath']),
+      supportedTemplates: _readMapList(
+        json['supportedTemplates'],
+      ).map(LocalBuildTemplate.fromJson).toList(growable: false),
+    );
+  }
+}
+
+enum LocalBuildBackendKind { docker, podman, wsl, script }
+
+class LocalBuildBackendCapabilities {
+  const LocalBuildBackendCapabilities({
+    required this.family,
+    required this.hostOwnedPaths,
+    required this.supportsSourceSync,
+    required this.supportsBuildExecution,
+    required this.supportsProfileProjection,
+    required this.notes,
+  });
+
+  final String family;
+  final bool hostOwnedPaths;
+  final bool supportsSourceSync;
+  final bool supportsBuildExecution;
+  final bool supportsProfileProjection;
+  final List<String> notes;
+
+  factory LocalBuildBackendCapabilities.fromJson(Map<String, dynamic> json) {
+    return LocalBuildBackendCapabilities(
+      family: _readString(json['family']),
+      hostOwnedPaths: json['hostOwnedPaths'] == true,
+      supportsSourceSync: json['supportsSourceSync'] == true,
+      supportsBuildExecution: json['supportsBuildExecution'] == true,
+      supportsProfileProjection: json['supportsProfileProjection'] == true,
+      notes: _readStringList(json['notes']),
+    );
+  }
+}
+
+class LocalBuildBackendDescriptor {
+  const LocalBuildBackendDescriptor({
+    required this.kind,
+    required this.label,
+    required this.available,
+    required this.isGlobalDefault,
+    required this.authorizationRequired,
+    required this.authorizationKind,
+    required this.authorizationMessage,
+    required this.capabilities,
+    required this.detail,
+  });
+
+  final LocalBuildBackendKind kind;
+  final String label;
+  final bool available;
+  final bool isGlobalDefault;
+  final bool authorizationRequired;
+  final String? authorizationKind;
+  final String? authorizationMessage;
+  final LocalBuildBackendCapabilities capabilities;
+  final String? detail;
+
+  factory LocalBuildBackendDescriptor.fromJson(Map<String, dynamic> json) {
+    return LocalBuildBackendDescriptor(
+      kind: _readLocalBuildBackendKind(json['kind']),
+      label: _readString(json['label']),
+      available: json['available'] == true,
+      isGlobalDefault: json['isGlobalDefault'] == true,
+      authorizationRequired: json['authorizationRequired'] == true,
+      authorizationKind: _nullableString(json['authorizationKind']),
+      authorizationMessage: _nullableString(json['authorizationMessage']),
+      capabilities: LocalBuildBackendCapabilities.fromJson(
+        _readMap(json['capabilities']),
+      ),
+      detail: _nullableString(json['detail']),
+    );
+  }
+}
+
+class SupportedKernelLine {
+  const SupportedKernelLine({
+    required this.id,
+    required this.androidVersion,
+    required this.kernelVersion,
+    required this.displayName,
+    required this.branchMonthFormat,
+    required this.scriptTemplatePath,
+    required this.scriptTemplateAvailable,
+  });
+
+  final String id;
+  final String androidVersion;
+  final String kernelVersion;
+  final String displayName;
+  final String branchMonthFormat;
+  final String scriptTemplatePath;
+  final bool scriptTemplateAvailable;
+
+  factory SupportedKernelLine.fromJson(Map<String, dynamic> json) {
+    return SupportedKernelLine(
+      id: _readString(json['id']),
+      androidVersion: _readString(json['androidVersion']),
+      kernelVersion: _readString(json['kernelVersion']),
+      displayName: _readString(json['displayName']),
+      branchMonthFormat: _readString(
+        json['branchMonthFormat'],
+        fallback: 'YYYY-MM',
+      ),
+      scriptTemplatePath: _readString(json['scriptTemplatePath']),
+      scriptTemplateAvailable: json['scriptTemplateAvailable'] == true,
+    );
+  }
+}
+
+class LocalBuildSettings {
+  const LocalBuildSettings({
+    required this.globalDefaultBackendKind,
+    required this.activeSourceInstanceId,
+    required this.scriptRootDir,
+    required this.workspaceDir,
+    required this.profileStoreDir,
+  });
+
+  final LocalBuildBackendKind globalDefaultBackendKind;
+  final String? activeSourceInstanceId;
+  final String? scriptRootDir;
+  final String? workspaceDir;
+  final String? profileStoreDir;
+
+  factory LocalBuildSettings.fromJson(Map<String, dynamic> json) {
+    return LocalBuildSettings(
+      globalDefaultBackendKind: _readLocalBuildBackendKind(
+        json['globalDefaultBackendKind'],
+      ),
+      activeSourceInstanceId: _nullableString(json['activeSourceInstanceId']),
+      scriptRootDir: _nullableString(json['scriptRootDir']),
+      workspaceDir: _nullableString(json['workspaceDir']),
+      profileStoreDir: _nullableString(json['profileStoreDir']),
+    );
+  }
+}
+
+class LocalBuildMaterializedState {
+  const LocalBuildMaterializedState({
+    required this.scriptRoot,
+    required this.envFilePath,
+    required this.stateDir,
+    required this.sourcesDir,
+    required this.workspaceDir,
+    required this.artifactsDir,
+    required this.logsDir,
+    required this.cacheDir,
+    required this.kernelRoot,
+    required this.templateName,
+    required this.templateRoot,
+    required this.templateBranch,
+    required this.templateCommonBranch,
+    required this.subLevel,
+    required this.osPatchLevel,
+    required this.latestLogPath,
+  });
+
+  final String? scriptRoot;
+  final String? envFilePath;
+  final String? stateDir;
+  final String? sourcesDir;
+  final String? workspaceDir;
+  final String? artifactsDir;
+  final String? logsDir;
+  final String? cacheDir;
+  final String? kernelRoot;
+  final String? templateName;
+  final String? templateRoot;
+  final String? templateBranch;
+  final String? templateCommonBranch;
+  final String? subLevel;
+  final String? osPatchLevel;
+  final String? latestLogPath;
+
+  factory LocalBuildMaterializedState.fromJson(Map<String, dynamic> json) {
+    return LocalBuildMaterializedState(
+      scriptRoot: _nullableString(json['scriptRoot']),
+      envFilePath: _nullableString(json['envFilePath']),
+      stateDir: _nullableString(json['stateDir']),
+      sourcesDir: _nullableString(json['sourcesDir']),
+      workspaceDir: _nullableString(json['workspaceDir']),
+      artifactsDir: _nullableString(json['artifactsDir']),
+      logsDir: _nullableString(json['logsDir']),
+      cacheDir: _nullableString(json['cacheDir']),
+      kernelRoot: _nullableString(json['kernelRoot']),
+      templateName: _nullableString(json['templateName']),
+      templateRoot: _nullableString(json['templateRoot']),
+      templateBranch: _nullableString(json['templateBranch']),
+      templateCommonBranch: _nullableString(json['templateCommonBranch']),
+      subLevel: _nullableString(json['subLevel']),
+      osPatchLevel: _nullableString(json['osPatchLevel']),
+      latestLogPath: _nullableString(json['latestLogPath']),
+    );
+  }
+}
+
+class LocalBuildSourceInstance {
+  const LocalBuildSourceInstance({
+    required this.id,
+    required this.displayName,
+    required this.kernelLineId,
+    required this.androidVersion,
+    required this.kernelVersion,
+    required this.branchMonth,
+    required this.cacheRoot,
+    required this.workingTreeRoot,
+    required this.state,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+    required this.lastSyncedAtMs,
+    required this.activeBackendKind,
+    required this.lastTaskId,
+    required this.lastError,
+    required this.materialized,
+  });
+
+  final String id;
+  final String displayName;
+  final String kernelLineId;
+  final String androidVersion;
+  final String kernelVersion;
+  final String branchMonth;
+  final String cacheRoot;
+  final String workingTreeRoot;
+  final String state;
+  final int createdAtMs;
+  final int updatedAtMs;
+  final int? lastSyncedAtMs;
+  final LocalBuildBackendKind? activeBackendKind;
+  final String? lastTaskId;
+  final String? lastError;
+  final LocalBuildMaterializedState? materialized;
+
+  bool get isReady => state == 'ready';
+
+  factory LocalBuildSourceInstance.fromJson(Map<String, dynamic> json) {
+    return LocalBuildSourceInstance(
+      id: _readString(json['id']),
+      displayName: _readString(json['displayName']),
+      kernelLineId: _readString(json['kernelLineId']),
+      androidVersion: _readString(json['androidVersion']),
+      kernelVersion: _readString(json['kernelVersion']),
+      branchMonth: _readString(json['branchMonth']),
+      cacheRoot: _readString(json['cacheRoot']),
+      workingTreeRoot: _readString(json['workingTreeRoot']),
+      state: _readString(json['state']),
+      createdAtMs: _readInt(json['createdAtMs']),
+      updatedAtMs: _readInt(json['updatedAtMs']),
+      lastSyncedAtMs: _nullableInt(json['lastSyncedAtMs']),
+      activeBackendKind: _nullableLocalBuildBackendKind(
+        json['activeBackendKind'],
+      ),
+      lastTaskId: _nullableString(json['lastTaskId']),
+      lastError: _nullableString(json['lastError']),
+      materialized: json['materialized'] is Map<String, dynamic>
+          ? LocalBuildMaterializedState.fromJson(
+              Map<String, dynamic>.from(json['materialized'] as Map),
+            )
+          : json['materialized'] is Map
+          ? LocalBuildMaterializedState.fromJson(
+              Map<String, dynamic>.from(json['materialized'] as Map),
+            )
+          : null,
+    );
+  }
+}
+
+class LocalBuildSourceInstancesResponse {
+  const LocalBuildSourceInstancesResponse({
+    required this.settings,
+    required this.sourceInstances,
+  });
+
+  final LocalBuildSettings settings;
+  final List<LocalBuildSourceInstance> sourceInstances;
+
+  factory LocalBuildSourceInstancesResponse.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    return LocalBuildSourceInstancesResponse(
+      settings: LocalBuildSettings.fromJson(_readMap(json['settings'])),
+      sourceInstances: _readMapList(
+        json['sourceInstances'],
+      ).map(LocalBuildSourceInstance.fromJson).toList(growable: false),
+    );
+  }
+}
+
+class LocalBuildProfile {
+  const LocalBuildProfile({
+    required this.id,
+    required this.name,
+    required this.sourceInstanceId,
+    required this.backendKind,
+    required this.build,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+    required this.lastBuiltAtMs,
+    required this.lastTaskId,
+    required this.lastError,
+  });
+
+  final String id;
+  final String name;
+  final String sourceInstanceId;
+  final LocalBuildBackendKind? backendKind;
+  final Map<String, dynamic> build;
+  final int createdAtMs;
+  final int updatedAtMs;
+  final int? lastBuiltAtMs;
+  final String? lastTaskId;
+  final String? lastError;
+
+  factory LocalBuildProfile.fromJson(Map<String, dynamic> json) {
+    return LocalBuildProfile(
+      id: _readString(json['id']),
+      name: _readString(json['name']),
+      sourceInstanceId: _readString(json['sourceInstanceId']),
+      backendKind: _nullableLocalBuildBackendKind(json['backendKind']),
+      build: _readMap(json['build']),
+      createdAtMs: _readInt(json['createdAtMs']),
+      updatedAtMs: _readInt(json['updatedAtMs']),
+      lastBuiltAtMs: _nullableInt(json['lastBuiltAtMs']),
+      lastTaskId: _nullableString(json['lastTaskId']),
+      lastError: _nullableString(json['lastError']),
+    );
+  }
+}
+
+class LocalBuildProfilesResponse {
+  const LocalBuildProfilesResponse({
+    required this.settings,
+    required this.profiles,
+  });
+
+  final LocalBuildSettings settings;
+  final List<LocalBuildProfile> profiles;
+
+  factory LocalBuildProfilesResponse.fromJson(Map<String, dynamic> json) {
+    return LocalBuildProfilesResponse(
+      settings: LocalBuildSettings.fromJson(_readMap(json['settings'])),
+      profiles: _readMapList(
+        json['profiles'],
+      ).map(LocalBuildProfile.fromJson).toList(growable: false),
+    );
+  }
+}
+
+class LocalBuildArtifactEntry {
+  const LocalBuildArtifactEntry({
+    required this.id,
+    required this.taskId,
+    required this.profileId,
+    required this.sourceInstanceId,
+    required this.backendKind,
+    required this.path,
+    required this.fileName,
+    required this.exists,
+    required this.createdAtMs,
+  });
+
+  final String id;
+  final String taskId;
+  final String? profileId;
+  final String sourceInstanceId;
+  final LocalBuildBackendKind backendKind;
+  final String path;
+  final String fileName;
+  final bool exists;
+  final int createdAtMs;
+
+  factory LocalBuildArtifactEntry.fromJson(Map<String, dynamic> json) {
+    return LocalBuildArtifactEntry(
+      id: _readString(json['id']),
+      taskId: _readString(json['taskId']),
+      profileId: _nullableString(json['profileId']),
+      sourceInstanceId: _readString(json['sourceInstanceId']),
+      backendKind: _readLocalBuildBackendKind(json['backendKind']),
+      path: _readString(json['path']),
+      fileName: _readString(json['fileName']),
+      exists: json['exists'] == true,
+      createdAtMs: _readInt(json['createdAtMs']),
+    );
+  }
+}
+
+class LocalBuildLogEntry {
+  const LocalBuildLogEntry({
+    required this.id,
+    required this.taskId,
+    required this.profileId,
+    required this.sourceInstanceId,
+    required this.backendKind,
+    required this.path,
+    required this.fileName,
+    required this.exists,
+    required this.createdAtMs,
+  });
+
+  final String id;
+  final String taskId;
+  final String? profileId;
+  final String sourceInstanceId;
+  final LocalBuildBackendKind backendKind;
+  final String path;
+  final String fileName;
+  final bool exists;
+  final int createdAtMs;
+
+  factory LocalBuildLogEntry.fromJson(Map<String, dynamic> json) {
+    return LocalBuildLogEntry(
+      id: _readString(json['id']),
+      taskId: _readString(json['taskId']),
+      profileId: _nullableString(json['profileId']),
+      sourceInstanceId: _readString(json['sourceInstanceId']),
+      backendKind: _readLocalBuildBackendKind(json['backendKind']),
+      path: _readString(json['path']),
+      fileName: _readString(json['fileName']),
+      exists: json['exists'] == true,
+      createdAtMs: _readInt(json['createdAtMs']),
+    );
+  }
+}
+
 class BuildRunSummary {
   const BuildRunSummary({
     required this.id,
@@ -282,8 +836,8 @@ extension BuildArtifactSummaryClassify on BuildArtifactSummary {
       BuildArtifactType.kernelPackage ||
       BuildArtifactType.kernelImage ||
       BuildArtifactType.anyKernel3 => BuildArtifactCategory.kernel,
-      BuildArtifactType.abkManager || BuildArtifactType.ksuManager =>
-        BuildArtifactCategory.manager,
+      BuildArtifactType.abkManager ||
+      BuildArtifactType.ksuManager => BuildArtifactCategory.manager,
       BuildArtifactType.susfsModule => BuildArtifactCategory.module,
       BuildArtifactType.other => null,
     };
@@ -318,7 +872,11 @@ class DesktopTaskSnapshot {
   final String? downloadName;
   final String? downloadContentType;
 
-  bool get isTerminal => state == 'succeeded' || state == 'failed';
+  bool get isTerminal =>
+      state == 'succeeded' || state == 'failed' || state == 'cancelled';
+  bool get isRunning => state == 'pending' || state == 'running';
+  bool get isCancelable =>
+      kind.startsWith('local.build') && isRunning;
   String? get primaryDownloadPath {
     final downloads = result['downloads'];
     if (downloads is List && downloads.isNotEmpty) {
@@ -453,6 +1011,14 @@ int _readInt(dynamic value, {int fallback = 0}) {
   return fallback;
 }
 
+int? _nullableInt(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  final parsed = _readInt(value, fallback: -1);
+  return parsed >= 0 ? parsed : null;
+}
+
 Map<String, dynamic> _readMap(dynamic value) {
   if (value is Map<String, dynamic>) {
     return value;
@@ -482,4 +1048,22 @@ List<String> _readStringList(dynamic value) {
       .map((item) => item.trim())
       .where((item) => item.isNotEmpty)
       .toList(growable: false);
+}
+
+LocalBuildBackendKind _readLocalBuildBackendKind(dynamic value) {
+  final raw = value is String ? value.trim().toLowerCase() : '';
+  return switch (raw) {
+    'docker' => LocalBuildBackendKind.docker,
+    'podman' => LocalBuildBackendKind.podman,
+    'wsl' => LocalBuildBackendKind.wsl,
+    'script' => LocalBuildBackendKind.script,
+    _ => LocalBuildBackendKind.script,
+  };
+}
+
+LocalBuildBackendKind? _nullableLocalBuildBackendKind(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  return _readLocalBuildBackendKind(value);
 }

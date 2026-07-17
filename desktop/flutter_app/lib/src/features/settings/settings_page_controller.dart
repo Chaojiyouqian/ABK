@@ -20,8 +20,13 @@ class SettingsPageState {
     required this.isRefreshing,
     required this.session,
     required this.downloadDirDraft,
+    required this.httpProxyDraft,
+    required this.httpsProxyDraft,
+    required this.allProxyDraft,
+    required this.noProxyDraft,
     required this.logoutBusy,
     required this.saveDownloadDirBusy,
+    required this.saveProxyBusy,
     required this.exportDiagnosticsBusy,
     required this.tasks,
     required this.taskOrder,
@@ -34,8 +39,13 @@ class SettingsPageState {
       isRefreshing: false,
       session: null,
       downloadDirDraft: '',
+      httpProxyDraft: '',
+      httpsProxyDraft: '',
+      allProxyDraft: '',
+      noProxyDraft: '',
       logoutBusy: false,
       saveDownloadDirBusy: false,
+      saveProxyBusy: false,
       exportDiagnosticsBusy: false,
       tasks: <DesktopTaskSnapshot>[],
       taskOrder: <String>[],
@@ -47,8 +57,13 @@ class SettingsPageState {
   final bool isRefreshing;
   final GitHubSessionStatus? session;
   final String downloadDirDraft;
+  final String httpProxyDraft;
+  final String httpsProxyDraft;
+  final String allProxyDraft;
+  final String noProxyDraft;
   final bool logoutBusy;
   final bool saveDownloadDirBusy;
+  final bool saveProxyBusy;
   final bool exportDiagnosticsBusy;
   final List<DesktopTaskSnapshot> tasks;
   final List<String> taskOrder;
@@ -76,8 +91,13 @@ class SettingsPageState {
     bool? isRefreshing,
     Object? session = _missing,
     String? downloadDirDraft,
+    String? httpProxyDraft,
+    String? httpsProxyDraft,
+    String? allProxyDraft,
+    String? noProxyDraft,
     bool? logoutBusy,
     bool? saveDownloadDirBusy,
+    bool? saveProxyBusy,
     bool? exportDiagnosticsBusy,
     List<DesktopTaskSnapshot>? tasks,
     List<String>? taskOrder,
@@ -90,8 +110,13 @@ class SettingsPageState {
           ? this.session
           : session as GitHubSessionStatus?,
       downloadDirDraft: downloadDirDraft ?? this.downloadDirDraft,
+      httpProxyDraft: httpProxyDraft ?? this.httpProxyDraft,
+      httpsProxyDraft: httpsProxyDraft ?? this.httpsProxyDraft,
+      allProxyDraft: allProxyDraft ?? this.allProxyDraft,
+      noProxyDraft: noProxyDraft ?? this.noProxyDraft,
       logoutBusy: logoutBusy ?? this.logoutBusy,
       saveDownloadDirBusy: saveDownloadDirBusy ?? this.saveDownloadDirBusy,
+      saveProxyBusy: saveProxyBusy ?? this.saveProxyBusy,
       exportDiagnosticsBusy: exportDiagnosticsBusy ?? this.exportDiagnosticsBusy,
       tasks: tasks ?? this.tasks,
       taskOrder: taskOrder ?? this.taskOrder,
@@ -117,6 +142,7 @@ class SettingsPageController extends StateNotifier<SettingsPageState> {
     state = state.copyWith(isRefreshing: true, lastError: null, infoMessage: null);
     try {
       final session = await api.getGitHubSession();
+      final proxy = await api.getProxySettings();
       if (!mounted) return;
       state = state.copyWith(
         isRefreshing: false,
@@ -124,6 +150,18 @@ class SettingsPageController extends StateNotifier<SettingsPageState> {
         downloadDirDraft: state.downloadDirDraft.isEmpty
             ? (session.downloadDir ?? '')
             : state.downloadDirDraft,
+        httpProxyDraft: state.httpProxyDraft.isEmpty
+            ? (proxy.httpProxy ?? '')
+            : state.httpProxyDraft,
+        httpsProxyDraft: state.httpsProxyDraft.isEmpty
+            ? (proxy.httpsProxy ?? '')
+            : state.httpsProxyDraft,
+        allProxyDraft: state.allProxyDraft.isEmpty
+            ? (proxy.allProxy ?? '')
+            : state.allProxyDraft,
+        noProxyDraft: state.noProxyDraft.isEmpty
+            ? (proxy.noProxy ?? '')
+            : state.noProxyDraft,
       );
     } on SidecarException catch (error) {
       if (!mounted) return;
@@ -133,6 +171,22 @@ class SettingsPageController extends StateNotifier<SettingsPageState> {
 
   void updateDownloadDirDraft(String value) {
     state = state.copyWith(downloadDirDraft: value);
+  }
+
+  void updateHttpProxyDraft(String value) {
+    state = state.copyWith(httpProxyDraft: value);
+  }
+
+  void updateHttpsProxyDraft(String value) {
+    state = state.copyWith(httpsProxyDraft: value);
+  }
+
+  void updateAllProxyDraft(String value) {
+    state = state.copyWith(allProxyDraft: value);
+  }
+
+  void updateNoProxyDraft(String value) {
+    state = state.copyWith(noProxyDraft: value);
   }
 
   Future<void> logout() async {
@@ -190,6 +244,43 @@ class SettingsPageController extends StateNotifier<SettingsPageState> {
         saveDownloadDirBusy: false,
         lastError: error.message,
       );
+    }
+  }
+
+  Future<void> saveProxySettings() async {
+    if (state.saveProxyBusy) return;
+    state = state.copyWith(
+      saveProxyBusy: true,
+      lastError: null,
+      infoMessage: null,
+    );
+    try {
+      final saved = await api.saveProxySettings(<String, dynamic>{
+        'httpProxy': state.httpProxyDraft.trim().isEmpty
+            ? null
+            : state.httpProxyDraft.trim(),
+        'httpsProxy': state.httpsProxyDraft.trim().isEmpty
+            ? null
+            : state.httpsProxyDraft.trim(),
+        'allProxy': state.allProxyDraft.trim().isEmpty
+            ? null
+            : state.allProxyDraft.trim(),
+        'noProxy': state.noProxyDraft.trim().isEmpty
+            ? null
+            : state.noProxyDraft.trim(),
+      });
+      if (!mounted) return;
+      state = state.copyWith(
+        saveProxyBusy: false,
+        httpProxyDraft: saved.httpProxy ?? '',
+        httpsProxyDraft: saved.httpsProxy ?? '',
+        allProxyDraft: saved.allProxy ?? '',
+        noProxyDraft: saved.noProxy ?? '',
+        infoMessage: _strings.settingsProxySaved,
+      );
+    } on SidecarException catch (error) {
+      if (!mounted) return;
+      state = state.copyWith(saveProxyBusy: false, lastError: error.message);
     }
   }
 

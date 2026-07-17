@@ -27,6 +27,10 @@ abstract interface class AbkSidecarApi {
 
   Future<GitHubSessionStatus> logoutGitHub();
 
+  Future<ProxySettings> getProxySettings();
+
+  Future<ProxySettings> saveProxySettings(Map<String, dynamic> request);
+
   Future<String?> setDownloadDirectory(String path);
 
   Future<DeviceDetectionResult> detectDevices();
@@ -77,6 +81,44 @@ abstract interface class AbkSidecarApi {
 
   Future<DesktopTaskSnapshot> startGkiBuild(Map<String, dynamic> request);
 
+  Future<List<LocalBuildBackendDescriptor>> getLocalBuildBackends();
+
+  Future<List<SupportedKernelLine>> getLocalBuildCatalog();
+
+  Future<LocalBuildSettings> updateLocalBuildSettings(
+    Map<String, dynamic> request,
+  );
+
+  Future<LocalBuildSourceInstancesResponse> getLocalBuildSourceInstances();
+
+  Future<LocalBuildSourceInstance> createLocalBuildSourceInstance(
+    Map<String, dynamic> request,
+  );
+
+  Future<DesktopTaskSnapshot> syncLocalBuildSourceInstance(
+    String sourceInstanceId,
+    Map<String, dynamic> request,
+  );
+
+  Future<LocalBuildProfilesResponse> getLocalBuildProfiles();
+
+  Future<LocalBuildProfile> saveLocalBuildProfile(Map<String, dynamic> request);
+
+  Future<DesktopTaskSnapshot> buildLocalBuildProfile(
+    String profileId,
+    Map<String, dynamic> request,
+  );
+
+  Future<List<LocalBuildArtifactEntry>> getLocalBuildArtifacts();
+
+  Future<List<LocalBuildLogEntry>> getLocalBuildLogs();
+
+  Future<LocalBuildStatus> getLocalBuildStatus();
+
+  Future<DesktopTaskSnapshot> initLocalBuild(Map<String, dynamic> request);
+
+  Future<DesktopTaskSnapshot> rebuildLocalBuild(Map<String, dynamic> request);
+
   Future<BuildDispatchResult> listBuildRuns({int limit = 20});
 
   Future<BuildDispatchResult> getBuildRun(int runId);
@@ -90,6 +132,8 @@ abstract interface class AbkSidecarApi {
   });
 
   Future<DesktopTaskSnapshot> getTask(String taskId);
+
+  Future<DesktopTaskSnapshot> cancelTask(String taskId);
 
   Future<DesktopTaskSnapshot> exportDiagnostics();
 
@@ -200,6 +244,22 @@ class HttpAbkSidecarClient implements AbkSidecarApi {
   Future<GitHubSessionStatus> logoutGitHub() async {
     final json = await _requestJson('POST', 'api/v1/github/logout');
     return GitHubSessionStatus.fromJson(json);
+  }
+
+  @override
+  Future<ProxySettings> getProxySettings() async {
+    final json = await _requestJson('GET', 'api/v1/settings/proxy');
+    return ProxySettings.fromJson(json);
+  }
+
+  @override
+  Future<ProxySettings> saveProxySettings(Map<String, dynamic> request) async {
+    final json = await _requestJson(
+      'POST',
+      'api/v1/settings/proxy',
+      body: request,
+    );
+    return ProxySettings.fromJson(json);
   }
 
   @override
@@ -390,6 +450,142 @@ class HttpAbkSidecarClient implements AbkSidecarApi {
   }
 
   @override
+  Future<List<LocalBuildBackendDescriptor>> getLocalBuildBackends() async {
+    final json = await _requestJson('GET', 'api/v1/local-build/backends');
+    return _readMapList(
+      json['backends'],
+    ).map(LocalBuildBackendDescriptor.fromJson).toList(growable: false);
+  }
+
+  @override
+  Future<List<SupportedKernelLine>> getLocalBuildCatalog() async {
+    final json = await _requestJson('GET', 'api/v1/local-build/catalog');
+    return _readMapList(
+      json['kernelLines'],
+    ).map(SupportedKernelLine.fromJson).toList(growable: false);
+  }
+
+  @override
+  Future<LocalBuildSettings> updateLocalBuildSettings(
+    Map<String, dynamic> request,
+  ) async {
+    final json = await _requestJson(
+      'POST',
+      'api/v1/local-build/settings',
+      body: request,
+    );
+    return LocalBuildSettings.fromJson(json);
+  }
+
+  @override
+  Future<LocalBuildSourceInstancesResponse> getLocalBuildSourceInstances() async {
+    final json = await _requestJson('GET', 'api/v1/local-build/source-instances');
+    return LocalBuildSourceInstancesResponse.fromJson(json);
+  }
+
+  @override
+  Future<LocalBuildSourceInstance> createLocalBuildSourceInstance(
+    Map<String, dynamic> request,
+  ) async {
+    final json = await _requestJson(
+      'POST',
+      'api/v1/local-build/source-instances',
+      body: request,
+    );
+    return LocalBuildSourceInstance.fromJson(json);
+  }
+
+  @override
+  Future<DesktopTaskSnapshot> syncLocalBuildSourceInstance(
+    String sourceInstanceId,
+    Map<String, dynamic> request,
+  ) async {
+    final json = await _requestJson(
+      'POST',
+      'api/v1/local-build/source-instances/${Uri.encodeComponent(sourceInstanceId)}/sync',
+      body: request,
+    );
+    return DesktopTaskSnapshot.fromJson(json);
+  }
+
+  @override
+  Future<LocalBuildProfilesResponse> getLocalBuildProfiles() async {
+    final json = await _requestJson('GET', 'api/v1/local-build/profiles');
+    return LocalBuildProfilesResponse.fromJson(json);
+  }
+
+  @override
+  Future<LocalBuildProfile> saveLocalBuildProfile(
+    Map<String, dynamic> request,
+  ) async {
+    final json = await _requestJson(
+      'POST',
+      'api/v1/local-build/profiles',
+      body: request,
+    );
+    return LocalBuildProfile.fromJson(json);
+  }
+
+  @override
+  Future<DesktopTaskSnapshot> buildLocalBuildProfile(
+    String profileId,
+    Map<String, dynamic> request,
+  ) async {
+    final json = await _requestJson(
+      'POST',
+      'api/v1/local-build/profiles/${Uri.encodeComponent(profileId)}/build',
+      body: request,
+    );
+    return DesktopTaskSnapshot.fromJson(json);
+  }
+
+  @override
+  Future<List<LocalBuildArtifactEntry>> getLocalBuildArtifacts() async {
+    final json = await _requestJson('GET', 'api/v1/local-build/artifacts');
+    return _readMapList(
+      json['artifacts'],
+    ).map(LocalBuildArtifactEntry.fromJson).toList(growable: false);
+  }
+
+  @override
+  Future<List<LocalBuildLogEntry>> getLocalBuildLogs() async {
+    final json = await _requestJson('GET', 'api/v1/local-build/logs');
+    return _readMapList(
+      json['logs'],
+    ).map(LocalBuildLogEntry.fromJson).toList(growable: false);
+  }
+
+  @override
+  Future<LocalBuildStatus> getLocalBuildStatus() async {
+    final json = await _requestJson('GET', 'api/v1/local-build/status');
+    return LocalBuildStatus.fromJson(json);
+  }
+
+  @override
+  Future<DesktopTaskSnapshot> initLocalBuild(
+    Map<String, dynamic> request,
+  ) async {
+    final json = await _requestJson(
+      'POST',
+      'api/v1/local-build/init',
+      body: request,
+    );
+    return DesktopTaskSnapshot.fromJson(json);
+  }
+
+  @override
+  Future<DesktopTaskSnapshot> rebuildLocalBuild(
+    Map<String, dynamic> request,
+  ) async {
+    final json = await _requestJson(
+      'POST',
+      'api/v1/local-build/rebuild',
+      body: request,
+    );
+    return DesktopTaskSnapshot.fromJson(json);
+  }
+
+  @override
   Future<BuildDispatchResult> listBuildRuns({int limit = 20}) async {
     final json = await _requestJson('GET', 'api/v1/builds/runs?limit=$limit');
     return BuildDispatchResult.fromJson(json);
@@ -429,6 +625,15 @@ class HttpAbkSidecarClient implements AbkSidecarApi {
   @override
   Future<DesktopTaskSnapshot> getTask(String taskId) async {
     final json = await _requestJson('GET', 'api/v1/tasks/$taskId');
+    return DesktopTaskSnapshot.fromJson(json);
+  }
+
+  @override
+  Future<DesktopTaskSnapshot> cancelTask(String taskId) async {
+    final json = await _requestJson(
+      'POST',
+      'api/v1/tasks/${Uri.encodeComponent(taskId)}/cancel',
+    );
     return DesktopTaskSnapshot.fromJson(json);
   }
 

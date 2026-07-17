@@ -17,6 +17,7 @@ import '../../widgets/panel_card.dart';
 import '../../widgets/status_pill.dart';
 import 'device_page_controller.dart';
 import 'runtime_module_catalog.dart';
+import 'susfs_form.dart';
 
 class DevicePage extends ConsumerStatefulWidget {
   const DevicePage({super.key});
@@ -1597,17 +1598,144 @@ class SusfsPage extends ConsumerStatefulWidget {
 class _SusfsPageState extends ConsumerState<SusfsPage> {
   bool _requestedInitialLoad = false;
   late final TextEditingController _susfsDraftController;
+  late final FocusNode _susfsDraftFocusNode;
+  SusfsEditorDraft _susfsEditor = SusfsEditorDraft.defaults();
+  String _susfsConfigSignature = '';
+  bool _susfsFormDirty = false;
+  String? _susfsLocalError;
 
   @override
   void initState() {
     super.initState();
     _susfsDraftController = TextEditingController();
+    _susfsDraftFocusNode = FocusNode();
   }
 
   @override
   void dispose() {
     _susfsDraftController.dispose();
+    _susfsDraftFocusNode.dispose();
     super.dispose();
+  }
+
+  void _setSusfsDraftControllerText(String value) {
+    _susfsDraftController.value = _susfsDraftController.value.copyWith(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+      composing: TextRange.empty,
+    );
+  }
+
+  void _syncSusfsEditorFromEnvelope(
+    SusfsEnvelope? susfs, {
+    bool force = false,
+  }) {
+    final source = susfs?.config ?? const <String, dynamic>{};
+    final signature = const JsonEncoder().convert(source);
+    if (!force && _susfsFormDirty) {
+      return;
+    }
+    if (!force && _susfsConfigSignature == signature) {
+      return;
+    }
+    _susfsEditor = SusfsEditorDraft.fromFormData(
+      SusfsFormData.fromJsonMap(source),
+    );
+    _susfsConfigSignature = signature;
+    _susfsFormDirty = false;
+    _susfsLocalError = null;
+  }
+
+  void _updateSusfsEditor(SusfsEditorDraft next) {
+    setState(() {
+      _susfsEditor = next;
+      _susfsFormDirty = true;
+      _susfsLocalError = null;
+    });
+  }
+
+  Future<void> _applySusfsEditor(DevicePageController controller) async {
+    try {
+      final formData = _susfsEditor.toFormData();
+      final pretty = formData.toPrettyJson();
+      if (!_susfsDraftFocusNode.hasFocus) {
+        _setSusfsDraftControllerText(pretty);
+      }
+      setState(() {
+        _susfsLocalError = null;
+        _susfsFormDirty = false;
+      });
+      await controller.applySusfsConfig(formData.toJsonMap());
+    } on FormatException catch (error) {
+      setState(() {
+        _susfsLocalError = error.message;
+      });
+    } catch (error) {
+      setState(() {
+        _susfsLocalError = error.toString();
+      });
+    }
+  }
+
+  void _resetSusfsEditor(
+    DevicePageController controller,
+    SusfsEnvelope? susfs,
+  ) {
+    controller.resetSusfsDraft();
+    final pretty = susfs?.prettyConfig() ?? '';
+    setState(() {
+      _syncSusfsEditorFromEnvelope(susfs, force: true);
+      _susfsLocalError = null;
+    });
+    if (!_susfsDraftFocusNode.hasFocus) {
+      _setSusfsDraftControllerText(pretty);
+    }
+  }
+
+  void _loadSusfsFormFromRawJson(
+    DevicePageController controller,
+    AppStrings strings,
+  ) {
+    try {
+      final decoded = jsonDecode(_susfsDraftController.text.trim());
+      if (decoded is! Map) {
+        throw const FormatException();
+      }
+      final formData = SusfsFormData.fromJsonMap(
+        Map<String, dynamic>.from(decoded),
+      );
+      final pretty = formData.toPrettyJson();
+      controller.updateSusfsDraft(pretty);
+      setState(() {
+        _susfsEditor = SusfsEditorDraft.fromFormData(formData);
+        _susfsFormDirty = true;
+        _susfsLocalError = null;
+      });
+      _setSusfsDraftControllerText(pretty);
+    } catch (_) {
+      setState(() {
+        _susfsLocalError = strings.deviceSusfsDraftInvalid;
+      });
+    }
+  }
+
+  void _syncRawJsonFromForm(DevicePageController controller) {
+    try {
+      final pretty = _susfsEditor.toFormData().toPrettyJson();
+      controller.updateSusfsDraft(pretty);
+      _setSusfsDraftControllerText(pretty);
+      setState(() {
+        _susfsLocalError = null;
+      });
+    } on FormatException catch (error) {
+      setState(() {
+        _susfsLocalError = error.message;
+      });
+    } catch (error) {
+      setState(() {
+        _susfsLocalError = error.toString();
+      });
+    }
   }
 
   @override
@@ -1630,17 +1758,16 @@ class _SusfsPageState extends ConsumerState<SusfsPage> {
     if (!abkReady) {
       _requestedInitialLoad = false;
     }
-    if (_susfsDraftController.text != state.susfsConfigDraft) {
-      _susfsDraftController.value = _susfsDraftController.value.copyWith(
-        text: state.susfsConfigDraft,
-        selection: TextSelection.collapsed(
-          offset: state.susfsConfigDraft.length,
-        ),
-        composing: TextRange.empty,
-      );
-    }
-
     final susfs = state.susfs;
+    if (!state.susfsDraftDirty) {
+      _syncSusfsEditorFromEnvelope(susfs);
+    }
+    if (!_susfsDraftFocusNode.hasFocus &&
+        _susfsDraftController.text != state.susfsConfigDraft) {
+      _setSusfsDraftControllerText(state.susfsConfigDraft);
+    }
+    final support = susfs?.status?.support;
+    final theme = Theme.of(context);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(28, 24, 28, 32),
@@ -1705,88 +1832,892 @@ class _SusfsPageState extends ConsumerState<SusfsPage> {
                 foreground: scheme.onErrorContainer,
               ),
             ],
+            if (_susfsLocalError != null) ...<Widget>[
+              const SizedBox(height: 16),
+              _MessageBanner(
+                title: strings.deviceSusfsFormErrorTitle,
+                message: _susfsLocalError!,
+                color: scheme.errorContainer,
+                foreground: scheme.onErrorContainer,
+              ),
+            ],
+            const SizedBox(height: 16),
+            LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final wide = constraints.maxWidth >= 1180;
+                final overviewCard = PanelCard(
+                  title: strings.deviceSusfsOverviewTitle,
+                  subtitle: strings.deviceSusfsOverviewSubtitle,
+                  icon: Icons.extension_rounded,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      if (susfs?.status != null) ...<Widget>[
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: <Widget>[
+                            StatusPill(
+                              label: susfs!.status!.available
+                                  ? strings.deviceSusfsStatusAvailable
+                                  : strings.deviceSusfsStatusUnavailable,
+                              color: theme.colorScheme.primary,
+                              icon: susfs.status!.available
+                                  ? Icons.check_circle_rounded
+                                  : Icons.error_outline_rounded,
+                            ),
+                            StatusPill(
+                              label: susfs.status!.kernelVersion.ifEmpty(
+                                strings.unknownValue,
+                              ),
+                              color: theme.colorScheme.secondary,
+                              icon: Icons.memory_rounded,
+                            ),
+                            StatusPill(
+                              label: susfs.status!.bundledBinaryVersion.ifEmpty(
+                                strings.unknownValue,
+                              ),
+                              color: theme.colorScheme.tertiary,
+                              icon: Icons.inventory_2_rounded,
+                            ),
+                            StatusPill(
+                              label: strings.deviceSusfsFeatureFlagCount(
+                                susfs.status!.featureFlags.length,
+                              ),
+                              color: theme.colorScheme.outline,
+                              icon: Icons.flag_rounded,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        _SusfsInfoLine(
+                          label: strings.deviceSusfsKernelVersionLabel,
+                          value: susfs.status!.kernelVersion.ifEmpty(
+                            strings.unknownValue,
+                          ),
+                        ),
+                        _SusfsInfoLine(
+                          label: strings.deviceSusfsBinaryLabel,
+                          value:
+                              '${susfs.status!.bundledBinaryVersion.ifEmpty(strings.unknownValue)} · ${susfs.status!.bundledBinaryRef.ifEmpty(strings.unknownValue)}',
+                        ),
+                        _SusfsInfoLine(
+                          label: strings.deviceSusfsConfigPathLabel,
+                          value: susfs.status!.configPath.ifEmpty(
+                            strings.unknownValue,
+                          ),
+                        ),
+                        if (susfs.status!.rawFeatureText
+                            .trim()
+                            .isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 12),
+                          Text(
+                            susfs.status!.rawFeatureText,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ],
+                        if (susfs.status!.diagnostics.isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 16),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: scheme.surfaceContainerHighest.withValues(
+                                alpha: 0.24,
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: scheme.outlineVariant.withValues(
+                                  alpha: 0.32,
+                                ),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  strings.deviceSusfsDiagnosticsTitle,
+                                  style: theme.textTheme.titleSmall,
+                                ),
+                                const SizedBox(height: 8),
+                                ...susfs.status!.diagnostics.map(
+                                  (line) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 4),
+                                    child: Text(
+                                      line,
+                                      style: theme.textTheme.bodyMedium,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ],
+                  ),
+                );
+                final actionCard = PanelCard(
+                  title: strings.deviceSusfsActionTitle,
+                  subtitle: strings.deviceSusfsActionSubtitle,
+                  icon: Icons.tune_rounded,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: <Widget>[
+                          StatusPill(
+                            label: _susfsFormDirty
+                                ? strings.deviceSusfsDraftEdited
+                                : strings.deviceSusfsDraftClean,
+                            color: _susfsFormDirty
+                                ? scheme.primary
+                                : scheme.outline,
+                            icon: _susfsFormDirty
+                                ? Icons.edit_note_rounded
+                                : Icons.done_all_rounded,
+                          ),
+                          StatusPill(
+                            label: state.susfsSaving
+                                ? strings.refreshing
+                                : strings.deviceSusfsReadyToApply,
+                            color: state.susfsSaving
+                                ? scheme.secondary
+                                : scheme.tertiary,
+                            icon: state.susfsSaving
+                                ? Icons.sync_rounded
+                                : Icons.bolt_rounded,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        strings.deviceSusfsActionHint,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: state.susfsSaving
+                              ? null
+                              : () => _applySusfsEditor(controller),
+                          child: state.susfsSaving
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                  ),
+                                )
+                              : Text(strings.deviceSusfsApplyForm),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.tonal(
+                          onPressed: state.susfsSaving
+                              ? null
+                              : () => _resetSusfsEditor(controller, susfs),
+                          child: Text(strings.deviceSusfsResetToDevice),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.tonal(
+                          onPressed: () => _syncRawJsonFromForm(controller),
+                          child: Text(strings.deviceSusfsSyncJsonFromForm),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+                if (!wide) {
+                  return Column(
+                    children: <Widget>[
+                      overviewCard,
+                      const SizedBox(height: 16),
+                      actionCard,
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(flex: 7, child: overviewCard),
+                    const SizedBox(width: 16),
+                    Expanded(flex: 5, child: actionCard),
+                  ],
+                );
+              },
+            ),
             const SizedBox(height: 16),
             PanelCard(
-              title: strings.deviceSusfsTitle,
-              subtitle: strings.deviceSusfsSubtitle,
-              icon: Icons.tune_rounded,
+              title: strings.deviceSusfsBasicTitle,
+              subtitle: strings.deviceSusfsBasicSubtitle,
+              icon: Icons.settings_rounded,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  if (susfs?.status != null) ...<Widget>[
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: <Widget>[
-                        StatusPill(
-                          label: susfs!.status!.available
-                              ? 'available'
-                              : 'unavailable',
-                          color: Theme.of(context).colorScheme.primary,
-                          icon: Icons.check_circle_rounded,
+                  _SusfsSwitchTile(
+                    title: strings.deviceSusfsAutoReplayTitle,
+                    subtitle: strings.deviceSusfsAutoReplaySubtitle,
+                    value: _susfsEditor.autoReplayEnabled,
+                    onChanged: (value) => _updateSusfsEditor(
+                      _susfsEditor.copyWith(autoReplayEnabled: value),
+                    ),
+                  ),
+                  _SusfsSwitchTile(
+                    title: strings.deviceSusfsLogTitle,
+                    subtitle: strings.deviceSusfsLogSubtitle,
+                    value: _susfsEditor.logEnabled,
+                    onChanged: (value) => _updateSusfsEditor(
+                      _susfsEditor.copyWith(logEnabled: value),
+                    ),
+                  ),
+                  if (support?.avcLogSpoofing == true)
+                    _SusfsSwitchTile(
+                      title: strings.deviceSusfsAvcSpoofTitle,
+                      subtitle: strings.deviceSusfsAvcSpoofSubtitle,
+                      value: _susfsEditor.avcLogSpoofing,
+                      onChanged: (value) => _updateSusfsEditor(
+                        _susfsEditor.copyWith(avcLogSpoofing: value),
+                      ),
+                    ),
+                  if (support?.hideSusMountsForAll == true ||
+                      support?.hideSusMountsForNonSu == true) ...<Widget>[
+                    const SizedBox(height: 12),
+                    _SusfsChoiceField<String>(
+                      title: strings.deviceSusfsHideMountModeTitle,
+                      value: _susfsEditor.hideSusMountsMode,
+                      options: <_SusfsChoiceOption<String>>[
+                        _SusfsChoiceOption(
+                          value: susfsHideMountsOff,
+                          label: strings.deviceSusfsOptionOff,
                         ),
-                        StatusPill(
-                          label: susfs.status!.kernelVersion.ifEmpty(
-                            strings.unknownValue,
-                          ),
-                          color: Theme.of(context).colorScheme.secondary,
-                          icon: Icons.memory_rounded,
+                        _SusfsChoiceOption(
+                          value: susfsHideMountsAll,
+                          label: strings.deviceSusfsOptionAllProcesses,
+                        ),
+                        _SusfsChoiceOption(
+                          value: susfsHideMountsNonSu,
+                          label: strings.deviceSusfsOptionNonSuProcesses,
                         ),
                       ],
+                      onSelected: (value) => _updateSusfsEditor(
+                        _susfsEditor.copyWith(hideSusMountsMode: value),
+                      ),
                     ),
-                    if (susfs.status!.diagnostics.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 12),
-                      ...susfs.status!.diagnostics.map((line) => Text(line)),
-                    ],
                   ],
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _susfsDraftController,
-                    onChanged: controller.updateSusfsDraft,
-                    minLines: 10,
-                    maxLines: 20,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
+                  if (support?.setUname == true) ...<Widget>[
+                    const SizedBox(height: 12),
+                    _SusfsChoiceField<String>(
+                      title: strings.deviceSusfsSpoofUnameStageTitle,
+                      value: _susfsEditor.spoofUnameStage,
+                      options: <_SusfsChoiceOption<String>>[
+                        _SusfsChoiceOption(
+                          value: susfsSpoofUnameOff,
+                          label: strings.deviceSusfsOptionOff,
+                        ),
+                        _SusfsChoiceOption(
+                          value: susfsSpoofUnamePostFsData,
+                          label: strings.deviceSusfsOptionPostFsData,
+                        ),
+                        _SusfsChoiceOption(
+                          value: susfsSpoofUnameBootCompleted,
+                          label: strings.deviceSusfsOptionBootCompleted,
+                        ),
+                      ],
+                      onSelected: (value) => _updateSusfsEditor(
+                        _susfsEditor.copyWith(spoofUnameStage: value),
+                      ),
                     ),
-                    style: const TextStyle(fontFamily: 'monospace'),
-                  ),
-                  const SizedBox(height: 12),
+                    const SizedBox(height: 12),
+                    _SusfsTextField(
+                      label: strings.deviceSusfsUnameValueLabel,
+                      value: _susfsEditor.unameValue,
+                      onChanged: (value) => _updateSusfsEditor(
+                        _susfsEditor.copyWith(unameValue: value),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _SusfsTextField(
+                      label: strings.deviceSusfsBuildTimeValueLabel,
+                      value: _susfsEditor.buildTimeValue,
+                      onChanged: (value) => _updateSusfsEditor(
+                        _susfsEditor.copyWith(buildTimeValue: value),
+                      ),
+                    ),
+                  ],
+                  if (support?.sdcardRootPath == true) ...<Widget>[
+                    const SizedBox(height: 12),
+                    _SusfsTextField(
+                      label: strings.deviceSusfsSdcardRootLabel,
+                      value: _susfsEditor.sdcardRootPath,
+                      onChanged: (value) => _updateSusfsEditor(
+                        _susfsEditor.copyWith(sdcardRootPath: value),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _SusfsTextField(
+                      label: strings.deviceSusfsAndroidDataRootLabel,
+                      value: _susfsEditor.androidDataRootPath,
+                      onChanged: (value) => _updateSusfsEditor(
+                        _susfsEditor.copyWith(androidDataRootPath: value),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            PanelCard(
+              title: strings.deviceSusfsPresetTitle,
+              subtitle: strings.deviceSusfsPresetSubtitle,
+              icon: Icons.auto_fix_high_rounded,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
                   Row(
                     children: <Widget>[
-                      FilledButton.tonal(
-                        onPressed: state.susfsSaving
-                            ? null
-                            : controller.resetSusfsDraft,
-                        child: Text(strings.deviceSusfsReset),
+                      Expanded(
+                        child: _SusfsDropdownField<int>(
+                          label: strings.deviceSusfsHideCustomRomLevelLabel,
+                          value: _susfsEditor.hideCustomRomLevel,
+                          items: List<int>.generate(6, (index) => index),
+                          labelBuilder: (value) => value.toString(),
+                          onChanged: (value) => _updateSusfsEditor(
+                            _susfsEditor.copyWith(hideCustomRomLevel: value),
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 12),
-                      FilledButton(
-                        onPressed: state.susfsSaving
-                            ? null
-                            : controller.applySusfsDraft,
-                        child: state.susfsSaving
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.2,
-                                ),
-                              )
-                            : Text(strings.deviceSusfsApply),
+                      Expanded(
+                        child: _SusfsDropdownField<int>(
+                          label: strings.deviceSusfsEmulateVoldLabel,
+                          value: _susfsEditor.emulateVoldAppDataMode,
+                          items: const <int>[0, 1, 2],
+                          labelBuilder: strings.deviceSusfsEmulateVoldOption,
+                          onChanged: (value) => _updateSusfsEditor(
+                            _susfsEditor.copyWith(
+                              emulateVoldAppDataMode: value,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  _DeviceTasksCard(
-                    state: state,
-                    kinds: const <String>{'susfs.apply'},
+                  const SizedBox(height: 12),
+                  _SusfsSwitchTile(
+                    title: strings.deviceSusfsHideVendorSepolicyTitle,
+                    value: _susfsEditor.hideVendorSepolicy,
+                    onChanged: (value) => _updateSusfsEditor(
+                      _susfsEditor.copyWith(hideVendorSepolicy: value),
+                    ),
+                  ),
+                  _SusfsSwitchTile(
+                    title: strings.deviceSusfsHideCompatMatrixTitle,
+                    value: _susfsEditor.hideCompatMatrix,
+                    onChanged: (value) => _updateSusfsEditor(
+                      _susfsEditor.copyWith(hideCompatMatrix: value),
+                    ),
+                  ),
+                  _SusfsSwitchTile(
+                    title: strings.deviceSusfsHideGappsTitle,
+                    value: _susfsEditor.hideGapps,
+                    onChanged: (value) => _updateSusfsEditor(
+                      _susfsEditor.copyWith(hideGapps: value),
+                    ),
+                  ),
+                  _SusfsSwitchTile(
+                    title: strings.deviceSusfsHideRevancedTitle,
+                    value: _susfsEditor.hideRevanced,
+                    onChanged: (value) => _updateSusfsEditor(
+                      _susfsEditor.copyWith(hideRevanced: value),
+                    ),
+                  ),
+                  _SusfsSwitchTile(
+                    title: strings.deviceSusfsSpoofCmdlineTitle,
+                    value: _susfsEditor.spoofCmdline,
+                    onChanged: (value) => _updateSusfsEditor(
+                      _susfsEditor.copyWith(spoofCmdline: value),
+                    ),
+                  ),
+                  _SusfsSwitchTile(
+                    title: strings.deviceSusfsHideLoopsTitle,
+                    value: _susfsEditor.hideLoops,
+                    onChanged: (value) => _updateSusfsEditor(
+                      _susfsEditor.copyWith(hideLoops: value),
+                    ),
+                  ),
+                  _SusfsSwitchTile(
+                    title: strings.deviceSusfsForceHideLsposedTitle,
+                    value: _susfsEditor.forceHideLsposed,
+                    onChanged: (value) => _updateSusfsEditor(
+                      _susfsEditor.copyWith(forceHideLsposed: value),
+                    ),
+                  ),
+                  if (support?.autoTryUmountPreset == true ||
+                      support?.ksudKernelUmountFallback == true) ...<Widget>[
+                    _SusfsSwitchTile(
+                      title: strings.deviceSusfsAutoTryUmountTitle,
+                      value: _susfsEditor.autoTryUmount,
+                      onChanged: (value) => _updateSusfsEditor(
+                        _susfsEditor.copyWith(autoTryUmount: value),
+                      ),
+                    ),
+                    _SusfsSwitchTile(
+                      title: strings.deviceSusfsSkipLegitMountsTitle,
+                      value: _susfsEditor.skipLegitMounts,
+                      onChanged: (value) => _updateSusfsEditor(
+                        _susfsEditor.copyWith(skipLegitMounts: value),
+                      ),
+                    ),
+                  ],
+                  if (support?.umountForZygoteIsoService == true)
+                    _SusfsSwitchTile(
+                      title: strings.deviceSusfsUmountForZygoteTitle,
+                      value: _susfsEditor.umountForZygoteIsoService,
+                      onChanged: (value) => _updateSusfsEditor(
+                        _susfsEditor.copyWith(umountForZygoteIsoService: value),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            PanelCard(
+              title: strings.deviceSusfsRulesTitle,
+              subtitle: strings.deviceSusfsRulesSubtitle,
+              icon: Icons.rule_folder_rounded,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: <Widget>[
+                      StatusPill(
+                        label: strings.deviceSusfsRuleCount(
+                          countVisibleRuleLines(_susfsEditor.pathRulesText),
+                        ),
+                        color: scheme.primary,
+                        icon: Icons.alt_route_rounded,
+                      ),
+                      StatusPill(
+                        label: strings.deviceSusfsMountCount(
+                          countVisibleRuleLines(_susfsEditor.mountsText),
+                        ),
+                        color: scheme.secondary,
+                        icon: Icons.storage_rounded,
+                      ),
+                      StatusPill(
+                        label: strings.deviceSusfsMapCount(
+                          countVisibleRuleLines(_susfsEditor.mapsText),
+                        ),
+                        color: scheme.tertiary,
+                        icon: Icons.layers_rounded,
+                      ),
+                    ],
+                  ),
+                  if (support?.susPath == true) ...<Widget>[
+                    const SizedBox(height: 12),
+                    _SusfsTextField(
+                      label: strings.deviceSusfsPathRulesLabel,
+                      helper: strings.deviceSusfsPathRulesHint,
+                      value: _susfsEditor.pathRulesText,
+                      onChanged: (value) => _updateSusfsEditor(
+                        _susfsEditor.copyWith(pathRulesText: value),
+                      ),
+                      minLines: 4,
+                      maxLines: 8,
+                      monospace: true,
+                    ),
+                  ],
+                  if (support?.susPathLoop == true) ...<Widget>[
+                    const SizedBox(height: 12),
+                    _SusfsTextField(
+                      label: strings.deviceSusfsLoopPathRulesLabel,
+                      helper: strings.deviceSusfsPathRulesHint,
+                      value: _susfsEditor.loopPathRulesText,
+                      onChanged: (value) => _updateSusfsEditor(
+                        _susfsEditor.copyWith(loopPathRulesText: value),
+                      ),
+                      minLines: 4,
+                      maxLines: 8,
+                      monospace: true,
+                    ),
+                  ],
+                  if (support?.susMap == true) ...<Widget>[
+                    const SizedBox(height: 12),
+                    _SusfsTextField(
+                      label: strings.deviceSusfsMapsLabel,
+                      value: _susfsEditor.mapsText,
+                      onChanged: (value) => _updateSusfsEditor(
+                        _susfsEditor.copyWith(mapsText: value),
+                      ),
+                      minLines: 4,
+                      maxLines: 8,
+                      monospace: true,
+                    ),
+                  ],
+                  if (support?.susMount == true) ...<Widget>[
+                    const SizedBox(height: 12),
+                    _SusfsTextField(
+                      label: strings.deviceSusfsMountsLabel,
+                      value: _susfsEditor.mountsText,
+                      onChanged: (value) => _updateSusfsEditor(
+                        _susfsEditor.copyWith(mountsText: value),
+                      ),
+                      minLines: 4,
+                      maxLines: 8,
+                      monospace: true,
+                    ),
+                  ],
+                  if (support?.tryUmount == true ||
+                      support?.ksudKernelUmountFallback == true) ...<Widget>[
+                    const SizedBox(height: 12),
+                    _SusfsTextField(
+                      label: strings.deviceSusfsTryUmountLabel,
+                      value: _susfsEditor.tryUmountText,
+                      onChanged: (value) => _updateSusfsEditor(
+                        _susfsEditor.copyWith(tryUmountText: value),
+                      ),
+                      minLines: 4,
+                      maxLines: 8,
+                      monospace: true,
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  _SusfsTextField(
+                    label: strings.deviceSusfsLegitMountsLabel,
+                    value: _susfsEditor.legitMountsText,
+                    onChanged: (value) => _updateSusfsEditor(
+                      _susfsEditor.copyWith(legitMountsText: value),
+                    ),
+                    minLines: 6,
+                    maxLines: 12,
+                    monospace: true,
                   ),
                 ],
               ),
             ),
+            if (support?.openRedirect == true ||
+                support?.staticKstat == true) ...<Widget>[
+              const SizedBox(height: 16),
+              PanelCard(
+                title: strings.deviceSusfsAdvancedTitle,
+                subtitle: strings.deviceSusfsAdvancedSubtitle,
+                icon: Icons.data_object_rounded,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    if (support?.openRedirect == true) ...<Widget>[
+                      _SusfsTextField(
+                        label: strings.deviceSusfsOpenRedirectLabel,
+                        helper: strings.deviceSusfsOpenRedirectHint,
+                        value: _susfsEditor.openRedirectText,
+                        onChanged: (value) => _updateSusfsEditor(
+                          _susfsEditor.copyWith(openRedirectText: value),
+                        ),
+                        minLines: 4,
+                        maxLines: 8,
+                        monospace: true,
+                      ),
+                    ],
+                    if (support?.staticKstat == true) ...<Widget>[
+                      const SizedBox(height: 12),
+                      _SusfsTextField(
+                        label: strings.deviceSusfsKstatLabel,
+                        value: _susfsEditor.kstatJsonText,
+                        onChanged: (value) => _updateSusfsEditor(
+                          _susfsEditor.copyWith(kstatJsonText: value),
+                        ),
+                        minLines: 8,
+                        maxLines: 14,
+                        monospace: true,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            PanelCard(
+              title: strings.deviceSusfsRawJsonTitle,
+              subtitle: strings.deviceSusfsRawJsonSubtitle,
+              icon: Icons.code_rounded,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  TextField(
+                    controller: _susfsDraftController,
+                    focusNode: _susfsDraftFocusNode,
+                    onChanged: controller.updateSusfsDraft,
+                    minLines: 10,
+                    maxLines: 20,
+                    decoration: InputDecoration(
+                      border: const OutlineInputBorder(),
+                      helperText: strings.deviceSusfsRawJsonHint,
+                    ),
+                    style: const TextStyle(fontFamily: 'monospace'),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: <Widget>[
+                      FilledButton.tonal(
+                        onPressed: () =>
+                            _loadSusfsFormFromRawJson(controller, strings),
+                        child: Text(strings.deviceSusfsLoadFormFromJson),
+                      ),
+                      FilledButton.tonal(
+                        onPressed: () => _syncRawJsonFromForm(controller),
+                        child: Text(strings.deviceSusfsSyncJsonFromForm),
+                      ),
+                      FilledButton(
+                        onPressed: state.susfsSaving
+                            ? null
+                            : controller.applySusfsDraft,
+                        child: Text(strings.deviceSusfsApplyRawJson),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            _DeviceTasksCard(
+              state: state,
+              kinds: const <String>{'susfs.apply'},
+            ),
           ],
         ],
       ),
+    );
+  }
+}
+
+class _SusfsInfoLine extends StatelessWidget {
+  const _SusfsInfoLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: RichText(
+        text: TextSpan(
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+          children: <InlineSpan>[
+            TextSpan(
+              text: '$label: ',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(color: scheme.onSurface),
+            ),
+            TextSpan(text: value),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SusfsSwitchTile extends StatelessWidget {
+  const _SusfsSwitchTile({
+    required this.title,
+    this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String? subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile.adaptive(
+      contentPadding: EdgeInsets.zero,
+      title: Text(title),
+      subtitle: subtitle == null ? null : Text(subtitle!),
+      value: value,
+      onChanged: onChanged,
+    );
+  }
+}
+
+class _SusfsChoiceOption<T> {
+  const _SusfsChoiceOption({required this.value, required this.label});
+
+  final T value;
+  final String label;
+}
+
+class _SusfsChoiceField<T> extends StatelessWidget {
+  const _SusfsChoiceField({
+    required this.title,
+    required this.value,
+    required this.options,
+    required this.onSelected,
+  });
+
+  final String title;
+  final T value;
+  final List<_SusfsChoiceOption<T>> options;
+  final ValueChanged<T> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(title, style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: options
+              .map((option) {
+                return ChoiceChip(
+                  label: Text(option.label),
+                  selected: option.value == value,
+                  onSelected: (_) => onSelected(option.value),
+                );
+              })
+              .toList(growable: false),
+        ),
+      ],
+    );
+  }
+}
+
+class _SusfsTextField extends StatefulWidget {
+  const _SusfsTextField({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+    this.helper,
+    this.minLines = 1,
+    this.maxLines = 1,
+    this.monospace = false,
+  });
+
+  final String label;
+  final String value;
+  final ValueChanged<String> onChanged;
+  final String? helper;
+  final int minLines;
+  final int maxLines;
+  final bool monospace;
+
+  @override
+  State<_SusfsTextField> createState() => _SusfsTextFieldState();
+}
+
+class _SusfsTextFieldState extends State<_SusfsTextField> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+    _focusNode = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SusfsTextField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_focusNode.hasFocus &&
+        widget.value != oldWidget.value &&
+        _controller.text != widget.value) {
+      _controller.value = _controller.value.copyWith(
+        text: widget.value,
+        selection: TextSelection.collapsed(offset: widget.value.length),
+        composing: TextRange.empty,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      focusNode: _focusNode,
+      onChanged: widget.onChanged,
+      minLines: widget.minLines,
+      maxLines: widget.maxLines,
+      decoration: InputDecoration(
+        labelText: widget.label,
+        helperText: widget.helper,
+        border: const OutlineInputBorder(),
+      ),
+      style: widget.monospace ? const TextStyle(fontFamily: 'monospace') : null,
+    );
+  }
+}
+
+class _SusfsDropdownField<T> extends StatelessWidget {
+  const _SusfsDropdownField({
+    required this.label,
+    required this.value,
+    required this.items,
+    required this.labelBuilder,
+    required this.onChanged,
+  });
+
+  final String label;
+  final T value;
+  final List<T> items;
+  final String Function(T value) labelBuilder;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonFormField<T>(
+      initialValue: value,
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+      ),
+      items: items
+          .map(
+            (item) => DropdownMenuItem<T>(
+              value: item,
+              child: Text(labelBuilder(item)),
+            ),
+          )
+          .toList(growable: false),
+      onChanged: (value) {
+        if (value != null) {
+          onChanged(value);
+        }
+      },
     );
   }
 }

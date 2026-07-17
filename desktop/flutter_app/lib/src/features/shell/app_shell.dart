@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/localization/app_strings.dart';
 import '../../core/state/dashboard_controller.dart';
@@ -52,6 +53,9 @@ class AppShell extends ConsumerWidget {
     final selectedIndex = destinations.indexWhere(
       (destination) => location.startsWith(destination.route),
     );
+    final routeLabel = selectedIndex >= 0
+        ? destinations[selectedIndex].label
+        : strings.brandWordmark;
 
     return Scaffold(
       body: DecoratedBox(
@@ -67,97 +71,322 @@ class AppShell extends ConsumerWidget {
           ),
         ),
         child: SafeArea(
-          minimum: const EdgeInsets.all(18),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final compact = constraints.maxWidth < 940;
-              if (compact) {
-                return Column(
-                  children: <Widget>[
-                    _CompactHeader(state: state),
-                    const SizedBox(height: 16),
-                    Expanded(child: _ContentSurface(child: child)),
-                    const SizedBox(height: 12),
-                    NavigationBar(
-                      selectedIndex: selectedIndex < 0 ? 0 : selectedIndex,
-                      onDestinationSelected: (index) {
-                        context.go(destinations[index].route);
-                      },
-                      destinations: destinations
-                          .map(
-                            (destination) => NavigationDestination(
-                              icon: Icon(destination.icon),
-                              label: destination.label,
-                            ),
-                          )
-                          .toList(growable: false),
-                    ),
-                  ],
-                );
-              }
+          minimum: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+          child: Column(
+            children: <Widget>[
+              _WindowChrome(routeLabel: routeLabel, flow: state.flow),
+              const SizedBox(height: 14),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 940;
+                    if (compact) {
+                      return Column(
+                        children: <Widget>[
+                          _CompactHeader(state: state),
+                          const SizedBox(height: 16),
+                          Expanded(child: _ContentSurface(child: child)),
+                          const SizedBox(height: 12),
+                          NavigationBar(
+                            selectedIndex: selectedIndex < 0
+                                ? 0
+                                : selectedIndex,
+                            onDestinationSelected: (index) {
+                              context.go(destinations[index].route);
+                            },
+                            destinations: destinations
+                                .map(
+                                  (destination) => NavigationDestination(
+                                    icon: Icon(destination.icon),
+                                    label: destination.label,
+                                  ),
+                                )
+                                .toList(growable: false),
+                          ),
+                        ],
+                      );
+                    }
 
-              return Row(
-                children: <Widget>[
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
-                    curve: Curves.easeOutCubic,
-                    width: expanded ? 176 : 104,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: scheme.surface.withValues(alpha: 0.88),
-                        borderRadius: BorderRadius.circular(34),
-                        border: Border.all(
-                          color: scheme.outlineVariant.withValues(alpha: 0.42),
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
-                        child: Column(
-                          children: <Widget>[
-                            _SidebarHeader(expanded: expanded),
-                            const SizedBox(height: 18),
-                            Expanded(
+                    return Row(
+                      children: <Widget>[
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          width: expanded ? 176 : 104,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: scheme.surface.withValues(alpha: 0.88),
+                              borderRadius: BorderRadius.circular(34),
+                              border: Border.all(
+                                color: scheme.outlineVariant.withValues(
+                                  alpha: 0.42,
+                                ),
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                14,
+                                16,
+                                14,
+                                16,
+                              ),
                               child: Column(
                                 children: <Widget>[
-                                  for (
-                                    var index = 0;
-                                    index < destinations.length;
-                                    index++
-                                  )
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: _SidebarDestination(
-                                        destination: destinations[index],
-                                        selected:
-                                            (selectedIndex < 0
-                                                ? 0
-                                                : selectedIndex) ==
-                                            index,
-                                        expanded: expanded,
-                                        onTap: () => context.go(
-                                          destinations[index].route,
-                                        ),
-                                      ),
+                                  _SidebarHeader(expanded: expanded),
+                                  const SizedBox(height: 18),
+                                  Expanded(
+                                    child: Column(
+                                      children: <Widget>[
+                                        for (
+                                          var index = 0;
+                                          index < destinations.length;
+                                          index++
+                                        )
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              bottom: 8,
+                                            ),
+                                            child: _SidebarDestination(
+                                              destination: destinations[index],
+                                              selected:
+                                                  (selectedIndex < 0
+                                                      ? 0
+                                                      : selectedIndex) ==
+                                                  index,
+                                              expanded: expanded,
+                                              onTap: () => context.go(
+                                                destinations[index].route,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
+                                  ),
+                                  _SidebarStatus(
+                                    state: state,
+                                    expanded: expanded,
+                                    sidecarHost: sidecarHost,
+                                    sidecarPort: sidecarPort,
+                                  ),
                                 ],
                               ),
                             ),
-                            _SidebarStatus(
-                              state: state,
-                              expanded: expanded,
-                              sidecarHost: sidecarHost,
-                              sidecarPort: sidecarPort,
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ),
+                        const SizedBox(width: 18),
+                        Expanded(child: _ContentSurface(child: child)),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WindowChrome extends StatefulWidget {
+  const _WindowChrome({required this.routeLabel, required this.flow});
+
+  final String routeLabel;
+  final ConnectionFlow flow;
+
+  @override
+  State<_WindowChrome> createState() => _WindowChromeState();
+}
+
+class _WindowChromeState extends State<_WindowChrome> with WindowListener {
+  bool _isMaximized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+    _syncWindowState();
+  }
+
+  Future<void> _syncWindowState() async {
+    try {
+      final maximized = await windowManager.isMaximized();
+      if (!mounted) return;
+      setState(() {
+        _isMaximized = maximized;
+      });
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  @override
+  void onWindowMaximize() {
+    setState(() {
+      _isMaximized = true;
+    });
+  }
+
+  @override
+  void onWindowUnmaximize() {
+    setState(() {
+      _isMaximized = false;
+    });
+  }
+
+  Future<void> _minimize() async {
+    try {
+      await windowManager.minimize();
+    } catch (_) {}
+  }
+
+  Future<void> _toggleMaximize() async {
+    try {
+      if (_isMaximized) {
+        await windowManager.unmaximize();
+      } else {
+        await windowManager.maximize();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _close() async {
+    try {
+      await windowManager.close();
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final strings = context.strings;
+    final statusColor = _shellStatusColorForFlow(widget.flow, scheme);
+    return Container(
+      height: 48,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            scheme.surface.withValues(alpha: 0.96),
+            scheme.surfaceContainerHigh.withValues(alpha: 0.92),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.42),
+        ),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: scheme.shadow.withValues(alpha: 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: <Widget>[
+          const SizedBox(width: 12),
+          DragToMoveArea(
+            child: Row(
+              children: <Widget>[
+                Container(
+                  width: 28,
+                  height: 28,
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer.withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  const SizedBox(width: 18),
-                  Expanded(child: _ContentSurface(child: child)),
-                ],
-              );
-            },
+                  child: Image.asset(
+                    'assets/images/android_abk_foreground.png',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  strings.brandWordmark,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: scheme.onSurface,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  widget.routeLabel,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
+          _WindowButton(icon: Icons.minimize_rounded, onPressed: _minimize),
+          const SizedBox(width: 4),
+          _WindowButton(
+            icon: _isMaximized
+                ? Icons.filter_none_rounded
+                : Icons.crop_square_rounded,
+            onPressed: _toggleMaximize,
+          ),
+          const SizedBox(width: 4),
+          _WindowButton(
+            icon: Icons.close_rounded,
+            onPressed: _close,
+            danger: true,
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+    );
+  }
+}
+
+class _WindowButton extends StatelessWidget {
+  const _WindowButton({
+    required this.icon,
+    required this.onPressed,
+    this.danger = false,
+  });
+
+  final IconData icon;
+  final VoidCallback onPressed;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: danger
+                ? scheme.errorContainer.withValues(alpha: 0.82)
+                : scheme.surfaceContainerHighest.withValues(alpha: 0.68),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: danger ? scheme.onErrorContainer : scheme.onSurfaceVariant,
           ),
         ),
       ),
@@ -178,21 +407,11 @@ class _SidebarHeader extends ConsumerWidget {
       height: 32,
     );
     return Row(
+      mainAxisAlignment: expanded
+          ? MainAxisAlignment.start
+          : MainAxisAlignment.center,
       children: <Widget>[
-        Container(
-          width: 40,
-          height: 40,
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: Theme.of(
-              context,
-            ).colorScheme.primaryContainer.withValues(alpha: 0.88),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Image.asset('assets/images/android_abk_foreground.png'),
-        ),
         if (expanded) ...<Widget>[
-          const SizedBox(width: 10),
           Expanded(
             child: Text(
               strings.brandWordmark,
@@ -444,7 +663,11 @@ IconData _shellStatusIcon(DashboardState state) {
 }
 
 Color _shellStatusColor(DashboardState state, ColorScheme scheme) {
-  return switch (state.flow) {
+  return _shellStatusColorForFlow(state.flow, scheme);
+}
+
+Color _shellStatusColorForFlow(ConnectionFlow flow, ColorScheme scheme) {
+  return switch (flow) {
     ConnectionFlow.connectedAbk => scheme.primary,
     ConnectionFlow.connectedAdbFallback => scheme.secondary,
     ConnectionFlow.sidecarUnavailable => scheme.error,

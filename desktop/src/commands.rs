@@ -1,28 +1,70 @@
+use crate::local_build_paths::{
+    load_local_build_path_settings, resolve_local_build_root, resolve_local_build_workspace_dir,
+};
 use anyhow::{anyhow, Context, Result};
+use std::env;
+use std::io::Write;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandSpec {
     pub program: String,
     pub args: Vec<String>,
     pub cwd: PathBuf,
+    pub env: Vec<(String, String)>,
+    pub stdin: Option<String>,
 }
 
 impl CommandSpec {
     pub fn display(&self) -> String {
-        std::iter::once(self.program.as_str())
-            .chain(self.args.iter().map(String::as_str))
+        self.env
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .chain(std::iter::once(self.program.clone()))
+            .chain(self.args.iter().cloned())
             .collect::<Vec<_>>()
             .join(" ")
     }
 }
 
+fn local_build_command_envs() -> Vec<(String, String)> {
+    let repo_root = repo_root();
+    let settings = load_local_build_path_settings(&repo_root).unwrap_or_default();
+    let script_root = resolve_local_build_root(&repo_root, &settings);
+    let workspace_dir = resolve_local_build_workspace_dir(&script_root, &settings);
+    let default_workspace_dir = script_root.join(".local-build").join("workspace");
+    let mut envs = vec![(
+        "ABK_LOCAL_BUILD_ABK_SOURCE_DIR".into(),
+        repo_root.to_string_lossy().to_string(),
+    )];
+    if workspace_dir != default_workspace_dir {
+        envs.push((
+            "ABK_LOCAL_BUILD_WORKSPACE_DIR".into(),
+            workspace_dir.to_string_lossy().to_string(),
+        ));
+    }
+    envs
+}
+
 pub fn repo_root() -> PathBuf {
+    if let Some(path) = env::var("ABK_DESKTOP_APP_ROOT")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        return PathBuf::from(path);
+    }
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("desktop lives under repo root")
         .to_path_buf()
+}
+
+pub fn local_build_root() -> PathBuf {
+    let repo_root = repo_root();
+    let settings = load_local_build_path_settings(&repo_root).unwrap_or_default();
+    resolve_local_build_root(&repo_root, &settings)
 }
 
 pub fn build_cli_command(raw_args: &str) -> Result<CommandSpec> {
@@ -44,6 +86,8 @@ pub fn build_cli_command_parts(parts: &[String]) -> Result<CommandSpec> {
             .chain(parts.iter().cloned())
             .collect(),
         cwd: repo_root(),
+        env: Vec::new(),
+        stdin: None,
     })
 }
 
@@ -52,6 +96,8 @@ pub fn build_adb_detect_command() -> CommandSpec {
         program: "adb".into(),
         args: vec!["devices".into(), "-l".into()],
         cwd: repo_root(),
+        env: Vec::new(),
+        stdin: None,
     }
 }
 
@@ -66,6 +112,8 @@ pub fn build_adb_forward_command(serial: &str, port: u16) -> CommandSpec {
         program: "adb".into(),
         args,
         cwd: repo_root(),
+        env: Vec::new(),
+        stdin: None,
     }
 }
 
@@ -76,6 +124,8 @@ pub fn build_adb_remove_forward_command(serial: &str, port: u16) -> CommandSpec 
         program: "adb".into(),
         args,
         cwd: repo_root(),
+        env: Vec::new(),
+        stdin: None,
     }
 }
 
@@ -100,6 +150,8 @@ pub fn build_adb_start_agent_command(serial: &str, port: u16) -> CommandSpec {
         program: "adb".into(),
         args,
         cwd: repo_root(),
+        env: Vec::new(),
+        stdin: None,
     }
 }
 
@@ -118,6 +170,8 @@ pub fn build_adb_stop_agent_command(serial: &str) -> CommandSpec {
         program: "adb".into(),
         args,
         cwd: repo_root(),
+        env: Vec::new(),
+        stdin: None,
     }
 }
 
@@ -132,6 +186,8 @@ pub fn build_adb_push_command(serial: &str, local_path: &str, remote_path: &str)
         program: "adb".into(),
         args,
         cwd: repo_root(),
+        env: Vec::new(),
+        stdin: None,
     }
 }
 
@@ -147,15 +203,92 @@ pub fn build_adb_shell_command(serial: &str, script: &str) -> CommandSpec {
         program: "adb".into(),
         args,
         cwd: repo_root(),
+        env: Vec::new(),
+        stdin: None,
+    }
+}
+
+pub fn build_local_init_command(
+    android_version: &str,
+    kernel_version: &str,
+    branch_month: &str,
+    force: bool,
+    skip_deps: bool,
+) -> Result<CommandSpec> {
+    let script_root = local_build_root();
+    let script = script_root.join("init.sh");
+    let mut args = vec![
+        script.to_string_lossy().to_string(),
+        "--android".into(),
+        android_version.trim().to_string(),
+        "--kernel".into(),
+        kernel_version.trim().to_string(),
+        "--branch-month".into(),
+        branch_month.trim().to_string(),
+    ];
+    if force {
+        args.push("--force".into());
+    }
+    if skip_deps {
+        args.push("--skip-deps".into());
+    }
+    Ok(CommandSpec {
+        program: "bash".into(),
+        args,
+        cwd: script_root,
+        env: local_build_command_envs(),
+        stdin: None,
+    })
+}
+
+pub fn build_local_rebuild_command(clean_out: bool, reseed: bool, no_package: bool) -> CommandSpec {
+    let script_root = local_build_root();
+    let script = script_root.join("rebuild.sh");
+    let mut args = vec![script.to_string_lossy().to_string()];
+    if clean_out {
+        args.push("--clean-out".into());
+    }
+    if reseed {
+        args.push("--reseed".into());
+    }
+    if no_package {
+        args.push("--no-package".into());
+    }
+    CommandSpec {
+        program: "bash".into(),
+        args,
+        cwd: script_root,
+        env: local_build_command_envs(),
+        stdin: None,
     }
 }
 
 pub fn run_command(spec: &CommandSpec) -> Result<String> {
-    let output = Command::new(&spec.program)
+    let mut child = Command::new(&spec.program)
         .args(&spec.args)
         .current_dir(&spec.cwd)
-        .output()
+        .envs(spec.env.iter().map(|(key, value)| (key, value)))
+        .stdin(if spec.stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .with_context(|| format!("failed to execute {}", spec.display()))?;
+    if let Some(input) = spec.stdin.as_deref() {
+        let stdin = child
+            .stdin
+            .as_mut()
+            .ok_or_else(|| anyhow!("failed to open stdin for {}", spec.display()))?;
+        stdin
+            .write_all(input.as_bytes())
+            .with_context(|| format!("failed to write stdin for {}", spec.display()))?;
+    }
+    let output = child
+        .wait_with_output()
+        .with_context(|| format!("failed to wait for {}", spec.display()))?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let combined = match (stdout.trim(), stderr.trim()) {
@@ -172,6 +305,18 @@ pub fn run_command(spec: &CommandSpec) -> Result<String> {
             output.status,
             combined.trim()
         ))
+    }
+}
+
+pub fn wrap_command_with_sudo(spec: CommandSpec, password: &str) -> CommandSpec {
+    let mut args = vec!["-S".into(), "--".into(), spec.program];
+    args.extend(spec.args);
+    CommandSpec {
+        program: "sudo".into(),
+        args,
+        cwd: spec.cwd,
+        env: spec.env,
+        stdin: Some(format!("{}\n", password.trim_end())),
     }
 }
 

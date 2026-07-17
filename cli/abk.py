@@ -53,6 +53,51 @@ def configure_stdio():
             pass
 
 
+def wants_json(args):
+    return bool(getattr(args, "json", False))
+
+
+def emit_json(payload):
+    print(json.dumps(payload, ensure_ascii=False))
+    return payload
+
+
+def json_error(args, message, *, exit_code=1, **extra):
+    if wants_json(args):
+        emit_json({"ok": False, "error": message, **extra})
+        raise SystemExit(exit_code)
+    return False
+
+
+def serialize_run(run):
+    return {
+        "id": run.get("id"),
+        "name": run.get("name"),
+        "displayTitle": run.get("display_title") or run.get("name") or "",
+        "status": run.get("status"),
+        "conclusion": run.get("conclusion"),
+        "event": run.get("event"),
+        "headBranch": run.get("head_branch"),
+        "htmlUrl": run.get("html_url"),
+        "createdAt": run.get("created_at"),
+        "updatedAt": run.get("updated_at"),
+        "runNumber": run.get("run_number"),
+        "workflowId": run.get("workflow_id"),
+    }
+
+
+def serialize_artifact(artifact):
+    return {
+        "id": artifact.get("id"),
+        "name": artifact.get("name"),
+        "sizeBytes": artifact.get("size_in_bytes"),
+        "archiveDownloadUrl": artifact.get("archive_download_url"),
+        "expired": artifact.get("expired", False),
+        "createdAt": artifact.get("created_at"),
+        "updatedAt": artifact.get("updated_at"),
+    }
+
+
 GITHUB_API = "https://api.github.com"
 GITHUB_OAUTH_DEVICE_URL = "https://github.com/login/device/code"
 GITHUB_OAUTH_TOKEN_URL = "https://github.com/login/oauth/access_token"
@@ -787,6 +832,22 @@ def cmd_whoami(args):
     token = get_token(args)
     
     if not token:
+        if wants_json(args):
+            config = load_config()
+            emit_json({
+                "ok": True,
+                "loggedIn": False,
+                "repo": os.environ.get("ABK_REPO", DEFAULT_REPO),
+                "needsFork": True,
+                "needsSync": False,
+                "behindBy": 0,
+                "fork": None,
+                "user": None,
+                "signingKeyAvailable": bool(config.get("signing_key") or os.environ.get("ABK_SIGNING_KEY")),
+                "signingKeySource": "config" if (config.get("signing_key") or os.environ.get("ABK_SIGNING_KEY")) else None,
+                "downloadDir": config.get("download_dir"),
+            })
+            return
         print(t("logout_not"))
         print(t("run_login_hint"))
         return
@@ -794,13 +855,38 @@ def cmd_whoami(args):
     client = GitHubClient(token=token)
     try:
         user = client.get_user()
+        fork = client.get_fork()
+        behind = client.check_behind() if fork else {"behind_by": 0, "ahead_by": 0}
+        config = load_config()
+        if wants_json(args):
+            emit_json({
+                "ok": True,
+                "loggedIn": True,
+                "repo": client.repo,
+                "user": {
+                    "login": user.get("login"),
+                    "htmlUrl": user.get("html_url"),
+                },
+                "fork": None if not fork else {
+                    "fullName": fork.get("full_name"),
+                    "owner": fork.get("owner", {}).get("login"),
+                    "name": fork.get("name"),
+                    "htmlUrl": fork.get("html_url"),
+                },
+                "needsFork": fork is None,
+                "needsSync": behind.get("behind_by", 0) > 0,
+                "behindBy": behind.get("behind_by", 0),
+                "aheadBy": behind.get("ahead_by", 0),
+                "status": behind.get("status"),
+                "signingKeyAvailable": bool(config.get("signing_key") or os.environ.get("ABK_SIGNING_KEY")),
+                "signingKeySource": "config" if (config.get("signing_key") or os.environ.get("ABK_SIGNING_KEY")) else None,
+                "downloadDir": config.get("download_dir"),
+            })
+            return
         print(t("status_user", user=user.get('login', 'Unknown')))
         
-        fork = client.get_fork()
         if fork:
             print(f"Fork: {fork.get('full_name')}")
-            
-            behind = client.check_behind()
             if behind.get("behind_by", 0) > 0:
                 print(t("status_behind", n=behind['behind_by']))
             else:
@@ -809,6 +895,9 @@ def cmd_whoami(args):
             print(t("fork_not_detected"))
             print(t("hint_run_fork"))
     except Exception as e:
+        if wants_json(args):
+            emit_json({"ok": False, "error": str(e)})
+            return
         print(t("login_verify_failed", error=e), file=sys.stderr)
 
 
@@ -816,6 +905,8 @@ def cmd_fork(args):
     token = get_token(args)
     
     if not token:
+        if json_error(args, t("err_no_token")) is False:
+            pass
         print(t("err_no_token"), file=sys.stderr)
         sys.exit(1)
     
@@ -824,6 +915,21 @@ def cmd_fork(args):
     try:
         fork = client.get_fork()
         if fork:
+            if wants_json(args):
+                behind = client.check_behind()
+                emit_json({
+                    "ok": True,
+                    "action": "exists",
+                    "fork": {
+                        "fullName": fork.get("full_name"),
+                        "owner": fork.get("owner", {}).get("login"),
+                        "name": fork.get("name"),
+                        "htmlUrl": fork.get("html_url"),
+                    },
+                    "behindBy": behind.get("behind_by", 0),
+                    "needsSync": behind.get("behind_by", 0) > 0,
+                })
+                return
             print(t("fork_exists", fork=fork.get('full_name')))
             
             behind = client.check_behind()
@@ -838,9 +944,26 @@ def cmd_fork(args):
         else:
             print(t("fork_creating"))
             result = client.create_fork()
+            if wants_json(args):
+                emit_json({
+                    "ok": True,
+                    "action": "created",
+                    "fork": {
+                        "fullName": result.get("full_name"),
+                        "owner": result.get("owner", {}).get("login"),
+                        "name": result.get("name"),
+                        "htmlUrl": result.get("html_url"),
+                    },
+                    "behindBy": 0,
+                    "needsSync": False,
+                })
+                return
             print(t("fork_created", fork=result.get('full_name')))
         ensure_signing_key(client)
     except Exception as e:
+        if wants_json(args):
+            emit_json({"ok": False, "error": str(e)})
+            return
         print(t("err_fork_failed", error=e), file=sys.stderr)
         sys.exit(1)
 
@@ -849,6 +972,8 @@ def cmd_sync(args):
     token = get_token(args)
     
     if not token:
+        if json_error(args, t("err_no_token")) is False:
+            pass
         print(t("err_no_token"), file=sys.stderr)
         sys.exit(1)
     
@@ -857,19 +982,32 @@ def cmd_sync(args):
     try:
         fork = client.get_fork()
         if not fork:
+            if wants_json(args):
+                emit_json({"ok": False, "error": t("err_no_fork")})
+                return
             print(t("err_no_fork"), file=sys.stderr)
             sys.exit(1)
         
         behind = client.check_behind()
         if behind.get("behind_by", 0) == 0:
+            if wants_json(args):
+                emit_json({"ok": True, "synced": True, "behindBy": 0})
+                return
             print(t("fork_already_latest"))
             return
         
-        print(t("syncing_n_commits", n=behind['behind_by']))
+        if not wants_json(args):
+            print(t("syncing_n_commits", n=behind['behind_by']))
         client.sync_fork()
+        if wants_json(args):
+            emit_json({"ok": True, "synced": True, "behindBy": 0})
+            return
         print(t("fork_sync_done"))
         ensure_signing_key(client)
     except Exception as e:
+        if wants_json(args):
+            emit_json({"ok": False, "error": str(e)})
+            return
         print(t("err_sync_failed", error=e), file=sys.stderr)
         sys.exit(1)
 
@@ -878,6 +1016,9 @@ def cmd_status(args):
     token = get_token(args)
     
     if not token:
+        if wants_json(args):
+            emit_json({"ok": False, "error": t("err_no_token")})
+            return
         print(t("err_no_token"), file=sys.stderr)
         sys.exit(1)
     
@@ -886,33 +1027,78 @@ def cmd_status(args):
     if args.cancel:
         try:
             client.cancel_run(args.cancel)
+            if wants_json(args):
+                emit_json({"ok": True, "cancelledRunId": args.cancel})
+                return
             print(t("cancel_ok", id=args.cancel))
         except Exception as e:
+            if wants_json(args):
+                emit_json({"ok": False, "error": str(e)})
+                return
             print(t("cancel_fail", error=e), file=sys.stderr)
         return
 
     if args.rerun:
         try:
             client.rerun(args.rerun)
+            if wants_json(args):
+                emit_json({"ok": True, "rerunRunId": args.rerun})
+                return
             print(t("rerun_ok", id=args.rerun))
         except Exception as e:
+            if wants_json(args):
+                emit_json({"ok": False, "error": str(e)})
+                return
             print(t("rerun_fail", error=e), file=sys.stderr)
         return
 
     try:
         fork = client.get_fork()
         if not fork:
+            if wants_json(args):
+                emit_json({
+                    "ok": True,
+                    "repo": client.repo,
+                    "needsFork": True,
+                    "needsSync": False,
+                    "behindBy": 0,
+                    "runs": [],
+                })
+                return
             print(t("err_no_fork"))
             return
         
         behind = client.check_behind()
-        if behind.get("behind_by", 0) > 0:
+        if args.run_id:
+            run = client.get_run(args.run_id)
+            if wants_json(args):
+                emit_json({
+                    "ok": True,
+                    "repo": client.repo,
+                    "needsFork": False,
+                    "needsSync": behind.get("behind_by", 0) > 0,
+                    "behindBy": behind.get("behind_by", 0),
+                    "run": serialize_run(run),
+                })
+                return
+
+        if behind.get("behind_by", 0) > 0 and not wants_json(args):
             print(t("warn_behind_upstream", n=behind['behind_by']))
             print(t("run_abk_sync"))
             print()
         
         runs = client.list_runs(per_page=args.limit)
         workflow_runs = runs.get("workflow_runs", [])
+        if wants_json(args):
+            emit_json({
+                "ok": True,
+                "repo": client.repo,
+                "needsFork": False,
+                "needsSync": behind.get("behind_by", 0) > 0,
+                "behindBy": behind.get("behind_by", 0),
+                "runs": [serialize_run(run) for run in workflow_runs],
+            })
+            return
         
         if not workflow_runs:
             print(t("status_no_builds"))
@@ -924,6 +1110,9 @@ def cmd_status(args):
             created = run["created_at"][:19].replace("T", " ")
             print(f"  {status_icon} #{run['id']} | {run.get('name', '')} | {created}")
     except Exception as e:
+        if wants_json(args):
+            emit_json({"ok": False, "error": str(e)})
+            return
         print(t("fetch_status_failed", error=e), file=sys.stderr)
 
 
@@ -931,10 +1120,15 @@ def cmd_build(args):
     token = get_token(args)
     
     if not token:
+        if wants_json(args):
+            emit_json({"ok": False, "error": t("err_no_token")})
+            return
         print(t("err_no_token"), file=sys.stderr)
         sys.exit(1)
     
     client = GitHubClient(token=token)
+    dispatches = []
+    build_warnings = []
     
     # 处理特殊全量工作流
     if args.matrix in ("full", "all-managers"):
@@ -981,17 +1175,38 @@ def cmd_build(args):
             }
         
         ref = args.ref or client.get_default_branch()
-        print(t("triggering_name", name=name))
+        if not wants_json(args):
+            print(t("triggering_name", name=name))
         if args.dry_run:
-            print(f"  " + t("dry_run_skip"))
+            if not wants_json(args):
+                print(f"  " + t("dry_run_skip"))
         else:
             try:
                 client.trigger_workflow(wf_file, ref, inputs)
-                print(f"  " + t("triggered_ok"))
+                dispatches.append({
+                    "workflowFile": wf_file,
+                    "workflowName": name,
+                    "target": args.matrix,
+                    "ref": ref,
+                    "inputs": inputs,
+                })
+                if not wants_json(args):
+                    print(f"  " + t("triggered_ok"))
             except Exception as e:
+                if wants_json(args):
+                    emit_json({"ok": False, "error": str(e), "dispatches": dispatches})
+                    return
                 print(t("build_triggered_fail", error=e))
                 if "404" in str(e):
                     print(t("workflow_404_hint"))
+        if wants_json(args):
+            emit_json({
+                "ok": True,
+                "repo": client.repo,
+                "dispatches": dispatches,
+                "dryRun": args.dry_run,
+            })
+            return
         print(t("build_check_status"))
         return
     
@@ -1007,9 +1222,14 @@ def cmd_build(args):
             sys.exit(1)
         
         errors, warnings = validate_oneplus_build(args, device_info)
-        for w in warnings:
-            print(t("warning_prefix") + " " + t(w))
+        build_warnings.extend(warnings)
+        if not wants_json(args):
+            for w in warnings:
+                print(t("warning_prefix") + " " + t(w))
         if errors:
+            if wants_json(args):
+                emit_json({"ok": False, "error": "; ".join(errors), "warnings": warnings})
+                return
             for e in errors:
                 print(t("error_prefix") + " " + t(e), file=sys.stderr)
             sys.exit(1)
@@ -1035,19 +1255,34 @@ def cmd_build(args):
     try:
         fork = client.get_fork()
         if not fork:
-            print(t("fork_no_detect_creating"))
+            if not wants_json(args):
+                print(t("fork_no_detect_creating"))
             client.create_fork()
-            print(t("fork_created_generic"))
+            if not wants_json(args):
+                print(t("fork_created_generic"))
         else:
             behind = client.check_behind()
             if behind.get("behind_by", 0) > 0:
-                print(t("warn_behind_upstream", n=behind['behind_by']))
+                if wants_json(args) and not args.force:
+                    emit_json({
+                        "ok": False,
+                        "error": t("warn_behind_upstream", n=behind['behind_by']),
+                        "needsSync": True,
+                        "behindBy": behind.get("behind_by", 0),
+                    })
+                    return
+                if not wants_json(args):
+                    print(t("warn_behind_upstream", n=behind['behind_by']))
                 if not args.force:
                     sync = input(t("ask_sync")).strip().lower()
                     if sync in ('y', 'yes'):
                         client.sync_fork()
-                        print(t("fork_sync_done"))
+                        if not wants_json(args):
+                            print(t("fork_sync_done"))
     except Exception as e:
+        if wants_json(args):
+            emit_json({"ok": False, "error": str(e)})
+            return
         print(t("err_fork_failed", error=e), file=sys.stderr)
         if not args.force:
             sys.exit(1)
@@ -1058,7 +1293,7 @@ def cmd_build(args):
     for tk in matrix_targets:
         for kv in ksu_variants:
             count += 1
-            if total > 1:
+            if total > 1 and not wants_json(args):
                 print(f"\n[{count}/{total}] ", end="")
             
             if tk == "oneplus":
@@ -1142,20 +1377,57 @@ def cmd_build(args):
                     inputs["custom_external_modules"] = args.custom_modules
             
             ref = args.ref or client.get_default_branch()
-            print(t("triggering_name", name=f"{workflow['name']} ({kv})"))
-            print(f"  " + t("build_feat_line", susfs=t("enabled") if args.susfs else t("disabled"), zram=t("enabled") if args.zram else t("disabled"), bbg=t("enabled") if args.bbg else t("disabled"), ddk=t("enabled") if args.ddk else t("disabled"), kpm=t("enabled") if args.kpm else t("disabled"), rekernel=t("enabled") if args.rekernel else t("disabled"), ntsync=t("enabled") if args.ntsync else t("disabled"), networking=t("enabled") if args.networking else t("disabled")))
+            if not wants_json(args):
+                print(t("triggering_name", name=f"{workflow['name']} ({kv})"))
+                print(f"  " + t("build_feat_line", susfs=t("enabled") if args.susfs else t("disabled"), zram=t("enabled") if args.zram else t("disabled"), bbg=t("enabled") if args.bbg else t("disabled"), ddk=t("enabled") if args.ddk else t("disabled"), kpm=t("enabled") if args.kpm else t("disabled"), rekernel=t("enabled") if args.rekernel else t("disabled"), ntsync=t("enabled") if args.ntsync else t("disabled"), networking=t("enabled") if args.networking else t("disabled")))
             
             if args.dry_run:
-                print(f"  " + t("build_triggered_dry"))
+                if not wants_json(args):
+                    print(f"  " + t("build_triggered_dry"))
+                dispatches.append({
+                    "workflowFile": workflow["file"],
+                    "workflowName": workflow["name"],
+                    "target": tk,
+                    "ksuVariant": kv,
+                    "ref": ref,
+                    "inputs": inputs,
+                })
             else:
                 try:
                     client.trigger_workflow(workflow["file"], ref, inputs)
-                    print(t("build_triggered_ok"))
+                    dispatches.append({
+                        "workflowFile": workflow["file"],
+                        "workflowName": workflow["name"],
+                        "target": tk,
+                        "ksuVariant": kv,
+                        "ref": ref,
+                        "inputs": inputs,
+                    })
+                    if not wants_json(args):
+                        print(t("build_triggered_ok"))
                 except Exception as e:
+                    if wants_json(args):
+                        emit_json({
+                            "ok": False,
+                            "error": str(e),
+                            "dispatches": dispatches,
+                            "warnings": build_warnings,
+                        })
+                        return
                     print(t("build_triggered_fail", error=e))
                     if "404" in str(e):
                         print(t("workflow_404_hint"))
     
+    if wants_json(args):
+        emit_json({
+            "ok": True,
+            "repo": client.repo,
+            "dispatches": dispatches,
+            "warnings": build_warnings,
+            "dryRun": args.dry_run,
+            "total": count,
+        })
+        return
     if total > 1:
         print(t("build_multiple_count", count=count))
     print(t("build_check_status"))
@@ -1166,6 +1438,9 @@ def cmd_artifacts(args):
     token = get_token(args)
     
     if not token:
+        if wants_json(args):
+            emit_json({"ok": False, "error": t("err_no_token")})
+            return
         print(t("err_no_token"), file=sys.stderr)
         sys.exit(1)
     
@@ -1175,22 +1450,58 @@ def cmd_artifacts(args):
         config = load_config()
         config["download_dir"] = args.set_download_dir
         save_config(config)
+        if wants_json(args) and not args.run_id and not args.download:
+            emit_json({
+                "ok": True,
+                "downloadDir": args.set_download_dir,
+            })
+            return
         print(t("download_dir_saved", dir=args.set_download_dir))
         if not args.run_id and not args.download:
             return
 
     if not args.run_id:
+        if wants_json(args):
+            emit_json({"ok": False, "error": t("err_need_run_id")})
+            return
         print(t("err_need_run_id"), file=sys.stderr)
         sys.exit(1)
 
     try:
         artifacts = client.list_artifacts(args.run_id)
+        artifact_items = artifacts.get("artifacts", [])
         if not artifacts.get("artifacts"):
+            if wants_json(args):
+                emit_json({"ok": True, "runId": args.run_id, "artifacts": []})
+                return
             print(t("artifacts_no_artifacts"))
             return
 
+        if args.artifact_id:
+            artifact_items = [
+                art for art in artifact_items if art.get("id") == args.artifact_id
+            ]
+            if not artifact_items:
+                if wants_json(args):
+                    emit_json({
+                        "ok": False,
+                        "error": f"artifact {args.artifact_id} not found",
+                        "runId": args.run_id,
+                    })
+                    return
+                print(f"artifact {args.artifact_id} not found", file=sys.stderr)
+                sys.exit(1)
+
+        if wants_json(args) and not args.download:
+            emit_json({
+                "ok": True,
+                "runId": args.run_id,
+                "artifacts": [serialize_artifact(art) for art in artifact_items],
+            })
+            return
+
         print(t("artifacts_list", id=args.run_id))
-        for art in artifacts["artifacts"]:
+        for art in artifact_items:
             size_kb = art["size_in_bytes"] / 1024
             print(f"  {art['id']} | {art['name']} | {size_kb:.1f} KB")
 
@@ -1198,15 +1509,26 @@ def cmd_artifacts(args):
             config = load_config()
             output_dir = args.output or config.get("download_dir") or str(Path.home() / "Downloads")
             Path(output_dir).mkdir(parents=True, exist_ok=True)
-            print(f"\n" + t("artifacts_download_to", dir=output_dir))
+            if not wants_json(args):
+                print(f"\n" + t("artifacts_download_to", dir=output_dir))
             signing_key = get_signing_key()
-            for art in artifacts["artifacts"]:
-                print(f"  " + t("artifacts_downloading", name=art["name"]))
+            downloaded = []
+            for art in artifact_items:
+                if not wants_json(args):
+                    print(f"  " + t("artifacts_downloading", name=art["name"]))
                 path = client.download_artifact(art["id"], output_dir)
                 if path:
+                    result = verify_artifact_bundle(path, signing_key)
+                    downloaded.append({
+                        "artifactId": art["id"],
+                        "name": art["name"],
+                        "path": path,
+                        "verification": result,
+                    })
+                    if wants_json(args):
+                        continue
                     print(f"    -> {path}")
                     print(f"    " + t("artifact_verifying"))
-                    result = verify_artifact_bundle(path, signing_key)
                     status_icon = "✓" if result['verified'] else "⚠"
                     print(f"    {status_icon} {result['message']}")
                     if not result['verified']:
@@ -1215,7 +1537,18 @@ def cmd_artifacts(args):
                         answer = sys.stdin.readline().strip().lower()
                         if answer not in ('y', 'yes', 'j', 'ja', 'o', 'oui', 's', 'si', 'sí'):
                             print(f"    {t('artifact_verify_skip_user')}")
+            if wants_json(args):
+                emit_json({
+                    "ok": True,
+                    "runId": args.run_id,
+                    "outputDir": output_dir,
+                    "downloads": downloaded,
+                })
+                return
     except Exception as e:
+        if wants_json(args):
+            emit_json({"ok": False, "error": str(e)})
+            return
         print(t("err_fork_failed", error=e), file=sys.stderr)
 
 
@@ -1277,6 +1610,7 @@ def main():
     parser.add_argument("--repo", help=t("help_repo"))
     parser.add_argument("--verbose", "-v", action="store_true", help=t("help_verbose"))
     parser.add_argument("--lang", choices=["zh-cn", "en-us", "ru-ru", "ja-jp", "ko-kr", "hi-in", "de-de", "fr-fr", "es-es", "pt-br", "jp-neko", "zh-neko", "eo", "zh-zako"], help=t("help_lang"))
+    parser.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
 
     subparsers = parser.add_subparsers(dest="command", help=t("help_subcommands"))
 
@@ -1381,6 +1715,7 @@ def main():
         help=t("cmd_artifacts_help"),
         description=t("cmd_artifacts_desc"))
     artifacts_parser.add_argument("--run-id", type=int, help=t("arg_run_id"))
+    artifacts_parser.add_argument("--artifact-id", type=int, help=argparse.SUPPRESS)
     artifacts_parser.add_argument("--download", action="store_true", help=t("arg_download"))
     artifacts_parser.add_argument("--output", "-o", help=t("arg_output"))
     artifacts_parser.add_argument("--set-download-dir", metavar="DIR", help=t("arg_set_download_dir"))

@@ -258,6 +258,35 @@ class ConnectResult {
   }
 }
 
+class ProxySettings {
+  const ProxySettings({
+    required this.httpProxy,
+    required this.httpsProxy,
+    required this.allProxy,
+    required this.noProxy,
+  });
+
+  const ProxySettings.empty()
+    : httpProxy = null,
+      httpsProxy = null,
+      allProxy = null,
+      noProxy = null;
+
+  final String? httpProxy;
+  final String? httpsProxy;
+  final String? allProxy;
+  final String? noProxy;
+
+  factory ProxySettings.fromJson(Map<String, dynamic> json) {
+    return ProxySettings(
+      httpProxy: _nullableString(json['httpProxy']),
+      httpsProxy: _nullableString(json['httpsProxy']),
+      allProxy: _nullableString(json['allProxy']),
+      noProxy: _nullableString(json['noProxy']),
+    );
+  }
+}
+
 String _readString(dynamic value, {String fallback = ''}) {
   if (value is String) {
     return value;

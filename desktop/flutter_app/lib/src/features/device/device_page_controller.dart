@@ -449,6 +449,16 @@ class DevicePageController extends StateNotifier<DevicePageState> {
     );
   }
 
+  Future<void> applySusfsConfig(Map<String, dynamic> config) async {
+    final pretty = const JsonEncoder.withIndent('  ').convert(config);
+    state = state.copyWith(
+      susfsConfigDraft: pretty,
+      susfsDraftDirty: true,
+      susfsError: null,
+    );
+    await _applySusfsConfig(config);
+  }
+
   Future<void> applySusfsDraft() async {
     if (state.susfsSaving) return;
     final draft = state.susfsConfigDraft.trim();
@@ -467,9 +477,14 @@ class DevicePageController extends StateNotifier<DevicePageState> {
       state = state.copyWith(susfsError: _strings.deviceSusfsDraftInvalid);
       return;
     }
+    await _applySusfsConfig(decoded);
+  }
+
+  Future<void> _applySusfsConfig(Map<String, dynamic> config) async {
+    if (state.susfsSaving) return;
     state = state.copyWith(susfsSaving: true, susfsError: null);
     try {
-      final accepted = await api.applySusfs(decoded);
+      final accepted = await api.applySusfs(config);
       if (!mounted) return;
       _upsertTask(accepted);
       state = state.copyWith(

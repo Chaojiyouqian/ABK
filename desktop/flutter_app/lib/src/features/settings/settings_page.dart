@@ -20,17 +20,29 @@ class SettingsPage extends ConsumerStatefulWidget {
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   late final TextEditingController _downloadDirController;
+  late final TextEditingController _httpProxyController;
+  late final TextEditingController _httpsProxyController;
+  late final TextEditingController _allProxyController;
+  late final TextEditingController _noProxyController;
   bool _requestedInitialLoad = false;
 
   @override
   void initState() {
     super.initState();
     _downloadDirController = TextEditingController();
+    _httpProxyController = TextEditingController();
+    _httpsProxyController = TextEditingController();
+    _allProxyController = TextEditingController();
+    _noProxyController = TextEditingController();
   }
 
   @override
   void dispose() {
     _downloadDirController.dispose();
+    _httpProxyController.dispose();
+    _httpsProxyController.dispose();
+    _allProxyController.dispose();
+    _noProxyController.dispose();
     super.dispose();
   }
 
@@ -57,6 +69,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         composing: TextRange.empty,
       );
     }
+    _syncController(_httpProxyController, settingsState.httpProxyDraft);
+    _syncController(_httpsProxyController, settingsState.httpsProxyDraft);
+    _syncController(_allProxyController, settingsState.allProxyDraft);
+    _syncController(_noProxyController, settingsState.noProxyDraft);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(28, 24, 28, 32),
@@ -119,6 +135,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             downloadDirController: _downloadDirController,
           ),
           const SizedBox(height: 16),
+          _SettingsProxyCard(
+            state: settingsState,
+            controller: settings,
+            httpProxyController: _httpProxyController,
+            httpsProxyController: _httpsProxyController,
+            allProxyController: _allProxyController,
+            noProxyController: _noProxyController,
+          ),
+          const SizedBox(height: 16),
           _SettingsDiagnosticsCard(
             state: settingsState,
             controller: settings,
@@ -131,6 +156,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
         ],
       ),
+    );
+  }
+
+  void _syncController(TextEditingController controller, String value) {
+    if (controller.text == value) return;
+    controller.value = controller.value.copyWith(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+      composing: TextRange.empty,
     );
   }
 }
@@ -283,6 +317,73 @@ class _SettingsBuildCardState extends State<_SettingsBuildCard> {
                     : Text(strings.settingsSaveDirectory),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsProxyCard extends StatelessWidget {
+  const _SettingsProxyCard({
+    required this.state,
+    required this.controller,
+    required this.httpProxyController,
+    required this.httpsProxyController,
+    required this.allProxyController,
+    required this.noProxyController,
+  });
+
+  final SettingsPageState state;
+  final SettingsPageController controller;
+  final TextEditingController httpProxyController;
+  final TextEditingController httpsProxyController;
+  final TextEditingController allProxyController;
+  final TextEditingController noProxyController;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    return PanelCard(
+      title: strings.settingsProxyTitle,
+      subtitle: strings.settingsProxySubtitle,
+      icon: Icons.settings_ethernet_rounded,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          TextField(
+            controller: httpProxyController,
+            onChanged: controller.updateHttpProxyDraft,
+            decoration: InputDecoration(labelText: strings.settingsHttpProxy),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: httpsProxyController,
+            onChanged: controller.updateHttpsProxyDraft,
+            decoration: InputDecoration(labelText: strings.settingsHttpsProxy),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: allProxyController,
+            onChanged: controller.updateAllProxyDraft,
+            decoration: InputDecoration(labelText: strings.settingsAllProxy),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: noProxyController,
+            onChanged: controller.updateNoProxyDraft,
+            decoration: InputDecoration(labelText: strings.settingsNoProxy),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: state.saveProxyBusy ? null : controller.saveProxySettings,
+            child: state.saveProxyBusy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2.2),
+                  )
+                : Text(strings.settingsSaveProxy),
           ),
         ],
       ),

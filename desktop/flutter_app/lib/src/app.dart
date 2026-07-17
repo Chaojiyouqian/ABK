@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'core/localization/app_strings.dart';
 import 'core/theme/app_theme.dart';
@@ -13,12 +14,47 @@ import 'features/home/home_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/shell/app_shell.dart';
 
+enum AppLaunchMode { main, taskWindow }
+
 class AbkDesktopApp extends ConsumerWidget {
-  const AbkDesktopApp({super.key});
+  const AbkDesktopApp({
+    super.key,
+    this.launchMode = AppLaunchMode.main,
+    this.taskWorkspaceStateFilePath,
+  });
+
+  final AppLaunchMode launchMode;
+  final String? taskWorkspaceStateFilePath;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeAsync = ref.watch(desktopThemeProvider);
+    final theme =
+        themeAsync.valueOrNull ??
+        AppTheme.light(seedColor: AppTheme.fallbackSeedColor);
+
+    if (launchMode == AppLaunchMode.taskWindow) {
+      return MaterialApp(
+        onGenerateTitle: (context) => AppStrings.of(context).appTitle,
+        debugShowCheckedModeBanner: false,
+        locale: const Locale('zh', 'CN'),
+        supportedLocales: AppStrings.supportedLocales,
+        localizationsDelegates: const [
+          AppStrings.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        theme: theme,
+        builder: (context, child) {
+          return VirtualWindowFrame(child: child ?? const SizedBox.shrink());
+        },
+        home: TaskWorkspaceWindowPage(
+          stateFilePath: taskWorkspaceStateFilePath ?? '',
+        ),
+      );
+    }
+
     final router = GoRouter(
       initialLocation: '/home',
       routes: [
@@ -69,9 +105,10 @@ class AbkDesktopApp extends ConsumerWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme:
-          themeAsync.valueOrNull ??
-          AppTheme.light(seedColor: AppTheme.fallbackSeedColor),
+      theme: theme,
+      builder: (context, child) {
+        return VirtualWindowFrame(child: child ?? const SizedBox.shrink());
+      },
       routerConfig: router,
     );
   }

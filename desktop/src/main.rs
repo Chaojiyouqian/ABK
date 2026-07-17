@@ -1,5 +1,8 @@
 mod agent;
 mod commands;
+mod local_build;
+mod local_build_paths;
+mod proxy;
 
 use crate::agent::RemoteAgentClient;
 use crate::commands::{
@@ -7,6 +10,18 @@ use crate::commands::{
     build_adb_remove_forward_command, build_adb_shell_command, build_adb_start_agent_command,
     build_adb_stop_agent_command, build_cli_command, repo_root, run_command,
 };
+use crate::local_build::{
+    BuildLocalBuildProfileRequest, CreateLocalBuildSourceInstanceRequest,
+    LocalBuildArtifactsResponse, LocalBuildBackendsResponse, LocalBuildCatalogResponse,
+    LocalBuildLogsResponse, LocalBuildManager, LocalBuildProfile, LocalBuildProfileBuildPlan,
+    LocalBuildProfilesResponse, LocalBuildSettings, LocalBuildSourceInstance,
+    LocalBuildSourceInstancesResponse, LocalBuildSourceSyncPlan, SaveLocalBuildProfileRequest,
+    SyncLocalBuildSourceInstanceRequest, UpdateLocalBuildSettingsRequest,
+};
+use crate::local_build_paths::{
+    load_local_build_path_settings, resolve_local_build_root, resolve_local_build_workspace_dir,
+};
+use crate::proxy::{normalize_proxy_value, ProxySettings};
 use anyhow::{anyhow, Context, Result};
 use axum::body::{Body, Bytes};
 use axum::extract::{Path, Query, State};
@@ -26,7 +41,10 @@ use std::net::SocketAddr;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
+use tokio::process::Command as TokioCommand;
+use tokio::sync::{mpsc, watch};
 use tokio::time::sleep;
 use tower_http::cors::{Any, CorsLayer};
 use uuid::Uuid;
@@ -46,6 +64,7 @@ const BUILD_TRACK_RUN_LIMIT: usize = 50;
 const BUILD_DISCOVERY_POLL_INTERVAL: Duration = Duration::from_secs(3);
 const BUILD_COMPLETION_POLL_INTERVAL: Duration = Duration::from_secs(10);
 const BUILD_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(120);
+const MAX_TASK_OUTPUT_LINES: usize = 4000;
 
 #[derive(Clone)]
 struct AppState {
@@ -58,6 +77,8 @@ struct InnerState {
     logs: Mutex<VecDeque<LogEntry>>,
     tasks: Mutex<HashMap<String, LocalTask>>,
     task_order: Mutex<VecDeque<String>>,
+    task_cancellers: Mutex<HashMap<String, watch::Sender<bool>>>,
+    local_build: Mutex<LocalBuildManager>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -171,7 +192,16 @@ struct DownloadDirRequest {
     path: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProxySettingsRequest {
+    http_proxy: Option<String>,
+    https_proxy: Option<String>,
+    all_proxy: Option<String>,
+    no_proxy: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct BuildGkiRequest {
     target: String,
@@ -211,6 +241,66 @@ struct BuildRunsQuery {
 struct ArtifactDownloadRequest {
     artifact_id: u64,
     output_dir: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LocalBuildInitRequest {
+    android_version: String,
+    kernel_version: String,
+    branch_month: String,
+    force: Option<bool>,
+    skip_deps: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LocalBuildRebuildRequest {
+    clean_out: Option<bool>,
+    reseed: Option<bool>,
+    no_package: Option<bool>,
+    build: Option<BuildGkiRequest>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LocalBuildTemplate {
+    name: String,
+    android_version: String,
+    kernel_version: String,
+    template_path: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LocalBuildStatus {
+    available: bool,
+    script_root: String,
+    init_script_path: String,
+    rebuild_script_path: String,
+    env_file_path: String,
+    state_dir: String,
+    sources_dir: String,
+    workspace_dir: String,
+    artifacts_dir: String,
+    logs_dir: String,
+    cache_dir: String,
+    kernel_root: String,
+    has_env_file: bool,
+    workspace_ready: bool,
+    template_root: Option<String>,
+    template_name: Option<String>,
+    template_android_version: Option<String>,
+    template_kernel_version: Option<String>,
+    sub_level: Option<String>,
+    os_patch_level: Option<String>,
+    template_branch: Option<String>,
+    template_common_branch: Option<String>,
+    branch_month: Option<String>,
+    custom_external_modules_root: Option<String>,
+    custom_external_modules_manifest: Option<String>,
+    latest_log_path: Option<String>,
+    supported_templates: Vec<LocalBuildTemplate>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -277,7 +367,12 @@ impl From<serde_json::Error> for ApiError {
 }
 
 impl AppState {
-    fn new(_repo_root: PathBuf) -> Result<Self> {
+    fn new(repo_root: PathBuf) -> Result<Self> {
+        if let Ok(path) = cli_config_path() {
+            if let Ok(proxy_settings) = read_proxy_settings_from_path(&path) {
+                proxy_settings.apply_to_process_env();
+            }
+        }
         Ok(Self {
             inner: Arc::new(InnerState {
                 agent: RemoteAgentClient::new()?,
@@ -294,6 +389,8 @@ impl AppState {
                 logs: Mutex::new(VecDeque::new()),
                 tasks: Mutex::new(HashMap::new()),
                 task_order: Mutex::new(VecDeque::new()),
+                task_cancellers: Mutex::new(HashMap::new()),
+                local_build: Mutex::new(LocalBuildManager::new(repo_root)?),
             }),
         })
     }
@@ -359,6 +456,64 @@ impl AppState {
             .cloned()
     }
 
+    fn register_task_canceller(&self, task_id: &str) -> watch::Receiver<bool> {
+        let (sender, receiver) = watch::channel(false);
+        self.inner
+            .task_cancellers
+            .lock()
+            .expect("task_cancellers")
+            .insert(task_id.to_string(), sender);
+        receiver
+    }
+
+    fn clear_task_canceller(&self, task_id: &str) {
+        self.inner
+            .task_cancellers
+            .lock()
+            .expect("task_cancellers")
+            .remove(task_id);
+    }
+
+    fn request_task_cancel(&self, task_id: &str) -> Option<TaskSnapshot> {
+        let sender = self
+            .inner
+            .task_cancellers
+            .lock()
+            .expect("task_cancellers")
+            .get(task_id)
+            .cloned();
+        let mut task = self.get_local_task(task_id)?;
+        if let Some(sender) = sender {
+            let _ = sender.send(true);
+            if task.snapshot.state == "pending" || task.snapshot.state == "running" {
+                task.snapshot.message = Some("cancellation requested".into());
+                let mut result = task.snapshot.result.clone();
+                if let Value::Object(ref mut object) = result {
+                    object.insert("cancelRequested".into(), Value::Bool(true));
+                }
+                task.snapshot.result = result;
+                self.upsert_task(LocalTask {
+                    snapshot: task.snapshot.clone(),
+                    download_path: task.download_path.clone(),
+                });
+            }
+        }
+        Some(task.snapshot)
+    }
+
+    fn read_local_build<T>(&self, reader: impl FnOnce(&LocalBuildManager) -> T) -> T {
+        let guard = self.inner.local_build.lock().expect("local_build");
+        reader(&guard)
+    }
+
+    fn write_local_build<T>(
+        &self,
+        writer: impl FnOnce(&mut LocalBuildManager) -> Result<T>,
+    ) -> Result<T> {
+        let mut guard = self.inner.local_build.lock().expect("local_build");
+        writer(&mut guard)
+    }
+
     fn base_agent_url(&self) -> Result<String> {
         let connection = self.connection();
         if !connection.connected {
@@ -407,10 +562,54 @@ async fn main() -> Result<()> {
         .route("/api/v1/github/fork/ensure", post(ensure_github_fork))
         .route("/api/v1/github/fork/sync", post(sync_github_fork))
         .route("/api/v1/github/logout", post(logout_github))
+        .route(
+            "/api/v1/settings/proxy",
+            get(get_proxy_settings).post(save_proxy_settings),
+        )
         .route("/api/v1/settings/download-dir", post(set_download_dir))
         .route("/api/v1/builds/gki", post(start_gki_build))
         .route("/api/v1/builds/runs", get(list_build_runs))
         .route("/api/v1/builds/runs/{run_id}", get(get_build_run))
+        .route(
+            "/api/v1/local-build/backends",
+            get(list_local_build_backends),
+        )
+        .route("/api/v1/local-build/catalog", get(get_local_build_catalog))
+        .route(
+            "/api/v1/local-build/settings",
+            post(update_local_build_settings),
+        )
+        .route(
+            "/api/v1/local-build/source-instances",
+            get(list_local_build_source_instances).post(create_local_build_source_instance),
+        )
+        .route(
+            "/api/v1/local-build/source-instances/{source_instance_id}/sync",
+            post(sync_local_build_source_instance),
+        )
+        .route(
+            "/api/v1/local-build/profiles",
+            get(list_local_build_profiles).post(save_local_build_profile),
+        )
+        .route(
+            "/api/v1/local-build/profiles/{profile_id}/build",
+            post(build_local_build_profile),
+        )
+        .route(
+            "/api/v1/local-build/tasks/{task_id}",
+            get(get_local_build_task),
+        )
+        .route(
+            "/api/v1/local-build/artifacts",
+            get(list_local_build_artifacts),
+        )
+        .route("/api/v1/local-build/logs", get(list_local_build_logs))
+        .route("/api/v1/local-build/status", get(get_local_build_status))
+        .route("/api/v1/local-build/init", post(start_local_build_init))
+        .route(
+            "/api/v1/local-build/rebuild",
+            post(start_local_build_rebuild),
+        )
         .route(
             "/api/v1/builds/runs/{run_id}/artifacts",
             get(list_build_run_artifacts),
@@ -480,6 +679,7 @@ async fn main() -> Result<()> {
         .route("/api/v1/flash/image", post(proxy_flash_image))
         .route("/api/v1/diagnostics/export", post(proxy_export_diagnostics))
         .route("/api/v1/tasks/{task_id}", get(get_task))
+        .route("/api/v1/tasks/{task_id}/cancel", post(cancel_task))
         .route("/api/v1/tasks/{task_id}/download", get(download_task_file))
         .route("/internal/insets.css", get(insets_css))
         .fallback(proxy_webui_root_asset_fallback)
@@ -879,6 +1079,31 @@ async fn logout_github() -> Result<Json<Value>, ApiError> {
     get_github_session().await
 }
 
+async fn get_proxy_settings() -> Result<Json<Value>, ApiError> {
+    let path = cli_config_path()?;
+    let settings = read_proxy_settings_from_path(&path)?;
+    Ok(Json(
+        serde_json::to_value(settings).map_err(ApiError::from)?,
+    ))
+}
+
+async fn save_proxy_settings(
+    Json(request): Json<ProxySettingsRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let path = cli_config_path()?;
+    let settings = ProxySettings {
+        http_proxy: normalize_proxy_value(request.http_proxy),
+        https_proxy: normalize_proxy_value(request.https_proxy),
+        all_proxy: normalize_proxy_value(request.all_proxy),
+        no_proxy: normalize_proxy_value(request.no_proxy),
+    };
+    persist_proxy_settings_to_path(&path, &settings)?;
+    settings.apply_to_process_env();
+    Ok(Json(
+        serde_json::to_value(settings).map_err(ApiError::from)?,
+    ))
+}
+
 async fn set_download_dir(
     Json(request): Json<DownloadDirRequest>,
 ) -> Result<Json<Value>, ApiError> {
@@ -928,6 +1153,907 @@ async fn list_build_run_artifacts(Path(run_id): Path<u64>) -> Result<Json<Value>
     ])
     .await
     .map(Json)
+}
+
+async fn list_local_build_backends(
+    State(state): State<AppState>,
+) -> Result<Json<LocalBuildBackendsResponse>, ApiError> {
+    Ok(Json(
+        state.read_local_build(LocalBuildManager::list_backends),
+    ))
+}
+
+async fn get_local_build_catalog(
+    State(state): State<AppState>,
+) -> Result<Json<LocalBuildCatalogResponse>, ApiError> {
+    Ok(Json(state.read_local_build(LocalBuildManager::catalog)))
+}
+
+async fn update_local_build_settings(
+    State(state): State<AppState>,
+    Json(request): Json<UpdateLocalBuildSettingsRequest>,
+) -> Result<Json<LocalBuildSettings>, ApiError> {
+    let settings = state
+        .write_local_build(|manager| manager.update_settings(request))
+        .map_err(ApiError::from)?;
+    Ok(Json(settings))
+}
+
+async fn list_local_build_source_instances(
+    State(state): State<AppState>,
+) -> Result<Json<LocalBuildSourceInstancesResponse>, ApiError> {
+    Ok(Json(state.read_local_build(
+        LocalBuildManager::list_source_instances,
+    )))
+}
+
+async fn create_local_build_source_instance(
+    State(state): State<AppState>,
+    Json(request): Json<CreateLocalBuildSourceInstanceRequest>,
+) -> Result<(StatusCode, Json<LocalBuildSourceInstance>), ApiError> {
+    let source_instance = state
+        .write_local_build(|manager| manager.create_source_instance(request))
+        .map_err(ApiError::from)?;
+    Ok((StatusCode::CREATED, Json(source_instance)))
+}
+
+async fn sync_local_build_source_instance(
+    State(state): State<AppState>,
+    Path(source_instance_id): Path<String>,
+    Json(request): Json<SyncLocalBuildSourceInstanceRequest>,
+) -> Result<(StatusCode, Json<TaskSnapshot>), ApiError> {
+    let plan = state
+        .write_local_build(|manager| manager.plan_source_sync(&source_instance_id, &request))
+        .map_err(ApiError::from)?;
+    Ok(queue_local_build_source_sync_task(
+        state,
+        plan,
+        "local.build.source.sync",
+        "local build source sync accepted",
+        "syncing local source instance",
+        "local source instance synced",
+        "local source sync failed",
+    ))
+}
+
+async fn list_local_build_profiles(
+    State(state): State<AppState>,
+) -> Result<Json<LocalBuildProfilesResponse>, ApiError> {
+    Ok(Json(
+        state.read_local_build(LocalBuildManager::list_profiles),
+    ))
+}
+
+async fn save_local_build_profile(
+    State(state): State<AppState>,
+    Json(request): Json<SaveLocalBuildProfileRequest>,
+) -> Result<Json<LocalBuildProfile>, ApiError> {
+    let profile = state
+        .write_local_build(|manager| manager.save_profile(request))
+        .map_err(ApiError::from)?;
+    Ok(Json(profile))
+}
+
+async fn build_local_build_profile(
+    State(state): State<AppState>,
+    Path(profile_id): Path<String>,
+    Json(request): Json<BuildLocalBuildProfileRequest>,
+) -> Result<(StatusCode, Json<TaskSnapshot>), ApiError> {
+    let plan = state
+        .write_local_build(|manager| manager.plan_profile_build(&profile_id, &request))
+        .map_err(ApiError::from)?;
+    Ok(queue_local_build_profile_build_task(
+        state,
+        plan,
+        request,
+        "local.build.profile.build",
+        "local build profile accepted",
+        "running local build profile",
+        "local build profile finished",
+        "local build profile failed",
+    ))
+}
+
+async fn get_local_build_task(
+    State(state): State<AppState>,
+    Path(task_id): Path<String>,
+) -> Result<Json<TaskSnapshot>, ApiError> {
+    let task = state
+        .get_local_task(&task_id)
+        .ok_or_else(|| ApiError::bad_request(format!("unknown task {task_id}")))?;
+    Ok(Json(task.snapshot))
+}
+
+async fn list_local_build_artifacts(
+    State(state): State<AppState>,
+) -> Result<Json<LocalBuildArtifactsResponse>, ApiError> {
+    Ok(Json(
+        state.read_local_build(LocalBuildManager::list_artifacts),
+    ))
+}
+
+async fn list_local_build_logs(
+    State(state): State<AppState>,
+) -> Result<Json<LocalBuildLogsResponse>, ApiError> {
+    Ok(Json(state.read_local_build(LocalBuildManager::list_logs)))
+}
+
+async fn get_local_build_status() -> Result<Json<Value>, ApiError> {
+    let status = tokio::task::spawn_blocking(inspect_local_build_status)
+        .await
+        .context("local build status join failure")
+        .map_err(ApiError::from)?
+        .map_err(ApiError::from)?;
+    Ok(Json(serde_json::to_value(status).map_err(ApiError::from)?))
+}
+
+async fn start_local_build_init(
+    State(state): State<AppState>,
+    Json(request): Json<LocalBuildInitRequest>,
+) -> Result<(StatusCode, Json<TaskSnapshot>), ApiError> {
+    let android_version = request.android_version.trim();
+    let kernel_version = request.kernel_version.trim();
+    let branch_month = request.branch_month.trim();
+    if android_version.is_empty() || kernel_version.is_empty() || branch_month.is_empty() {
+        return Err(ApiError::bad_request(
+            "androidVersion, kernelVersion, and branchMonth are required",
+        ));
+    }
+    let source_instance = state
+        .write_local_build(|manager| {
+            manager.ensure_legacy_source_instance(android_version, kernel_version, branch_month)
+        })
+        .map_err(ApiError::from)?;
+    let plan = state
+        .write_local_build(|manager| {
+            manager.plan_source_sync(
+                &source_instance.id,
+                &SyncLocalBuildSourceInstanceRequest {
+                    backend_kind: Some(crate::local_build::LocalBuildBackendKind::Script),
+                    force: request.force,
+                    skip_deps: request.skip_deps,
+                    sudo_password: None,
+                },
+            )
+        })
+        .map_err(ApiError::from)?;
+    Ok(queue_local_build_source_sync_task(
+        state,
+        plan,
+        "local.build.init",
+        "local build init accepted",
+        "initializing local AOSP workspace",
+        "local build workspace initialized",
+        "local build init failed",
+    ))
+}
+
+async fn start_local_build_rebuild(
+    State(state): State<AppState>,
+    Json(request): Json<LocalBuildRebuildRequest>,
+) -> Result<(StatusCode, Json<TaskSnapshot>), ApiError> {
+    let status = inspect_local_build_status().map_err(ApiError::from)?;
+    if !status.available {
+        return Err(ApiError::service_unavailable(format!(
+            "local build scripts are unavailable under {}",
+            status.script_root
+        )));
+    }
+    if !status.has_env_file {
+        return Err(ApiError::bad_request(
+            "local build environment is not initialized yet",
+        ));
+    }
+    let android_version = status.template_android_version.clone().ok_or_else(|| {
+        ApiError::bad_request("current local build environment is missing Android version")
+    })?;
+    let kernel_version = status.template_kernel_version.clone().ok_or_else(|| {
+        ApiError::bad_request("current local build environment is missing kernel version")
+    })?;
+    let branch_month = status.branch_month.clone().ok_or_else(|| {
+        ApiError::bad_request("current local build environment is missing branch month")
+    })?;
+    let source_instance = state
+        .write_local_build(|manager| {
+            manager.ensure_legacy_source_instance(&android_version, &kernel_version, &branch_month)
+        })
+        .map_err(ApiError::from)?;
+    let profile = state
+        .write_local_build(|manager| {
+            manager.ensure_legacy_profile(&source_instance.id, request.build.clone())
+        })
+        .map_err(ApiError::from)?;
+    let plan = state
+        .write_local_build(|manager| {
+            manager.plan_profile_build(
+                &profile.id,
+                &BuildLocalBuildProfileRequest {
+                    clean_out: request.clean_out,
+                    reseed: request.reseed,
+                    no_package: request.no_package,
+                    sudo_password: None,
+                },
+            )
+        })
+        .map_err(ApiError::from)?;
+    Ok(queue_local_build_profile_build_task(
+        state,
+        plan,
+        BuildLocalBuildProfileRequest {
+            clean_out: request.clean_out,
+            reseed: request.reseed,
+            no_package: request.no_package,
+            sudo_password: None,
+        },
+        "local.build.rebuild",
+        "local rebuild accepted",
+        "local kernel rebuild running",
+        "local kernel rebuild finished",
+        "local kernel rebuild failed",
+    ))
+}
+
+fn queue_local_build_source_sync_task(
+    state: AppState,
+    plan: LocalBuildSourceSyncPlan,
+    kind: &'static str,
+    accepted_message: &'static str,
+    running_message: &'static str,
+    success_message: &'static str,
+    failure_message: &'static str,
+) -> (StatusCode, Json<TaskSnapshot>) {
+    let id = Uuid::new_v4().to_string();
+    let snapshot = TaskSnapshot {
+        id: id.clone(),
+        kind: kind.into(),
+        state: "pending".into(),
+        message: Some(accepted_message.into()),
+        output: vec![
+            "## prepare source sync".into(),
+            format!("backend: {}", plan.backend_kind.as_str()),
+            format!("source instance: {}", plan.source_instance.display_name),
+            format!("command: {}", plan.command.display()),
+        ],
+        result: mark_task_result_cancelable(
+            json!({
+                "backendKind": plan.backend_kind,
+                "sourceInstance": plan.source_instance,
+            }),
+            true,
+        ),
+        download_name: None,
+        download_content_type: None,
+    };
+    state.upsert_task(LocalTask {
+        snapshot: snapshot.clone(),
+        download_path: None,
+    });
+    let cancel_rx = state.register_task_canceller(&id);
+
+    let task_state = state.clone();
+    let accepted_snapshot = snapshot.clone();
+    tokio::spawn(async move {
+        let running_snapshot = TaskSnapshot {
+            state: "running".into(),
+            message: Some(running_message.into()),
+            result: mark_task_result_cancelable(snapshot.result.clone(), true),
+            ..snapshot.clone()
+        };
+        task_state.upsert_task(LocalTask {
+            snapshot: running_snapshot.clone(),
+            download_path: None,
+        });
+        match run_streaming_command_for_task(
+            task_state.clone(),
+            running_snapshot.clone(),
+            plan.command.clone(),
+            cancel_rx,
+        )
+        .await
+        {
+            Ok(CommandStreamingOutcome::Succeeded { text, lines }) => match task_state
+                .write_local_build(|manager| {
+                    manager.finalize_source_sync(
+                        &plan.source_instance.id,
+                        &snapshot.id,
+                        plan.backend_kind,
+                    )
+                }) {
+                Ok(source_instance) => {
+                    let refreshed_status = inspect_local_build_status().ok();
+                    let result = if let Some(status) = refreshed_status {
+                        json!({
+                            "backendKind": plan.backend_kind,
+                            "sourceInstance": source_instance,
+                            "status": status,
+                            "stdout": text,
+                        })
+                    } else {
+                        json!({
+                            "backendKind": plan.backend_kind,
+                            "sourceInstance": source_instance,
+                            "stdout": text,
+                        })
+                    };
+                    task_state.upsert_task(LocalTask {
+                        snapshot: TaskSnapshot {
+                            state: "succeeded".into(),
+                            message: Some(success_message.into()),
+                            output: lines,
+                            result,
+                            ..snapshot.clone()
+                        },
+                        download_path: None,
+                    });
+                }
+                Err(error) => {
+                    let message = error.to_string();
+                    task_state
+                        .write_local_build(|manager| {
+                            manager.fail_source_sync(
+                                &plan.source_instance.id,
+                                &snapshot.id,
+                                &message,
+                            )
+                        })
+                        .ok();
+                    task_state.upsert_task(LocalTask {
+                        snapshot: TaskSnapshot {
+                            state: "failed".into(),
+                            message: Some(failure_message.into()),
+                            output: lines_from_message(&message),
+                            result: json!({
+                                "backendKind": plan.backend_kind,
+                                "sourceInstanceId": plan.source_instance.id,
+                                "error": message,
+                            }),
+                            ..snapshot.clone()
+                        },
+                        download_path: None,
+                    });
+                }
+            },
+            Ok(CommandStreamingOutcome::Cancelled { text, lines }) => {
+                let message = if text.trim().is_empty() {
+                    "local source sync cancelled".to_string()
+                } else {
+                    text
+                };
+                task_state
+                    .write_local_build(|manager| {
+                        manager.fail_source_sync(&plan.source_instance.id, &snapshot.id, &message)
+                    })
+                    .ok();
+                task_state.upsert_task(LocalTask {
+                    snapshot: TaskSnapshot {
+                        state: "cancelled".into(),
+                        message: Some("local source sync cancelled".into()),
+                        output: lines,
+                        result: json!({
+                            "backendKind": plan.backend_kind,
+                            "sourceInstanceId": plan.source_instance.id,
+                            "cancelled": true,
+                            "stdout": message,
+                        }),
+                        ..snapshot.clone()
+                    },
+                    download_path: None,
+                });
+            }
+            Ok(CommandStreamingOutcome::Failed { message, lines }) => {
+                task_state
+                    .write_local_build(|manager| {
+                        manager.fail_source_sync(&plan.source_instance.id, &snapshot.id, &message)
+                    })
+                    .ok();
+                task_state.upsert_task(LocalTask {
+                    snapshot: TaskSnapshot {
+                        state: "failed".into(),
+                        message: Some(failure_message.into()),
+                        output: lines,
+                        result: json!({
+                            "backendKind": plan.backend_kind,
+                            "sourceInstanceId": plan.source_instance.id,
+                            "error": message,
+                        }),
+                        ..snapshot.clone()
+                    },
+                    download_path: None,
+                });
+            }
+            Err(error) => {
+                let message = error.message.clone();
+                task_state
+                    .write_local_build(|manager| {
+                        manager.fail_source_sync(&plan.source_instance.id, &snapshot.id, &message)
+                    })
+                    .ok();
+                task_state.upsert_task(LocalTask {
+                    snapshot: TaskSnapshot {
+                        state: "failed".into(),
+                        message: Some(failure_message.into()),
+                        output: lines_from_message(&message),
+                        result: json!({
+                            "backendKind": plan.backend_kind,
+                            "sourceInstanceId": plan.source_instance.id,
+                            "error": message,
+                        }),
+                        ..snapshot.clone()
+                    },
+                    download_path: None,
+                });
+            }
+        }
+        task_state.clear_task_canceller(&snapshot.id);
+    });
+
+    (StatusCode::ACCEPTED, Json(accepted_snapshot))
+}
+
+fn queue_local_build_profile_build_task(
+    state: AppState,
+    plan: LocalBuildProfileBuildPlan,
+    request: BuildLocalBuildProfileRequest,
+    kind: &'static str,
+    accepted_message: &'static str,
+    running_message: &'static str,
+    success_message: &'static str,
+    failure_message: &'static str,
+) -> (StatusCode, Json<TaskSnapshot>) {
+    let id = Uuid::new_v4().to_string();
+    let snapshot = TaskSnapshot {
+        id: id.clone(),
+        kind: kind.into(),
+        state: "pending".into(),
+        message: Some(accepted_message.into()),
+        output: vec![
+            "## prepare profile build".into(),
+            format!("backend: {}", plan.backend_kind.as_str()),
+            format!("profile: {}", plan.profile.name),
+            format!("source instance: {}", plan.source_instance.display_name),
+            format!("build command: {}", plan.build_command.display()),
+        ],
+        result: mark_task_result_cancelable(
+            json!({
+                "backendKind": plan.backend_kind,
+                "profile": plan.profile,
+                "sourceInstance": plan.source_instance,
+                "request": request,
+            }),
+            true,
+        ),
+        download_name: None,
+        download_content_type: None,
+    };
+    state.upsert_task(LocalTask {
+        snapshot: snapshot.clone(),
+        download_path: None,
+    });
+    let cancel_rx = state.register_task_canceller(&id);
+
+    let task_state = state.clone();
+    let accepted_snapshot = snapshot.clone();
+    tokio::spawn(async move {
+        let running_snapshot = TaskSnapshot {
+            state: "running".into(),
+            message: Some(running_message.into()),
+            result: mark_task_result_cancelable(snapshot.result.clone(), true),
+            ..snapshot.clone()
+        };
+        task_state.upsert_task(LocalTask {
+            snapshot: running_snapshot.clone(),
+            download_path: None,
+        });
+
+        let execution = async {
+            let mut lines = Vec::<String>::new();
+            let cancel_rx = cancel_rx;
+            if let Some(activation_command) = plan.activation_command.clone() {
+                push_task_output_line(&mut lines, "## activate source instance".into());
+                task_state.upsert_task(LocalTask {
+                    snapshot: TaskSnapshot {
+                        output: lines.clone(),
+                        ..running_snapshot.clone()
+                    },
+                    download_path: None,
+                });
+                match run_streaming_command_for_task(
+                    task_state.clone(),
+                    TaskSnapshot {
+                        output: lines.clone(),
+                        ..running_snapshot.clone()
+                    },
+                    activation_command,
+                    cancel_rx.clone(),
+                )
+                .await?
+                {
+                    CommandStreamingOutcome::Succeeded {
+                        text: _activation_text,
+                        lines: updated_lines,
+                    } => {
+                        lines = updated_lines;
+                    }
+                    CommandStreamingOutcome::Cancelled { text, lines } => {
+                        return Ok::<CommandStreamingOutcome, ApiError>(
+                            CommandStreamingOutcome::Cancelled { text, lines },
+                        );
+                    }
+                    CommandStreamingOutcome::Failed { message, lines } => {
+                        return Ok::<CommandStreamingOutcome, ApiError>(
+                            CommandStreamingOutcome::Failed { message, lines },
+                        );
+                    }
+                }
+                task_state
+                    .write_local_build(|manager| {
+                        manager.finalize_source_sync(
+                            &plan.source_instance.id,
+                            &snapshot.id,
+                            plan.backend_kind,
+                        )
+                    })
+                    .map_err(ApiError::from)?;
+            }
+            let status = inspect_local_build_status().map_err(ApiError::from)?;
+            sync_local_build_env_with_request(&status, &plan.build_request)
+                .map_err(ApiError::from)?;
+            push_task_output_line(&mut lines, "## run build".into());
+            task_state.upsert_task(LocalTask {
+                snapshot: TaskSnapshot {
+                    output: lines.clone(),
+                    ..running_snapshot.clone()
+                },
+                download_path: None,
+            });
+            match run_streaming_command_for_task(
+                task_state.clone(),
+                TaskSnapshot {
+                    output: lines.clone(),
+                    ..running_snapshot.clone()
+                },
+                plan.build_command.clone(),
+                cancel_rx,
+            )
+            .await?
+            {
+                CommandStreamingOutcome::Succeeded {
+                    text: build_text,
+                    lines: updated_lines,
+                } => {
+                    lines = updated_lines;
+                    Ok::<CommandStreamingOutcome, ApiError>(CommandStreamingOutcome::Succeeded {
+                        text: build_text,
+                        lines,
+                    })
+                }
+                CommandStreamingOutcome::Cancelled { text, lines } => {
+                    Ok::<CommandStreamingOutcome, ApiError>(CommandStreamingOutcome::Cancelled {
+                        text,
+                        lines,
+                    })
+                }
+                CommandStreamingOutcome::Failed { message, lines } => {
+                    Ok::<CommandStreamingOutcome, ApiError>(CommandStreamingOutcome::Failed {
+                        message,
+                        lines,
+                    })
+                }
+            }
+        }
+        .await;
+
+        match execution {
+            Ok(CommandStreamingOutcome::Succeeded { text, lines }) => match task_state
+                .write_local_build(|manager| {
+                    manager.finalize_profile_build(
+                        &plan.profile.id,
+                        &snapshot.id,
+                        plan.backend_kind,
+                    )
+                }) {
+                Ok(profile) => {
+                    let refreshed_status = inspect_local_build_status().ok();
+                    let source_instance = task_state.read_local_build(|manager| {
+                        manager
+                            .list_source_instances()
+                            .source_instances
+                            .into_iter()
+                            .find(|source| source.id == plan.source_instance.id)
+                    });
+                    let result = if let Some(status) = refreshed_status {
+                        json!({
+                            "backendKind": plan.backend_kind,
+                            "profile": profile,
+                            "sourceInstance": source_instance,
+                            "request": request,
+                            "status": status,
+                            "stdout": text,
+                        })
+                    } else {
+                        json!({
+                            "backendKind": plan.backend_kind,
+                            "profile": profile,
+                            "sourceInstance": source_instance,
+                            "request": request,
+                            "stdout": text,
+                        })
+                    };
+                    task_state.upsert_task(LocalTask {
+                        snapshot: TaskSnapshot {
+                            state: "succeeded".into(),
+                            message: Some(success_message.into()),
+                            output: lines,
+                            result,
+                            ..snapshot.clone()
+                        },
+                        download_path: None,
+                    });
+                }
+                Err(error) => {
+                    let message = error.to_string();
+                    task_state
+                        .write_local_build(|manager| {
+                            manager.fail_profile_build(&plan.profile.id, &snapshot.id, &message)
+                        })
+                        .ok();
+                    task_state.upsert_task(LocalTask {
+                        snapshot: TaskSnapshot {
+                            state: "failed".into(),
+                            message: Some(failure_message.into()),
+                            output: lines_from_message(&message),
+                            result: json!({
+                                "backendKind": plan.backend_kind,
+                                "profileId": plan.profile.id,
+                                "sourceInstanceId": plan.source_instance.id,
+                                "request": request,
+                                "error": message,
+                            }),
+                            ..snapshot.clone()
+                        },
+                        download_path: None,
+                    });
+                }
+            },
+            Ok(CommandStreamingOutcome::Cancelled { text, lines }) => {
+                let message = if text.trim().is_empty() {
+                    "local build task cancelled".to_string()
+                } else {
+                    text
+                };
+                task_state
+                    .write_local_build(|manager| {
+                        manager.fail_profile_build(&plan.profile.id, &snapshot.id, &message)
+                    })
+                    .ok();
+                task_state.upsert_task(LocalTask {
+                    snapshot: TaskSnapshot {
+                        state: "cancelled".into(),
+                        message: Some("local build task cancelled".into()),
+                        output: lines,
+                        result: json!({
+                            "backendKind": plan.backend_kind,
+                            "profileId": plan.profile.id,
+                            "sourceInstanceId": plan.source_instance.id,
+                            "request": request,
+                            "cancelled": true,
+                            "stdout": message,
+                        }),
+                        ..snapshot.clone()
+                    },
+                    download_path: None,
+                });
+            }
+            Ok(CommandStreamingOutcome::Failed { message, lines }) => {
+                task_state
+                    .write_local_build(|manager| {
+                        manager.fail_profile_build(&plan.profile.id, &snapshot.id, &message)
+                    })
+                    .ok();
+                task_state.upsert_task(LocalTask {
+                    snapshot: TaskSnapshot {
+                        state: "failed".into(),
+                        message: Some(failure_message.into()),
+                        output: lines,
+                        result: json!({
+                            "backendKind": plan.backend_kind,
+                            "profileId": plan.profile.id,
+                            "sourceInstanceId": plan.source_instance.id,
+                            "request": request,
+                            "error": message,
+                        }),
+                        ..snapshot.clone()
+                    },
+                    download_path: None,
+                });
+            }
+            Err(error) => {
+                let message = error.message.clone();
+                task_state
+                    .write_local_build(|manager| {
+                        manager.fail_profile_build(&plan.profile.id, &snapshot.id, &message)
+                    })
+                    .ok();
+                task_state.upsert_task(LocalTask {
+                    snapshot: TaskSnapshot {
+                        state: "failed".into(),
+                        message: Some(failure_message.into()),
+                        output: lines_from_message(&message),
+                        result: json!({
+                            "backendKind": plan.backend_kind,
+                            "profileId": plan.profile.id,
+                            "sourceInstanceId": plan.source_instance.id,
+                            "request": request,
+                            "error": message,
+                        }),
+                        ..snapshot.clone()
+                    },
+                    download_path: None,
+                });
+            }
+        }
+        task_state.clear_task_canceller(&snapshot.id);
+    });
+
+    (StatusCode::ACCEPTED, Json(accepted_snapshot))
+}
+
+enum CommandStreamingOutcome {
+    Succeeded { text: String, lines: Vec<String> },
+    Failed { message: String, lines: Vec<String> },
+    Cancelled { text: String, lines: Vec<String> },
+}
+
+async fn run_streaming_command_for_task(
+    state: AppState,
+    running_snapshot: TaskSnapshot,
+    spec: crate::commands::CommandSpec,
+    mut cancel_rx: watch::Receiver<bool>,
+) -> Result<CommandStreamingOutcome, ApiError> {
+    let mut command = TokioCommand::new(&spec.program);
+    command
+        .args(&spec.args)
+        .current_dir(&spec.cwd)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = command
+        .spawn()
+        .with_context(|| format!("failed to execute {}", spec.display()))
+        .map_err(ApiError::from)?;
+    if let Some(input) = spec.stdin.as_deref() {
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(input.as_bytes())
+                .await
+                .with_context(|| format!("failed to write stdin for {}", spec.display()))
+                .map_err(ApiError::from)?;
+        }
+    } else {
+        let _ = child.stdin.take();
+    }
+
+    let (line_tx, mut line_rx) = mpsc::unbounded_channel::<String>();
+    if let Some(stdout) = child.stdout.take() {
+        tokio::spawn(read_process_output(stdout, line_tx.clone()));
+    }
+    if let Some(stderr) = child.stderr.take() {
+        tokio::spawn(read_process_output(stderr, line_tx.clone()));
+    }
+    drop(line_tx);
+
+    let mut output_lines = running_snapshot.output.clone();
+    let mut stream_closed = false;
+    let mut child_exited = false;
+    let mut exit_status = None;
+    let mut cancelled = false;
+
+    loop {
+        tokio::select! {
+            maybe_line = line_rx.recv(), if !stream_closed => {
+                match maybe_line {
+                    Some(line) => {
+                        push_task_output_line(&mut output_lines, line);
+                        state.upsert_task(LocalTask {
+                            snapshot: TaskSnapshot {
+                                output: output_lines.clone(),
+                                ..running_snapshot.clone()
+                            },
+                            download_path: None,
+                        });
+                    }
+                    None => {
+                        stream_closed = true;
+                    }
+                }
+            }
+            status = child.wait(), if !child_exited => {
+                let status = status
+                    .with_context(|| format!("failed to wait for {}", spec.display()))
+                    .map_err(ApiError::from)?;
+                child_exited = true;
+                exit_status = Some(status);
+            }
+            changed = cancel_rx.changed(), if !*cancel_rx.borrow() => {
+                if changed.is_ok() && *cancel_rx.borrow() {
+                    cancelled = true;
+                    let _ = child.start_kill();
+                }
+            }
+        }
+
+        if child_exited && stream_closed {
+            break;
+        }
+    }
+
+    let text = output_lines.join("\n");
+    if cancelled {
+        return Ok(CommandStreamingOutcome::Cancelled {
+            text,
+            lines: output_lines,
+        });
+    }
+
+    if exit_status.is_some_and(|status| status.success()) {
+        Ok(CommandStreamingOutcome::Succeeded {
+            text,
+            lines: output_lines,
+        })
+    } else {
+        let message = if text.trim().is_empty() {
+            format!("command failed while running {}", spec.display())
+        } else {
+            text.clone()
+        };
+        Ok(CommandStreamingOutcome::Failed {
+            message,
+            lines: output_lines,
+        })
+    }
+}
+
+async fn read_process_output<R>(reader: R, tx: mpsc::UnboundedSender<String>)
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    let mut lines = BufReader::new(reader).lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        let clean = line.trim_end().to_string();
+        if clean.is_empty() || clean.starts_with("[sudo] password for ") {
+            continue;
+        }
+        if tx.send(clean).is_err() {
+            break;
+        }
+    }
+}
+
+fn push_task_output_line(lines: &mut Vec<String>, line: String) {
+    lines.push(line);
+    if lines.len() > MAX_TASK_OUTPUT_LINES {
+        let overflow = lines.len() - MAX_TASK_OUTPUT_LINES;
+        lines.drain(0..overflow);
+    }
+}
+
+fn lines_from_message(message: &str) -> Vec<String> {
+    let mut lines = split_lines(message);
+    if lines.len() > MAX_TASK_OUTPUT_LINES {
+        let overflow = lines.len() - MAX_TASK_OUTPUT_LINES;
+        lines.drain(0..overflow);
+    }
+    lines
+}
+
+fn mark_task_result_cancelable(result: Value, cancelable: bool) -> Value {
+    match result {
+        Value::Object(mut object) => {
+            object.insert("cancelable".into(), Value::Bool(cancelable));
+            Value::Object(object)
+        }
+        other => other,
+    }
 }
 
 async fn track_dispatched_build_task(
@@ -1721,6 +2847,18 @@ async fn get_task(
     ))
 }
 
+async fn cancel_task(
+    State(state): State<AppState>,
+    Path(task_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let snapshot = state
+        .request_task_cancel(task_id.trim())
+        .ok_or_else(|| ApiError::bad_request(format!("unknown task {}", task_id.trim())))?;
+    Ok(Json(
+        serde_json::to_value(snapshot).map_err(ApiError::from)?,
+    ))
+}
+
 async fn download_task_file(
     State(state): State<AppState>,
     Path(task_id): Path<String>,
@@ -2029,6 +3167,72 @@ async fn clear_cli_token() -> Result<(), ApiError> {
     clear_cli_token_at_path(&path)
 }
 
+fn read_proxy_settings_from_path(path: &PathBuf) -> Result<ProxySettings, ApiError> {
+    let config = read_cli_config_json_from_path(path)?;
+    let object = config
+        .as_object()
+        .ok_or_else(|| ApiError::service_unavailable("cli config is not a json object"))?;
+    Ok(ProxySettings {
+        http_proxy: object
+            .get("http_proxy")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string),
+        https_proxy: object
+            .get("https_proxy")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string),
+        all_proxy: object
+            .get("all_proxy")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string),
+        no_proxy: object
+            .get("no_proxy")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string),
+    })
+}
+
+fn persist_proxy_settings_to_path(
+    path: &PathBuf,
+    settings: &ProxySettings,
+) -> Result<(), ApiError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    let mut config = read_cli_config_json_from_path(path)?;
+    let object = config
+        .as_object_mut()
+        .ok_or_else(|| ApiError::service_unavailable("cli config is not a json object"))?;
+    write_optional_config_string(object, "http_proxy", settings.http_proxy.as_deref());
+    write_optional_config_string(object, "https_proxy", settings.https_proxy.as_deref());
+    write_optional_config_string(object, "all_proxy", settings.all_proxy.as_deref());
+    write_optional_config_string(object, "no_proxy", settings.no_proxy.as_deref());
+    let content = serde_json::to_string_pretty(&config)?;
+    fs::write(path, content).with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(())
+}
+
+fn write_optional_config_string(
+    object: &mut serde_json::Map<String, Value>,
+    key: &str,
+    value: Option<&str>,
+) {
+    if let Some(value) = value {
+        object.insert(key.into(), Value::String(value.to_string()));
+    } else {
+        object.remove(key);
+    }
+}
+
 fn persist_cli_token_to_path(path: &PathBuf, token: &str) -> Result<(), ApiError> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -2204,6 +3408,376 @@ fn build_gki_cli_args(request: &BuildGkiRequest) -> Result<Vec<String>, ApiError
         args.push("--zram-full-algo".into());
     }
     Ok(args)
+}
+
+fn inspect_local_build_status() -> Result<LocalBuildStatus> {
+    let repo_root = repo_root();
+    let path_settings = load_local_build_path_settings(&repo_root)?;
+    let script_root = resolve_local_build_root(&repo_root, &path_settings);
+    let init_script_path = script_root.join("init.sh");
+    let rebuild_script_path = script_root.join("rebuild.sh");
+    let state_dir = script_root.join(".local-build");
+    let env_file_path = state_dir.join("env.sh");
+    let default_workspace_dir = resolve_local_build_workspace_dir(&script_root, &path_settings);
+    let default_sources_dir = state_dir.join("sources");
+    let env = if env_file_path.is_file() {
+        read_exported_env_file(&env_file_path)?
+    } else {
+        HashMap::new()
+    };
+
+    let workspace_dir = env_path(&env, "WORKSPACE_DIR").unwrap_or(default_workspace_dir);
+    let sources_dir = env_path(&env, "SOURCES_DIR").unwrap_or(default_sources_dir);
+    let artifacts_dir = env_path(&env, "ARTIFACTS_DIR").unwrap_or(workspace_dir.join("artifacts"));
+    let logs_dir = env_path(&env, "LOGS_DIR").unwrap_or(workspace_dir.join("logs"));
+    let cache_dir = env_path(&env, "CACHE_DIR").unwrap_or(workspace_dir.join("cache"));
+    let kernel_root = env_path(&env, "KERNEL_ROOT").unwrap_or(workspace_dir.join("kernel"));
+    let latest_log_path =
+        latest_file_in_dir(&logs_dir).map(|path| path.to_string_lossy().to_string());
+    let template_branch = env
+        .get("TEMPLATE_BRANCH")
+        .cloned()
+        .and_then(non_empty_string);
+
+    Ok(LocalBuildStatus {
+        available: init_script_path.is_file() && rebuild_script_path.is_file(),
+        script_root: script_root.to_string_lossy().to_string(),
+        init_script_path: init_script_path.to_string_lossy().to_string(),
+        rebuild_script_path: rebuild_script_path.to_string_lossy().to_string(),
+        env_file_path: env_file_path.to_string_lossy().to_string(),
+        state_dir: state_dir.to_string_lossy().to_string(),
+        sources_dir: sources_dir.to_string_lossy().to_string(),
+        workspace_dir: workspace_dir.to_string_lossy().to_string(),
+        artifacts_dir: artifacts_dir.to_string_lossy().to_string(),
+        logs_dir: logs_dir.to_string_lossy().to_string(),
+        cache_dir: cache_dir.to_string_lossy().to_string(),
+        kernel_root: kernel_root.to_string_lossy().to_string(),
+        has_env_file: env_file_path.is_file(),
+        workspace_ready: env_file_path.is_file() && kernel_root.is_dir(),
+        template_root: env.get("TEMPLATE_ROOT").cloned().and_then(non_empty_string),
+        template_name: env.get("TEMPLATE_NAME").cloned().and_then(non_empty_string),
+        template_android_version: env
+            .get("TEMPLATE_ANDROID_VERSION")
+            .cloned()
+            .and_then(non_empty_string),
+        template_kernel_version: env
+            .get("TEMPLATE_KERNEL_VERSION")
+            .cloned()
+            .and_then(non_empty_string),
+        sub_level: env.get("SUB_LEVEL").cloned().and_then(non_empty_string),
+        os_patch_level: env
+            .get("OS_PATCH_LEVEL")
+            .cloned()
+            .and_then(non_empty_string),
+        template_branch: template_branch.clone(),
+        template_common_branch: env
+            .get("TEMPLATE_COMMON_BRANCH")
+            .cloned()
+            .and_then(non_empty_string),
+        branch_month: template_branch.and_then(|value| extract_branch_month(&value)),
+        custom_external_modules_root: env
+            .get("CUSTOM_EXTERNAL_MODULES_ROOT")
+            .cloned()
+            .and_then(non_empty_string),
+        custom_external_modules_manifest: env
+            .get("CUSTOM_EXTERNAL_MODULES_MANIFEST")
+            .cloned()
+            .and_then(non_empty_string),
+        latest_log_path,
+        supported_templates: discover_local_build_templates(&script_root),
+    })
+}
+
+fn discover_local_build_templates(root: &FsPath) -> Vec<LocalBuildTemplate> {
+    let mut templates = fs::read_dir(root)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            if !entry.file_type().ok()?.is_dir() {
+                return None;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            let suffix = name.strip_prefix("AOSP_Kernel_A")?;
+            let (android_suffix, kernel_version) = suffix.split_once('_')?;
+            if android_suffix.is_empty() || kernel_version.trim().is_empty() {
+                return None;
+            }
+            Some(LocalBuildTemplate {
+                name: name.clone(),
+                android_version: format!("android{}", android_suffix.trim()),
+                kernel_version: kernel_version.trim().to_string(),
+                template_path: entry.path().to_string_lossy().to_string(),
+            })
+        })
+        .collect::<Vec<_>>();
+    templates.sort_by(|left, right| left.name.cmp(&right.name));
+    templates
+}
+
+fn sync_local_build_env_with_request(
+    status: &LocalBuildStatus,
+    request: &BuildGkiRequest,
+) -> Result<()> {
+    let env_file_path = PathBuf::from(status.env_file_path.clone());
+    if !env_file_path.is_file() {
+        return Err(anyhow!(
+            "missing {}. Run init.sh before rebuild.",
+            env_file_path.display()
+        ));
+    }
+
+    let custom_modules = request
+        .custom_modules
+        .clone()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let ksu_branch = request
+        .ksu_branch
+        .clone()
+        .unwrap_or_else(|| "Stable".into());
+
+    let mut updates = HashMap::<String, String>::new();
+    updates.insert(
+        "KSU_VARIANT".into(),
+        request
+            .ksu_variant
+            .clone()
+            .unwrap_or_else(|| "ReSukiSU".into())
+            .trim()
+            .to_string(),
+    );
+    updates.insert(
+        "KSU_TRACK".into(),
+        local_ksu_track_label(&ksu_branch).into(),
+    );
+    updates.insert(
+        "KSU_CUSTOM_REF".into(),
+        request
+            .custom_ref
+            .clone()
+            .unwrap_or_default()
+            .trim()
+            .to_string(),
+    );
+    updates.insert("ENABLE_SUSFS".into(), bool_env(request.susfs));
+    updates.insert("USE_ZRAM".into(), bool_env(request.zram));
+    updates.insert("ZRAM_FULL_ALGO".into(), bool_env(request.zram_full_algo));
+    updates.insert(
+        "ZRAM_EXTRA_ALGOS".into(),
+        request
+            .zram_extra_algos
+            .clone()
+            .unwrap_or_default()
+            .trim()
+            .to_string(),
+    );
+    updates.insert("USE_BBG".into(), bool_env(request.bbg));
+    updates.insert("USE_DDK".into(), bool_env(request.ddk));
+    updates.insert("USE_NTSYNC".into(), bool_env(request.ntsync));
+    updates.insert("USE_NETWORKING".into(), bool_env(request.networking));
+    updates.insert("USE_KPM".into(), bool_env(request.kpm));
+    updates.insert(
+        "KPM_PASSWORD".into(),
+        request
+            .kpm_password
+            .clone()
+            .unwrap_or_default()
+            .trim()
+            .to_string(),
+    );
+    updates.insert("USE_REKERNEL".into(), bool_env(request.rekernel));
+    updates.insert(
+        "USE_CUSTOM_EXTERNAL_MODULES".into(),
+        bool_env(!custom_modules.is_empty()),
+    );
+    updates.insert("CUSTOM_EXTERNAL_MODULES".into(), custom_modules);
+    updates.insert(
+        "VIRTUALIZATION_SUPPORT".into(),
+        request
+            .virt
+            .clone()
+            .unwrap_or_else(|| "off".into())
+            .trim()
+            .to_string(),
+    );
+    updates.insert(
+        "VERSION_INPUT".into(),
+        request
+            .version
+            .clone()
+            .unwrap_or_default()
+            .trim()
+            .to_string(),
+    );
+    updates.insert(
+        "BUILD_TIME".into(),
+        request
+            .build_time
+            .clone()
+            .unwrap_or_default()
+            .trim()
+            .to_string(),
+    );
+    if let Some(revision) = request
+        .revision
+        .clone()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        updates.insert("REVISION".into(), revision);
+    }
+
+    rewrite_exported_env_file(&env_file_path, &updates)
+}
+
+fn read_exported_env_file(path: &FsPath) -> Result<HashMap<String, String>> {
+    let content =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let mut values = HashMap::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("export ") {
+            continue;
+        }
+        let Some((key, value)) = trimmed["export ".len()..].split_once('=') else {
+            continue;
+        };
+        values.insert(
+            key.trim().to_string(),
+            strip_shell_quotes(value.trim()).to_string(),
+        );
+    }
+    Ok(values)
+}
+
+fn rewrite_exported_env_file(path: &FsPath, updates: &HashMap<String, String>) -> Result<()> {
+    let content =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let mut seen = HashSet::<String>::new();
+    let mut lines = Vec::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("export ") {
+            if let Some((key, _)) = trimmed["export ".len()..].split_once('=') {
+                let clean_key = key.trim();
+                if let Some(value) = updates.get(clean_key) {
+                    lines.push(format!(
+                        "export {}=\"{}\"",
+                        clean_key,
+                        shell_escape_double_quoted(value)
+                    ));
+                    seen.insert(clean_key.to_string());
+                    continue;
+                }
+            }
+        }
+        lines.push(line.to_string());
+    }
+
+    let mut trailing = updates
+        .iter()
+        .filter(|(key, _)| !seen.contains(key.as_str()))
+        .map(|(key, value)| format!("export {}=\"{}\"", key, shell_escape_double_quoted(value)))
+        .collect::<Vec<_>>();
+    trailing.sort();
+    lines.extend(trailing);
+
+    fs::write(path, format!("{}\n", lines.join("\n")))
+        .with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(())
+}
+
+fn shell_escape_double_quoted(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('$', "\\$")
+        .replace('`', "\\`")
+}
+
+fn strip_shell_quotes(value: &str) -> &str {
+    value
+        .strip_prefix('"')
+        .and_then(|item| item.strip_suffix('"'))
+        .or_else(|| {
+            value
+                .strip_prefix('\'')
+                .and_then(|item| item.strip_suffix('\''))
+        })
+        .unwrap_or(value)
+}
+
+fn env_path(env: &HashMap<String, String>, key: &str) -> Option<PathBuf> {
+    env.get(key)
+        .and_then(|value| non_empty_string(value.to_string()).map(PathBuf::from))
+}
+
+fn non_empty_string(value: String) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn bool_env(value: bool) -> String {
+    if value {
+        "true".into()
+    } else {
+        "false".into()
+    }
+}
+
+fn local_ksu_track_label(value: &str) -> &'static str {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "dev" => "Dev(开发)",
+        "custom" => "Custom(自定义)",
+        _ => "Stable(标准)",
+    }
+}
+
+fn extract_branch_month(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.len() < 7 {
+        return None;
+    }
+    let suffix = &trimmed[trimmed.len() - 7..];
+    let bytes = suffix.as_bytes();
+    if bytes.len() == 7
+        && bytes[0].is_ascii_digit()
+        && bytes[1].is_ascii_digit()
+        && bytes[2].is_ascii_digit()
+        && bytes[3].is_ascii_digit()
+        && bytes[4] == b'-'
+        && bytes[5].is_ascii_digit()
+        && bytes[6].is_ascii_digit()
+    {
+        Some(suffix.to_string())
+    } else {
+        None
+    }
+}
+
+fn latest_file_in_dir(dir: &FsPath) -> Option<PathBuf> {
+    let mut latest: Option<(SystemTime, PathBuf)> = None;
+    for entry in fs::read_dir(dir).ok()? {
+        let entry = entry.ok()?;
+        let file_type = entry.file_type().ok()?;
+        if !file_type.is_file() {
+            continue;
+        }
+        let modified = entry.metadata().ok()?.modified().ok()?;
+        match &latest {
+            Some((current, _)) if *current >= modified => {}
+            _ => latest = Some((modified, entry.path())),
+        }
+    }
+    latest.map(|(_, path)| path)
 }
 
 fn parse_detected_devices(output: &str) -> Vec<DetectedDevice> {
