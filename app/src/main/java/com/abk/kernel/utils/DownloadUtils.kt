@@ -215,6 +215,7 @@ object DownloadUtils {
         downloadUrl: String? = null,
         downloadDirectoryPath: String? = null,
         bundleWithNotices: Boolean = false,
+        resolveSigningPublicKeyPem: (suspend () -> String?)? = null,
         onProgress: (Int) -> Unit = {}
     ): DownloadResult = withContext(Dispatchers.IO) {
         var runDir: File? = null
@@ -305,12 +306,25 @@ object DownloadUtils {
                     }
                 val bundledDependencies = resolveBundledMagiskModules(stagingRoot, token)
                 val bundledCompanionApps = resolveBundledCompanionApps(stagingRoot, token)
-                val signingPublicKey = PreferencesRepository(context).readForkArtifactSigningPublicKeyBlocking()
-                val signingPublicKeyPem = signingPublicKey
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let(ForkSigningManager::publicKeyPemFromStoredValue)
                 val signingVerificationEnabled = PreferencesRepository(context)
                     .readArtifactSigningVerificationEnabledBlocking()
+                val requiresTrustedKey = candidates.any { candidate ->
+                    ArtifactVerification.readBundleManifest(candidate) != null &&
+                        ArtifactVerification.requiresTrustedBundle(
+                            classifyDownloadedFile(candidate)
+                        )
+                }
+                val signingPublicKeyPem = if (
+                    signingVerificationEnabled &&
+                    requiresTrustedKey &&
+                    resolveSigningPublicKeyPem != null
+                ) {
+                    resolveSigningPublicKeyPem()
+                } else {
+                    PreferencesRepository(context).readForkArtifactSigningPublicKeyBlocking()
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let(ForkSigningManager::publicKeyPemFromStoredValue)
+                }
 
                 createBundledDownloadEntries(
                     context = context,
