@@ -1258,19 +1258,40 @@ class GitHubClient:
             if response is not None:
                 response.close()
 
-    def get_published_signing_key(self):
+    def get_published_signing_key_snapshot(self):
+        """Capture the published key and the exact asset IDs that supplied it."""
         release = self.get_release_by_tag(SIGNING_RELEASE_TAG)
         if not release:
-            return None
+            return {
+                "public_key": None,
+                "release_id": None,
+                "asset_ids": [],
+            }
         assets = (
             self.list_release_assets(release["id"])
             if release.get("id") is not None
             else release.get("assets", [])
         )
-        for asset in assets:
-            if asset.get("name") == SIGNING_PUBLIC_KEY_ASSET:
-                return self._download_release_asset_text(asset["url"])
-        return None
+        signing_assets = [
+            asset for asset in assets
+            if asset.get("name") == SIGNING_PUBLIC_KEY_ASSET
+        ]
+        keys = [
+            self._download_release_asset_text(asset["url"])
+            for asset in signing_assets
+        ]
+        if keys and any(key.strip() != keys[0].strip() for key in keys[1:]):
+            raise SigningStateIndeterminateError(
+                "multiple different artifact signing public keys are published"
+            )
+        return {
+            "public_key": keys[0] if keys else None,
+            "release_id": release.get("id"),
+            "asset_ids": [asset["id"] for asset in signing_assets],
+        }
+
+    def get_published_signing_key(self):
+        return self.get_published_signing_key_snapshot()["public_key"]
 
     def _upload_signing_key_asset(self, release, public_key_pem):
         upload_url = str(release.get("upload_url", "")).split("{", 1)[0]
@@ -1414,27 +1435,17 @@ class GitHubClient:
             "GitHub did not confirm the replacement signing public key asset"
         ) from upload_error
 
-    def delete_published_signing_key(self):
-        """Delete all fixed-name public key assets while retaining the release."""
-        release = self.get_release_by_tag(SIGNING_RELEASE_TAG)
-        if not release:
-            return None
-        signing_assets = [
-            asset for asset in self.list_release_assets(release["id"])
-            if asset.get("name") == SIGNING_PUBLIC_KEY_ASSET
-        ]
-        previous_key = None
-        if signing_assets:
-            previous_key = self._download_release_asset_text(signing_assets[0]["url"])
+    def delete_published_signing_key(self, *, snapshot=None):
+        """Delete only the fixed-name asset IDs captured by the caller."""
+        snapshot = snapshot or self.get_published_signing_key_snapshot()
         try:
-            for asset in signing_assets:
-                self.delete_release_asset(asset["id"])
+            for asset_id in snapshot.get("asset_ids", []):
+                self.delete_release_asset(asset_id)
         except Exception as exc:
             raise SigningStateIndeterminateError(
                 "signing public key deletion stopped before all original assets "
                 "were confirmed absent; no concurrent asset was touched"
             ) from exc
-        return previous_key
 
 
 def _signing_repo_key(repo):
@@ -1521,9 +1532,9 @@ def signing_verification_enabled(repo=None, config=None):
 
 
 def _assert_remote_signing_disabled(client):
-    published_key = client.get_published_signing_key()
-    secret_exists = client.repository_secret_exists(SIGNING_SECRET_NAME)
-    if published_key or secret_exists:
+    remote_snapshot = _read_remote_signing_snapshot(client)
+    secret_exists = remote_snapshot["secret_exists"]
+    if remote_snapshot["public_key_exists"] or secret_exists:
         raise RuntimeError(
             "signing material was re-enabled by another client; run "
             "'abk signing enable' to trust it or 'abk signing disable --yes' "
@@ -2046,6 +2057,97 @@ class SigningKeyInputError(ValueError):
     pass
 
 
+class SigningRemoteStateChangedError(RuntimeError):
+    pass
+
+
+def _capture_published_signing_key_snapshot(client):
+    capture = getattr(client, "get_published_signing_key_snapshot", None)
+    if callable(capture):
+        return capture()
+    return {
+        "public_key": client.get_published_signing_key(),
+        "release_id": None,
+        "asset_ids": None,
+    }
+
+
+def _signing_public_snapshot_identity(public_key):
+    if public_key is None:
+        return None
+    try:
+        return normalize_signing_public_key(public_key).strip()
+    except Exception:
+        return f"invalid:{str(public_key).strip()}"
+
+
+def _read_remote_signing_snapshot(client, *, published_snapshot=None):
+    published_snapshot = (
+        published_snapshot
+        if published_snapshot is not None
+        else _capture_published_signing_key_snapshot(client)
+    )
+    public_key = published_snapshot.get("public_key")
+    asset_ids = published_snapshot.get("asset_ids")
+    public_key_exists = (
+        bool(asset_ids)
+        if asset_ids is not None
+        else public_key is not None
+    )
+    return {
+        "public_key": public_key,
+        "public_key_exists": public_key_exists,
+        "public_key_identity": _signing_public_snapshot_identity(public_key),
+        "secret_exists": bool(
+            client.repository_secret_exists(SIGNING_SECRET_NAME)
+        ),
+        "published_snapshot": published_snapshot,
+    }
+
+
+def _expected_remote_signing_snapshot(snapshot):
+    return {
+        "public_key_identity": snapshot["public_key_identity"],
+        "public_key_exists": snapshot["public_key_exists"],
+        "secret_exists": snapshot["secret_exists"],
+    }
+
+
+def _assert_expected_remote_signing_snapshot(current, expected):
+    if expected is None:
+        return
+    if (
+        current["public_key_identity"] != expected.get("public_key_identity")
+        or current["public_key_exists"] != bool(expected.get("public_key_exists"))
+        or current["secret_exists"] != bool(expected.get("secret_exists"))
+    ):
+        raise SigningRemoteStateChangedError(
+            "the remote signing state changed after it was inspected; no remote "
+            "material was touched, so rerun the command and confirm the new state"
+        )
+
+
+def _delete_published_signing_key_snapshot(client, snapshot):
+    if snapshot.get("asset_ids") is None:
+        client.delete_published_signing_key()
+        return
+    client.delete_published_signing_key(snapshot=snapshot)
+
+
+def _ensure_signing_key_for_repository_setup(client):
+    """Keep account/fork operations successful when only signing is locked."""
+    try:
+        ensure_signing_key(client)
+    except SigningStateIndeterminateError as exc:
+        warning = {
+            "code": "signing_state_indeterminate",
+            "message": str(exc),
+        }
+        print(f"{t('warning_prefix')} {warning['message']}", file=sys.stderr)
+        return warning
+    return None
+
+
 @contextlib.contextmanager
 def _persist_indeterminate_signing_state_on_error(client):
     try:
@@ -2088,22 +2190,6 @@ def _signing_secret_exists_confirmed(client, context):
             f"GitHub did not confirm the signing Secret state {context}; "
             "the remote signing state may be indeterminate"
         ) from exc
-
-
-def _remove_reappeared_signing_secret(
-    client,
-    context,
-):
-    if not _signing_secret_exists_confirmed(client, context):
-        return False
-    try:
-        _delete_signing_secret_confirmed(client)
-    except Exception as exc:
-        raise SigningStateIndeterminateError(
-            f"the signing Secret reappeared {context} and could not be removed; "
-            "the remote signing state may be indeterminate"
-        ) from exc
-    return True
 
 
 def _abort_if_signing_secret_reappeared(client, context):
@@ -2176,7 +2262,13 @@ def _put_rotated_signing_secret(
     ) from last_error
 
 
-def install_signing_keypair(client, private_key_b64, public_key_pem):
+def install_signing_keypair(
+    client,
+    private_key_b64,
+    public_key_pem,
+    *,
+    expected_remote_snapshot=None,
+):
     """Install or rotate one validated signing pair without persisting its private key."""
     if not client.token:
         raise RuntimeError(t("err_no_token"))
@@ -2201,8 +2293,13 @@ def install_signing_keypair(client, private_key_b64, public_key_pem):
         _persist_indeterminate_signing_state_on_error(client),
     ):
         verification_was_enabled = signing_verification_enabled(client.repo)
-        secret_existed = client.repository_secret_exists(SIGNING_SECRET_NAME)
-        old_public_key = client.get_published_signing_key()
+        remote_snapshot = _read_remote_signing_snapshot(client)
+        _assert_expected_remote_signing_snapshot(
+            remote_snapshot,
+            expected_remote_snapshot,
+        )
+        secret_existed = remote_snapshot["secret_exists"]
+        old_public_key = remote_snapshot["public_key"]
         try:
             old_normalized = (
                 normalize_signing_public_key(old_public_key)
@@ -2269,7 +2366,7 @@ def install_signing_keypair(client, private_key_b64, public_key_pem):
         }
 
 
-def disable_signing_verification(client):
+def disable_signing_verification(client, *, expected_remote_snapshot=None):
     """Delete fork signing material and persist a repo-scoped disabled preference."""
     if not client.token:
         raise RuntimeError(t("err_no_token"))
@@ -2283,30 +2380,46 @@ def disable_signing_verification(client):
         _persist_indeterminate_signing_state_on_error(client),
     ):
         enabled_before = signing_verification_enabled(client.repo)
-        secret_existed = client.repository_secret_exists(SIGNING_SECRET_NAME)
-        old_public_key = client.get_published_signing_key()
+        remote_snapshot = _read_remote_signing_snapshot(client)
+        _assert_expected_remote_signing_snapshot(
+            remote_snapshot,
+            expected_remote_snapshot,
+        )
+        secret_existed = remote_snapshot["secret_exists"]
+        old_public_key = remote_snapshot["public_key"]
         if secret_existed:
             _delete_signing_secret_confirmed(client)
-        _remove_reappeared_signing_secret(
+        _abort_if_signing_secret_reappeared(
             client,
             "before signing verification was disabled",
         )
-        client.delete_published_signing_key()
         try:
-            public_key_still_exists = bool(client.get_published_signing_key())
+            _delete_published_signing_key_snapshot(
+                client,
+                remote_snapshot["published_snapshot"],
+            )
+        except SigningStateIndeterminateError:
+            raise
         except Exception as exc:
             raise SigningStateIndeterminateError(
-                "GitHub did not confirm whether the signing public key was deleted"
+                "GitHub did not complete signing public key deletion after the "
+                "Secret was removed"
             ) from exc
-        if public_key_still_exists:
+
+        try:
+            public_before = client.get_published_signing_key()
+            secret_after = client.repository_secret_exists(SIGNING_SECRET_NAME)
+            public_after = client.get_published_signing_key()
+        except Exception as exc:
             raise SigningStateIndeterminateError(
-                "a signing public key appeared while verification was being "
-                "disabled; the concurrent asset was not touched"
+                "GitHub did not confirm that signing material is absent after "
+                "verification was disabled"
+            ) from exc
+        if public_before is not None or secret_after or public_after is not None:
+            raise SigningStateIndeterminateError(
+                "signing material appeared while verification was being disabled; "
+                "the concurrent material was not touched"
             )
-        _remove_reappeared_signing_secret(
-            client,
-            "while signing verification was being disabled",
-        )
 
         config = load_config()
         _save_signing_disabled_state(config, client.repo)
@@ -2322,14 +2435,16 @@ def get_signing_status(client):
     local_state = _get_signing_state(config, client.repo)
     local_key = local_state.get("public_key")
     local_state_indeterminate = local_state.get("indeterminate") is True
-    published_key = client.get_published_signing_key()
-    secret_exists = client.repository_secret_exists(SIGNING_SECRET_NAME)
+    remote_snapshot = _read_remote_signing_snapshot(client)
+    published_key = remote_snapshot["public_key"]
+    public_key_exists = remote_snapshot["public_key_exists"]
+    secret_exists = remote_snapshot["secret_exists"]
     published_fingerprint = _safe_signing_key_fingerprint(published_key)
-    if published_key and published_fingerprint is None:
+    if public_key_exists and published_fingerprint is None:
         remote_state = "invalid_public_key"
-    elif published_key and secret_exists:
+    elif public_key_exists and secret_exists:
         remote_state = "present_unverified"
-    elif published_key:
+    elif public_key_exists:
         remote_state = "public_only"
     elif secret_exists:
         remote_state = "secret_only"
@@ -2359,6 +2474,7 @@ def get_signing_status(client):
         "local_state_indeterminate": local_state_indeterminate,
         "public_key_fingerprint": published_fingerprint,
         "local_key_fingerprint": local_fingerprint,
+        "remote_snapshot": _expected_remote_signing_snapshot(remote_snapshot),
     }
 
 
@@ -2389,7 +2505,7 @@ def resolve_verification_key(client):
         if local_key:
             return local_key
         raise
-    if not published_key:
+    if published_key is None:
         return local_key
 
     published_key = normalize_signing_public_key(published_key)
@@ -2881,7 +2997,7 @@ def cmd_login(args):
                 wait_for_repo = getattr(client, "wait_for_repo_ready", None)
                 if callable(wait_for_repo):
                     wait_for_repo(full_name)
-                ensure_signing_key(client)
+                _ensure_signing_key_for_repository_setup(client)
                 print(t("fork_created_generic"))
         elif fork_status and fork_status.get("needs_sync"):
             print(t("fork_behind_upstream", n=fork_status['behind_by']))
@@ -2889,10 +3005,10 @@ def cmd_login(args):
             if sync in ('y', 'yes'):
                 client.sync_fork()
                 print(t("fork_sync_done"))
-            ensure_signing_key(client)
+            _ensure_signing_key_for_repository_setup(client)
         elif fork_status and not fork_status.get("needs_fork"):
             print(t("fork_up_to_date"))
-            ensure_signing_key(client)
+            _ensure_signing_key_for_repository_setup(client)
         return 0
     except Exception as exc:
         print(t("login_check_failed", error=exc), file=sys.stderr)
@@ -3078,7 +3194,7 @@ def cmd_fork(args):
         sync_requested = False
         if _repo_is_explicit(client, args):
             print(t("fork_exists", fork=client.repo))
-            ensure_signing_key(client)
+            signing_warning = _ensure_signing_key_for_repository_setup(client)
             _set_json_result(
                 args,
                 ok=True,
@@ -3086,6 +3202,8 @@ def cmd_fork(args):
                 syncRequested=False,
                 repo=client.repo,
                 fork={"fullName": client.repo},
+                warnings=[signing_warning] if signing_warning else [],
+                signingStateIndeterminate=bool(signing_warning),
             )
             return 0
 
@@ -3118,7 +3236,7 @@ def cmd_fork(args):
                 wait_for_repo(full_name)
             print(t("fork_created", fork=result.get('full_name')))
             created = True
-        ensure_signing_key(client)
+        signing_warning = _ensure_signing_key_for_repository_setup(client)
         _set_json_result(
             args,
             ok=True,
@@ -3126,6 +3244,8 @@ def cmd_fork(args):
             syncRequested=sync_requested,
             repo=client.repo,
             fork={"fullName": client.repo},
+            warnings=[signing_warning] if signing_warning else [],
+            signingStateIndeterminate=bool(signing_warning),
         )
         return 0
     except Exception as exc:
@@ -3166,7 +3286,7 @@ def cmd_sync(args):
             print(t("syncing_n_commits", n=behind_before))
             client.sync_fork()
             print(t("fork_sync_done"))
-        ensure_signing_key(client)
+        signing_warning = _ensure_signing_key_for_repository_setup(client)
         _set_json_result(
             args,
             ok=True,
@@ -3174,6 +3294,8 @@ def cmd_sync(args):
             behindByBefore=behind_before,
             repo=client.repo,
             fork={"fullName": client.repo},
+            warnings=[signing_warning] if signing_warning else [],
+            signingStateIndeterminate=bool(signing_warning),
         )
         return 0
     except Exception as exc:
@@ -3358,8 +3480,8 @@ def cmd_signing(args):
                     dryRun=True,
                     changed=changed,
                     verificationEnabled=True,
-                    signingKeyConfigured=status["signing_key_configured"],
-                    signingReady=status["signing_ready"],
+                    signingKeyConfigured=True,
+                    signingReady=True,
                     publicKeyFingerprint=fingerprint,
                     previousPublicKeyFingerprint=previous,
                     invalidatedPreviousBundles=bool(public_key_changed and previous),
@@ -3367,7 +3489,12 @@ def cmd_signing(args):
                 )
                 print(t("signing_dry_run", action=action, repo=repo))
                 return 0
-            result = install_signing_keypair(client, private_b64, public_pem)
+            result = install_signing_keypair(
+                client,
+                private_b64,
+                public_pem,
+                expected_remote_snapshot=status["remote_snapshot"],
+            )
             print(
                 t(
                     "signing_imported" if action == "import" else "signing_rotated",
@@ -3415,8 +3542,12 @@ def cmd_signing(args):
                     dryRun=True,
                     changed=enable_changed,
                     verificationEnabled=True,
-                    signingKeyConfigured=status["signing_key_configured"],
-                    signingReady=status["signing_ready"],
+                    signingKeyConfigured=True,
+                    signingReady=(
+                        status["signing_ready"]
+                        if status["signing_key_configured"]
+                        else True
+                    ),
                     publicKeyFingerprint=status["public_key_fingerprint"],
                     willGenerateKey=not status["signing_key_configured"],
                 )
@@ -3431,6 +3562,7 @@ def cmd_signing(args):
                     client,
                     private_b64,
                     public_pem,
+                    expected_remote_snapshot=status["remote_snapshot"],
                 )
                 fingerprint = installed["fingerprint"]
             print(t("signing_enabled", repo=repo))
@@ -3470,13 +3602,17 @@ def cmd_signing(args):
                     dryRun=True,
                     changed=needs_change,
                     verificationEnabled=False,
-                    signingKeyConfigured=status["signing_key_configured"],
-                    signingReady=status["signing_ready"],
+                    signingKeyConfigured=False,
+                    signingReady=False,
+                    publicKeyFingerprint=None,
                     previousPublicKeyFingerprint=status["public_key_fingerprint"],
                 )
                 print(t("signing_dry_run", action=action, repo=repo))
                 return 0
-            result = disable_signing_verification(client)
+            result = disable_signing_verification(
+                client,
+                expected_remote_snapshot=status["remote_snapshot"],
+            )
             print(t("signing_disabled", repo=repo))
             _set_json_result(
                 args,

@@ -445,6 +445,42 @@ class SecurityRegressionTests(unittest.TestCase):
         )
         self.assertEqual([2], [asset["id"] for asset in client.assets])
 
+    def test_public_asset_delete_reuses_snapshot_without_second_download(self):
+        class SnapshottedAssetClient:
+            def __init__(self):
+                self.assets = [{
+                    "id": 1,
+                    "name": abk.SIGNING_PUBLIC_KEY_ASSET,
+                    "url": "old",
+                }]
+                self.events = []
+
+            def get_release_by_tag(self, tag):
+                return {"id": 10}
+
+            def list_release_assets(self, release_id):
+                self.events.append("list")
+                return list(self.assets)
+
+            def _download_release_asset_text(self, url):
+                self.events.append(f"download:{url}")
+                return "OLD"
+
+            def delete_release_asset(self, asset_id):
+                self.events.append(f"delete:{asset_id}")
+                self.assets = [asset for asset in self.assets if asset["id"] != asset_id]
+
+        client = SnapshottedAssetClient()
+        snapshot = abk.GitHubClient.get_published_signing_key_snapshot(client)
+
+        abk.GitHubClient.delete_published_signing_key(
+            client,
+            snapshot=snapshot,
+        )
+
+        self.assertEqual(["list", "download:old", "delete:1"], client.events)
+        self.assertEqual([], client.assets)
+
     def test_disable_signing_deletes_remote_material_and_prevents_implicit_reenable(self):
         if not abk._CRYPTO_BACKEND:
             self.skipTest("RSA backend unavailable")
@@ -478,6 +514,18 @@ class SecurityRegressionTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "re-enabled by another client"):
             abk.ensure_signing_key(client)
         with self.assertRaisesRegex(RuntimeError, "re-enabled by another client"):
+            abk.resolve_verification_key(client)
+
+        self.assertEqual([], client.events)
+
+    def test_empty_remote_public_asset_never_falls_back_to_cached_key(self):
+        if not abk._CRYPTO_BACKEND:
+            self.skipTest("RSA backend unavailable")
+        _, public_key, _ = self._generated_pem_pair()
+        abk._save_signing_state({}, "alice/ABK", public_key)
+        client = SigningClient(secret_exists=True, published_key=" \n")
+
+        with self.assertRaises(ValueError):
             abk.resolve_verification_key(client)
 
         self.assertEqual([], client.events)
@@ -540,6 +588,31 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertFalse(client.secret_exists)
         self.assertIsNone(client.published_key)
         self.assertFalse(abk.signing_verification_enabled(client.repo))
+
+    def test_disable_delete_failure_after_secret_removal_sets_safety_lock(self):
+        if not abk._CRYPTO_BACKEND:
+            self.skipTest("RSA backend unavailable")
+        _, public_key, _ = self._generated_pem_pair()
+
+        class PublicDeleteFailure(SigningClient):
+            def delete_published_signing_key(self):
+                self.events.append("public_delete_failed")
+                raise RuntimeError("simulated asset enumeration failure")
+
+        client = PublicDeleteFailure(secret_exists=True, published_key=public_key)
+
+        with self.assertRaisesRegex(
+            abk.SigningStateIndeterminateError,
+            "did not complete signing public key deletion",
+        ):
+            abk.disable_signing_verification(client)
+
+        self.assertEqual(
+            ["secret_delete", "public_delete_failed"],
+            client.events,
+        )
+        state = abk.load_config()[abk.SIGNING_STATE_CONFIG_KEY]["alice/abk"]
+        self.assertTrue(state["indeterminate"])
 
     def test_failed_rotation_cannot_leave_old_secret_behind_new_public_key(self):
         if not abk._CRYPTO_BACKEND:
@@ -840,32 +913,70 @@ class SecurityRegressionTests(unittest.TestCase):
         with self.assertRaises(abk.SigningStateIndeterminateError):
             abk.ensure_signing_key(client)
 
-    def test_disable_removes_secret_recreated_during_public_key_deletion(self):
+    def test_disable_preserves_pair_completed_during_final_absence_check(self):
+        if not abk._CRYPTO_BACKEND:
+            self.skipTest("RSA backend unavailable")
+        _, public_key, _ = self._generated_pem_pair()
+        _, concurrent_public, _ = self._generated_pem_pair()
+
+        class PairCompletesDuringFinalCheck(SigningClient):
+            def __init__(self):
+                super().__init__(secret_exists=True, published_key=public_key)
+                self.secret_checks = 0
+
+            def repository_secret_exists(self, name):
+                self.secret_checks += 1
+                if self.secret_checks == 4:
+                    self.events.append("concurrent_pair_complete")
+                    self.published_key = concurrent_public
+                    self.secret_exists = True
+                return self.secret_exists
+
+        client = PairCompletesDuringFinalCheck()
+
+        with self.assertRaisesRegex(
+            abk.SigningStateIndeterminateError,
+            "concurrent material was not touched",
+        ):
+            abk.disable_signing_verification(client)
+
+        self.assertEqual(
+            ["secret_delete", "public_delete", "concurrent_pair_complete"],
+            client.events,
+        )
+        self.assertTrue(client.secret_exists)
+        self.assertEqual(concurrent_public, client.published_key)
+        state = abk.load_config()[abk.SIGNING_STATE_CONFIG_KEY]["alice/abk"]
+        self.assertTrue(state["indeterminate"])
+
+    def test_disable_locks_when_empty_public_asset_appears_during_final_check(self):
         if not abk._CRYPTO_BACKEND:
             self.skipTest("RSA backend unavailable")
         _, public_key, _ = self._generated_pem_pair()
 
-        class SecretReappearsDuringDisable(SigningClient):
-            def delete_published_signing_key(self):
-                deleted = super().delete_published_signing_key()
-                self.secret_exists = True
-                return deleted
+        class EmptyAssetAppearsDuringFinalCheck(SigningClient):
+            def __init__(self):
+                super().__init__(secret_exists=True, published_key=public_key)
+                self.public_reads = 0
 
-        client = SecretReappearsDuringDisable(
-            secret_exists=True,
-            published_key=public_key,
-        )
+            def get_published_signing_key(self):
+                self.public_reads += 1
+                if self.public_reads == 3:
+                    self.events.append("empty_asset_appeared")
+                    self.published_key = ""
+                return self.published_key
 
-        result = abk.disable_signing_verification(client)
+        client = EmptyAssetAppearsDuringFinalCheck()
 
-        self.assertTrue(result["changed"])
+        with self.assertRaises(abk.SigningStateIndeterminateError):
+            abk.disable_signing_verification(client)
+
         self.assertEqual(
-            ["secret_delete", "public_delete", "secret_delete"],
+            ["secret_delete", "public_delete", "empty_asset_appeared"],
             client.events,
         )
-        self.assertFalse(client.secret_exists)
-        self.assertIsNone(client.published_key)
-        self.assertFalse(abk.signing_verification_enabled(client.repo))
+        state = abk.load_config()[abk.SIGNING_STATE_CONFIG_KEY]["alice/abk"]
+        self.assertTrue(state["indeterminate"])
 
     def test_missing_crypto_backend_fails_cleanly(self):
         with mock.patch.object(abk, "_CRYPTO_BACKEND", None):

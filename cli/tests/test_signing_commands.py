@@ -227,6 +227,9 @@ class SigningCommandTests(unittest.TestCase):
         self.assertEqual(0, exit_code)
         self.assertTrue(payload["dryRun"])
         self.assertTrue(payload["changed"])
+        self.assertTrue(payload["verificationEnabled"])
+        self.assertTrue(payload["signingKeyConfigured"])
+        self.assertTrue(payload["signingReady"])
         self.assertEqual([], client.events)
         self.assertFalse(abk.CONFIG_FILE.exists())
         serialized = json.dumps(payload)
@@ -288,6 +291,8 @@ class SigningCommandTests(unittest.TestCase):
         self.assertEqual(0, exit_code)
         self.assertTrue(payload["dryRun"])
         self.assertTrue(payload["willGenerateKey"])
+        self.assertTrue(payload["signingKeyConfigured"])
+        self.assertTrue(payload["signingReady"])
         self.assertIsNone(payload["publicKeyFingerprint"])
         self.assertEqual([], client.events)
         generate.assert_not_called()
@@ -358,6 +363,23 @@ class SigningCommandTests(unittest.TestCase):
         self.assertIsNone(payload["publicKeyFingerprint"])
         self.assertEqual("", stderr)
 
+    def test_status_treats_empty_public_asset_as_invalid_not_absent(self):
+        client = SigningCommandClient(
+            secret_exists=False,
+            published_key="   \n",
+        )
+
+        exit_code, payload, stderr = self._run_json(
+            ["abk", "--json", "--repo", "alice/ABK", "signing", "status"],
+            client,
+        )
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual("invalid_public_key", payload["signingState"])
+        self.assertFalse(payload["signingKeyConfigured"])
+        self.assertIsNone(payload["publicKeyFingerprint"])
+        self.assertEqual("", stderr)
+
     def test_disable_with_yes_persists_preference_and_removes_remote_material(self):
         _, public_pem, _, _, _ = self._pem_pair()
         client = SigningCommandClient(secret_exists=True, published_key=public_pem)
@@ -377,6 +399,32 @@ class SigningCommandTests(unittest.TestCase):
         self.assertFalse(abk.signing_verification_enabled("alice/ABK"))
         self.assertEqual("", stderr)
 
+    def test_disable_dry_run_reports_projected_disabled_state(self):
+        _, public_pem, _, _, _ = self._pem_pair()
+        client = SigningCommandClient(secret_exists=True, published_key=public_pem)
+
+        exit_code, payload, stderr = self._run_json(
+            [
+                "abk", "--json", "--repo", "alice/ABK", "signing", "disable",
+                "--dry-run",
+            ],
+            client,
+        )
+
+        self.assertEqual(0, exit_code)
+        self.assertFalse(payload["verificationEnabled"])
+        self.assertFalse(payload["signingKeyConfigured"])
+        self.assertFalse(payload["signingReady"])
+        self.assertIsNone(payload["publicKeyFingerprint"])
+        self.assertEqual(
+            abk.signing_key_fingerprint(public_pem),
+            payload["previousPublicKeyFingerprint"],
+        )
+        self.assertEqual([], client.events)
+        self.assertTrue(client.secret_exists)
+        self.assertEqual(public_pem, client.published_key)
+        self.assertEqual("", stderr)
+
     def test_enable_repairs_absent_remote_material_and_flips_preference_last(self):
         abk._save_signing_disabled_state({}, "alice/ABK")
         client = SigningCommandClient()
@@ -392,6 +440,65 @@ class SigningCommandTests(unittest.TestCase):
         self.assertTrue(payload["signingReady"])
         self.assertTrue(abk.signing_verification_enabled("alice/ABK"))
         self.assertEqual("", stderr)
+
+    def test_enable_dry_run_reports_projected_ready_state(self):
+        abk._save_signing_disabled_state({}, "alice/ABK")
+        client = SigningCommandClient()
+
+        exit_code, payload, stderr = self._run_json(
+            [
+                "abk", "--json", "--repo", "alice/ABK", "signing", "enable",
+                "--dry-run",
+            ],
+            client,
+        )
+
+        self.assertEqual(0, exit_code)
+        self.assertTrue(payload["verificationEnabled"])
+        self.assertTrue(payload["signingKeyConfigured"])
+        self.assertTrue(payload["signingReady"])
+        self.assertTrue(payload["willGenerateKey"])
+        self.assertEqual([], client.events)
+        self.assertFalse(abk.signing_verification_enabled("alice/ABK"))
+        self.assertEqual("", stderr)
+
+    def test_install_aborts_when_absent_status_is_replaced_by_android_pair(self):
+        _, concurrent_public, _, _, _ = self._pem_pair()
+
+        class AndroidPairAppearsAfterStatus(SigningCommandClient):
+            def __init__(self):
+                super().__init__()
+                self.public_reads = 0
+
+            def get_published_signing_key(self):
+                self.public_reads += 1
+                if self.public_reads == 2:
+                    self.published_key = concurrent_public
+                    self.secret_exists = True
+                return self.published_key
+
+        for action in ("rotate", "enable"):
+            with self.subTest(action=action):
+                if action == "enable":
+                    abk._save_signing_disabled_state({}, "alice/ABK")
+                client = AndroidPairAppearsAfterStatus()
+
+                exit_code, payload, stderr = self._run_json(
+                    [
+                        "abk", "--json", "--repo", "alice/ABK", "signing", action,
+                    ],
+                    client,
+                )
+
+                self.assertEqual(1, exit_code)
+                self.assertEqual("signing_operation_failed", payload["errorCode"])
+                self.assertIn("changed after it was inspected", payload["error"])
+                self.assertEqual([], client.events)
+                self.assertTrue(client.secret_exists)
+                self.assertEqual(concurrent_public, client.published_key)
+                state = abk._get_signing_state(abk.load_config(), "alice/ABK")
+                self.assertIsNot(state.get("indeterminate"), True)
+                self.assertEqual("", stderr)
 
     def test_enable_adopts_existing_material_without_claiming_pair_validation(self):
         _, public_pem, _, _, _ = self._pem_pair()
