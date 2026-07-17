@@ -425,6 +425,24 @@ class SigningCommandTests(unittest.TestCase):
         self.assertEqual(public_pem, client.published_key)
         self.assertEqual("", stderr)
 
+    def test_disable_reports_change_when_removing_empty_public_asset(self):
+        abk._save_signing_disabled_state({}, "alice/ABK")
+        client = SigningCommandClient(published_key=" \n")
+
+        exit_code, payload, stderr = self._run_json(
+            [
+                "abk", "--json", "--repo", "alice/ABK", "signing", "disable",
+                "--yes",
+            ],
+            client,
+        )
+
+        self.assertEqual(0, exit_code)
+        self.assertTrue(payload["changed"])
+        self.assertEqual(["public_delete"], client.events)
+        self.assertIsNone(client.published_key)
+        self.assertEqual("", stderr)
+
     def test_enable_repairs_absent_remote_material_and_flips_preference_last(self):
         abk._save_signing_disabled_state({}, "alice/ABK")
         client = SigningCommandClient()

@@ -2424,7 +2424,11 @@ def disable_signing_verification(client, *, expected_remote_snapshot=None):
         config = load_config()
         _save_signing_disabled_state(config, client.repo)
         return {
-            "changed": bool(secret_existed or old_public_key or enabled_before),
+            "changed": bool(
+                secret_existed
+                or remote_snapshot["public_key_exists"]
+                or enabled_before
+            ),
             "previous_fingerprint": _safe_signing_key_fingerprint(old_public_key),
         }
 
