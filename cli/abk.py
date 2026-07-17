@@ -1728,15 +1728,16 @@ def normalize_signing_public_key(public_key_pem):
             raise ValueError("artifact signing key must be RSA")
         if key.key_size < 2048:
             raise ValueError("artifact signing RSA key must be at least 2048 bits")
-        return key.public_bytes(
+        normalized_public_pem = key.public_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo,
         ).decode("ascii")
-
-    key = RSA.import_key(public_key_pem)
-    if key.size_in_bits() < 2048:
-        raise ValueError("artifact signing RSA key must be at least 2048 bits")
-    return key.publickey().export_key('PEM').decode("ascii")
+    else:
+        key = RSA.import_key(public_key_pem)
+        if key.size_in_bits() < 2048:
+            raise ValueError("artifact signing RSA key must be at least 2048 bits")
+        normalized_public_pem = key.publickey().export_key('PEM').decode("ascii")
+    return normalized_public_pem.rstrip("\r\n") + "\n"
 
 
 @contextlib.contextmanager

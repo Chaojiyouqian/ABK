@@ -186,9 +186,14 @@ class SecurityRegressionTests(unittest.TestCase):
             normalized_private, normalized_public, fingerprint = (
                 abk.load_signing_keypair(public_pem, private_pem)
             )
+            renormalized_public = abk.normalize_signing_public_key(
+                normalized_public
+            )
 
         self.assertTrue(base64.b64decode(normalized_private))
         self.assertIn("BEGIN PUBLIC KEY", normalized_public)
+        self.assertTrue(normalized_public.endswith("\n"))
+        self.assertEqual(normalized_public, renormalized_public)
         self.assertRegex(fingerprint, r"\A[0-9a-f]{64}\Z")
 
     def test_custom_signing_key_import_rejects_mismatched_pair(self):
