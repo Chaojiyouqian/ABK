@@ -38,7 +38,10 @@ cargo build \
   --bin abk_launcher \
   --bin abk_sidecar
 
-flutter build linux --release --project-dir "$FLUTTER_DIR"
+(
+  cd "$FLUTTER_DIR"
+  flutter build linux --release
+)
 
 rm -rf "$APPDIR"
 mkdir -p \

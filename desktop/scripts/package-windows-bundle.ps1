@@ -23,7 +23,12 @@ cargo build `
   --bin abk_launcher `
   --bin abk_sidecar
 
-flutter build windows --release --project-dir $FlutterDir
+Push-Location $FlutterDir
+try {
+    flutter build windows --release
+} finally {
+    Pop-Location
+}
 
 if (Test-Path $StageDir) {
     Remove-Item -Recurse -Force $StageDir
