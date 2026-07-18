@@ -3264,8 +3264,36 @@ fn clear_cli_token_at_path(path: &PathBuf) -> Result<(), ApiError> {
 }
 
 fn cli_config_path() -> Result<PathBuf, ApiError> {
-    let home = env::var("HOME").map_err(|_| ApiError::service_unavailable("HOME is not set"))?;
-    Ok(PathBuf::from(home).join(CLI_CONFIG_PATH_SUFFIX))
+    let home = resolve_user_home_dir()
+        .ok_or_else(|| ApiError::service_unavailable("HOME is not set"))?;
+    Ok(home.join(CLI_CONFIG_PATH_SUFFIX))
+}
+
+fn resolve_user_home_dir() -> Option<PathBuf> {
+    if let Some(home) = env::var("HOME")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        return Some(PathBuf::from(home));
+    }
+    if let Some(profile) = env::var("USERPROFILE")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        return Some(PathBuf::from(profile));
+    }
+    let drive = env::var("HOMEDRIVE").ok();
+    let path = env::var("HOMEPATH").ok();
+    match (drive, path) {
+        (Some(drive), Some(path))
+            if !drive.trim().is_empty() && !path.trim().is_empty() =>
+        {
+            Some(PathBuf::from(format!("{}{}", drive.trim(), path.trim())))
+        }
+        _ => None,
+    }
 }
 
 fn build_gki_cli_args(request: &BuildGkiRequest) -> Result<Vec<String>, ApiError> {
