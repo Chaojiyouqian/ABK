@@ -20,13 +20,6 @@ namespace {
 #define DWMWA_WINDOW_CORNER_PREFERENCE 33
 #endif
 
-enum DWM_WINDOW_CORNER_PREFERENCE {
-  DWMWCP_DEFAULT = 0,
-  DWMWCP_DONOTROUND = 1,
-  DWMWCP_ROUND = 2,
-  DWMWCP_ROUNDSMALL = 3
-};
-
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 
 /// Registry key for app theme preference.
@@ -297,7 +290,7 @@ void Win32Window::UpdateTheme(HWND const window) {
                           &enable_dark_mode, sizeof(enable_dark_mode));
   }
 
-  DWM_WINDOW_CORNER_PREFERENCE corner_preference = DWMWCP_ROUND;
+  const DWORD corner_preference = 2;  // DWMWCP_ROUND
   DwmSetWindowAttribute(window, DWMWA_WINDOW_CORNER_PREFERENCE,
                         &corner_preference, sizeof(corner_preference));
 }
