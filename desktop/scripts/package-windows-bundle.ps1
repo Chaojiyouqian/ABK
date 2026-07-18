@@ -7,6 +7,7 @@ $OutDir = Join-Path $DesktopDir "out\windows"
 $StageDir = Join-Path $OutDir "ABK"
 $FlutterReleaseDir = Join-Path $FlutterDir "build\windows\x64\runner\Release"
 $ZipPath = Join-Path $OutDir "ABK-windows-x64.zip"
+$PythonDir = Join-Path $StageDir "runtime\python"
 
 function Copy-ResourceTree {
     param(
@@ -36,10 +37,15 @@ if (Test-Path $StageDir) {
 New-Item -ItemType Directory -Force -Path $StageDir | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $StageDir "flutter") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $StageDir "resources\abk\app\signing") | Out-Null
+New-Item -ItemType Directory -Force -Path $PythonDir | Out-Null
 
 Copy-Item -Recurse -Force (Join-Path $FlutterReleaseDir "*") (Join-Path $StageDir "flutter")
 Copy-Item -Force (Join-Path $DesktopDir "target\release\abk_launcher.exe") (Join-Path $StageDir "ABK.exe")
 Copy-Item -Force (Join-Path $DesktopDir "target\release\abk_sidecar.exe") (Join-Path $StageDir "abk_sidecar.exe")
+if (-not $env:pythonLocation) {
+    throw "pythonLocation is not set. Run actions/setup-python before packaging."
+}
+Copy-Item -Recurse -Force (Join-Path $env:pythonLocation "*") $PythonDir
 
 Copy-ResourceTree (Join-Path $RootDir "cli") (Join-Path $StageDir "resources\abk\cli")
 Copy-ResourceTree (Join-Path $RootDir "zram") (Join-Path $StageDir "resources\abk\zram")

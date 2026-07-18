@@ -80,15 +80,30 @@ pub fn build_cli_command_parts(parts: &[String]) -> Result<CommandSpec> {
         return Err(anyhow!("CLI args are empty"));
     }
     let script = repo_root().join("cli").join("abk.py");
+    let (program, mut args) = cli_python_invocation();
+    args.push(script.to_string_lossy().to_string());
+    args.extend(parts.iter().cloned());
     Ok(CommandSpec {
-        program: "python3".into(),
-        args: std::iter::once(script.to_string_lossy().to_string())
-            .chain(parts.iter().cloned())
-            .collect(),
+        program,
+        args,
         cwd: repo_root(),
         env: Vec::new(),
         stdin: None,
     })
+}
+
+fn cli_python_invocation() -> (String, Vec<String>) {
+    if let Some(path) = env::var("ABK_DESKTOP_PYTHON")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        return (path, Vec::new());
+    }
+    if cfg!(windows) {
+        return ("python".into(), Vec::new());
+    }
+    ("python3".into(), Vec::new())
 }
 
 pub fn build_adb_detect_command() -> CommandSpec {
@@ -336,7 +351,7 @@ mod tests {
     #[test]
     fn builds_cli_command() {
         let spec = build_cli_command("status --run-id 42").unwrap();
-        assert_eq!(spec.program, "python3");
+        assert_eq!(spec.program, if cfg!(windows) { "python" } else { "python3" });
         assert!(spec.args[0].ends_with("cli/abk.py"));
         assert_eq!(&spec.args[1..], ["status", "--run-id", "42"]);
     }

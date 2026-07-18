@@ -59,6 +59,11 @@ fn spawn_sidecar(sidecar_path: &Path, app_root: &Path, port: u16) -> Result<Chil
         .env("ABK_DESKTOP_HOST", SIDECAR_HOST)
         .env("ABK_DESKTOP_APP_ROOT", app_root)
         .stdin(Stdio::null());
+    if let Some(python_path) = resolve_optional_python_path(
+        sidecar_path.parent().unwrap_or_else(|| Path::new(".")),
+    ) {
+        command.env("ABK_DESKTOP_PYTHON", python_path);
+    }
     configure_child_stdio(&mut command);
     spawn_child(&mut command, "sidecar")
 }
@@ -158,6 +163,27 @@ fn resolve_app_root(launcher_dir: &Path) -> Result<PathBuf> {
         }
     }
     Err(anyhow!("failed to locate packaged ABK app root"))
+}
+
+fn resolve_optional_python_path(launcher_dir: &Path) -> Option<PathBuf> {
+    if let Some(path) = env::var_os("ABK_DESKTOP_PYTHON")
+        .map(PathBuf::from)
+        .filter(|path| path.is_file())
+    {
+        return Some(path);
+    }
+    for relative in [
+        PathBuf::from("runtime").join("python").join(executable_name("python")),
+        PathBuf::from("../runtime")
+            .join("python")
+            .join(executable_name("python")),
+    ] {
+        let candidate = normalize_path(launcher_dir.join(relative));
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 fn resolve_existing_path(

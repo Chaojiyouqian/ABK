@@ -1003,49 +1003,50 @@ class _TaskWindowChromeState extends State<_TaskWindowChrome>
       child: Row(
         children: <Widget>[
           const SizedBox(width: 12),
-          DragToMoveArea(
-            child: Row(
-              children: <Widget>[
-                Container(
-                  width: 28,
-                  height: 28,
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: scheme.primaryContainer.withValues(alpha: 0.92),
-                    borderRadius: BorderRadius.circular(10),
+          Expanded(
+            child: DragToMoveArea(
+              child: Row(
+                children: <Widget>[
+                  Container(
+                    width: 28,
+                    height: 28,
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: scheme.primaryContainer.withValues(alpha: 0.92),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Image.asset(
+                      'assets/images/android_abk_foreground.png',
+                    ),
                   ),
-                  child: Image.asset(
-                    'assets/images/android_abk_foreground.png',
+                  const SizedBox(width: 10),
+                  Text(
+                    strings.brandWordmark,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: scheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  strings.brandWordmark,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: scheme.onSurface,
-                    fontWeight: FontWeight.w700,
+                  const SizedBox(width: 10),
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: scheme.primary,
+                      shape: BoxShape.circle,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: scheme.primary,
-                    shape: BoxShape.circle,
+                  const SizedBox(width: 10),
+                  Text(
+                    '任务窗口',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  '任务窗口',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-          const Spacer(),
           _TaskWindowButton(icon: Icons.minimize_rounded, onPressed: _minimize),
           const SizedBox(width: 4),
           _TaskWindowButton(
