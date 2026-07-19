@@ -1385,6 +1385,7 @@ class CredentialStore:
             raise NativeRollbackError("native credential cleanup is pending")
         existing_metadata = self._read_metadata()
         required_native_provider = None
+        unverified_native_provider = None
         machine_identifier_recovery = False
         if existing_metadata is not None:
             existing_backend = existing_metadata.get("backend")
@@ -1409,18 +1410,51 @@ class CredentialStore:
                     ]
             elif existing_backend == "native":
                 self.read(include_native=False)
-                required_native_provider = existing_metadata["provider"]
+                # Native metadata is plaintext. Do not authenticate its
+                # provider merely because a verified login supplied a new
+                # token; first match it against the backend selected by this
+                # installation.
+                unverified_native_provider = existing_metadata["provider"]
             else:
                 raise CredentialCorrupt("credential backend is unsupported")
         try:
             backend = self._native_backend_factory()
-            if (
-                required_native_provider is not None
-                and backend.name != required_native_provider
-            ):
+        except NativeStoreUnavailable:
+            if unverified_native_provider is not None:
+                raise
+            if required_native_provider is not None and not allow_recovery:
+                raise
+            return self._store_fallback_credential(
+                token,
+                existing_metadata,
+                native_cleanup_provider=required_native_provider,
+                force_local=machine_identifier_recovery,
+                before_fallback=before_fallback,
+                before_local_fallback=before_local_fallback,
+            )
+        if unverified_native_provider is not None:
+            if backend.name != unverified_native_provider:
                 raise NativeStoreUnavailable(
                     "the configured native credential provider is unavailable"
                 )
+            required_native_provider = backend.name
+        if (
+            required_native_provider is not None
+            and backend.name != required_native_provider
+        ):
+            if not allow_recovery:
+                raise NativeStoreUnavailable(
+                    "the configured native credential provider is unavailable"
+                )
+            return self._store_fallback_credential(
+                token,
+                existing_metadata,
+                native_cleanup_provider=required_native_provider,
+                force_local=machine_identifier_recovery,
+                before_fallback=before_fallback,
+                before_local_fallback=before_local_fallback,
+            )
+        try:
             previous_token = backend.get()
         except NativeStoreUnavailable:
             if required_native_provider is not None and not allow_recovery:

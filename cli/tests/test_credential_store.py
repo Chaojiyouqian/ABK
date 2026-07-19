@@ -35,6 +35,28 @@ class FakeNativeBackend:
         return existed
 
 
+class TemporarilyUnavailableBackend(FakeNativeBackend):
+    def __init__(self, token=None):
+        super().__init__(token)
+        self.available = True
+
+    def _require_available(self):
+        if not self.available:
+            raise credential_store.NativeStoreUnavailable("not available")
+
+    def get(self):
+        self._require_available()
+        return super().get()
+
+    def set(self, token):
+        self._require_available()
+        return super().set(token)
+
+    def delete(self):
+        self._require_available()
+        return super().delete()
+
+
 class CredentialStoreTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -2033,22 +2055,16 @@ class CredentialStoreTests(unittest.TestCase):
     def test_verified_login_falls_back_until_native_provider_recovers(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")
-        backend = FakeNativeBackend()
-        native_available = True
-
-        def backend_factory():
-            if not native_available:
-                raise credential_store.NativeStoreUnavailable("not available")
-            return backend
+        backend = TemporarilyUnavailableBackend()
 
         store = credential_store.CredentialStore(
             self.directory,
-            native_backend_factory=backend_factory,
+            native_backend_factory=lambda: backend,
             machine_id_provider=lambda: self.machine_id,
         )
         store.store("old-token")
         native_metadata = store.path.read_bytes()
-        native_available = False
+        backend.available = False
 
         with self.assertRaises(credential_store.NativeStoreUnavailable):
             store.store("fresh-token")
@@ -2069,6 +2085,7 @@ class CredentialStoreTests(unittest.TestCase):
         self.assertEqual("fresh-token", store.read(include_native=False))
         self.assertEqual("fresh-token", store.read())
 
+        store._native_backend_factory = self._unavailable
         repeated = store.store("newer-fallback", allow_recovery=True)
         repeated_metadata = json.loads(
             store.path.read_text(encoding="utf-8")
@@ -2083,7 +2100,8 @@ class CredentialStoreTests(unittest.TestCase):
             store.read(include_native=False),
         )
 
-        native_available = True
+        store._native_backend_factory = lambda: backend
+        backend.available = True
         upgraded = store.store("newest-token", allow_recovery=True)
 
         self.assertFalse(upgraded.degraded)
@@ -2093,29 +2111,81 @@ class CredentialStoreTests(unittest.TestCase):
         self.assertEqual("native", metadata["backend"])
         self.assertFalse(store.key_path.exists())
 
-    def test_deferred_fallback_auto_heals_when_provider_recovers(self):
-        if credential_store._AES_BACKEND is None:
-            self.skipTest("AES-GCM backend unavailable")
+    def test_verified_login_rejects_unvalidated_native_provider(self):
         backend = FakeNativeBackend()
-        native_available = True
-
-        def backend_factory():
-            if not native_available:
-                raise credential_store.NativeStoreUnavailable("not available")
-            return backend
-
         store = credential_store.CredentialStore(
             self.directory,
-            native_backend_factory=backend_factory,
+            native_backend_factory=lambda: backend,
             machine_id_provider=lambda: self.machine_id,
         )
         store.store("old-token")
-        native_available = False
+        metadata = json.loads(store.path.read_text(encoding="utf-8"))
+        metadata["provider"] = "attacker-controlled-provider"
+        store.path.write_text(json.dumps(metadata), encoding="utf-8")
+        metadata_before = store.path.read_bytes()
+        warnings = []
+        store._native_backend_factory = self._unavailable
+
+        with self.assertRaises(credential_store.NativeStoreUnavailable):
+            store.store(
+                "verified-token",
+                allow_recovery=True,
+                before_fallback=lambda: warnings.append("fallback"),
+            )
+
+        self.assertEqual([], warnings)
+        self.assertEqual(metadata_before, store.path.read_bytes())
+        self.assertFalse(store.key_path.exists())
+        self.assertEqual("old-token", backend.token)
+
+    def test_verified_login_rejects_native_provider_mismatch_before_read(self):
+        recorded_backend = FakeNativeBackend()
+        store = credential_store.CredentialStore(
+            self.directory,
+            native_backend_factory=lambda: recorded_backend,
+            machine_id_provider=lambda: self.machine_id,
+        )
+        store.store("old-token")
+        metadata_before = store.path.read_bytes()
+
+        class DifferentBackend(FakeNativeBackend):
+            name = "different-native"
+
+            def get(self):
+                raise AssertionError("an unverified provider must not be read")
+
+            def set(self, token):
+                raise AssertionError("an unverified provider must not be written")
+
+            def delete(self):
+                raise AssertionError("an unverified provider must not be deleted")
+
+        store._native_backend_factory = lambda: DifferentBackend()
+
+        with self.assertRaises(credential_store.NativeStoreUnavailable):
+            store.store("verified-token", allow_recovery=True)
+
+        self.assertEqual(metadata_before, store.path.read_bytes())
+        self.assertFalse(store.key_path.exists())
+        self.assertEqual("old-token", recorded_backend.token)
+
+    def test_deferred_fallback_auto_heals_when_provider_recovers(self):
+        if credential_store._AES_BACKEND is None:
+            self.skipTest("AES-GCM backend unavailable")
+        backend = TemporarilyUnavailableBackend()
+
+        store = credential_store.CredentialStore(
+            self.directory,
+            native_backend_factory=lambda: backend,
+            machine_id_provider=lambda: self.machine_id,
+        )
+        store.store("old-token")
+        backend.available = False
         store.store("fresh-token", allow_recovery=True)
         self.assertEqual("old-token", backend.token)
         self.assertTrue(store.key_path.exists())
 
-        native_available = True
+        backend.available = True
         self.assertEqual("fresh-token", store.read())
 
         metadata = json.loads(store.path.read_text(encoding="utf-8"))
@@ -2128,21 +2198,15 @@ class CredentialStoreTests(unittest.TestCase):
     def test_deferred_read_never_touches_a_different_native_provider(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")
-        recorded_backend = FakeNativeBackend()
-        native_available = True
-
-        def backend_factory():
-            if not native_available:
-                raise credential_store.NativeStoreUnavailable("not available")
-            return recorded_backend
+        recorded_backend = TemporarilyUnavailableBackend()
 
         store = credential_store.CredentialStore(
             self.directory,
-            native_backend_factory=backend_factory,
+            native_backend_factory=lambda: recorded_backend,
             machine_id_provider=lambda: self.machine_id,
         )
         store.store("old-token")
-        native_available = False
+        recorded_backend.available = False
         store.store("fresh-token", allow_recovery=True)
         metadata_before = store.path.read_bytes()
         key_before = store.key_path.read_bytes()
@@ -2170,7 +2234,7 @@ class CredentialStoreTests(unittest.TestCase):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")
 
-        class SetFailureBackend(FakeNativeBackend):
+        class SetFailureBackend(TemporarilyUnavailableBackend):
             fail_next_write = False
 
             def set(self, token):
@@ -2180,25 +2244,18 @@ class CredentialStoreTests(unittest.TestCase):
                 super().set(token)
 
         backend = SetFailureBackend()
-        native_available = True
-
-        def backend_factory():
-            if not native_available:
-                raise credential_store.NativeStoreUnavailable("not available")
-            return backend
-
         store = credential_store.CredentialStore(
             self.directory,
-            native_backend_factory=backend_factory,
+            native_backend_factory=lambda: backend,
             machine_id_provider=lambda: self.machine_id,
         )
         store.store("old-token")
-        native_available = False
+        backend.available = False
         store.store("fresh-token", allow_recovery=True)
         metadata_before = store.path.read_bytes()
         key_before = store.key_path.read_bytes()
 
-        native_available = True
+        backend.available = True
         backend.fail_next_write = True
         self.assertEqual("fresh-token", store.read())
 
@@ -2210,14 +2267,8 @@ class CredentialStoreTests(unittest.TestCase):
     def test_deferred_local_fallback_adds_machine_binding(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")
-        backend = FakeNativeBackend()
-        native_available = True
+        backend = TemporarilyUnavailableBackend()
         machine_id = None
-
-        def backend_factory():
-            if not native_available:
-                raise credential_store.NativeStoreUnavailable("not available")
-            return backend
 
         def machine_id_provider():
             if machine_id is None:
@@ -2226,11 +2277,11 @@ class CredentialStoreTests(unittest.TestCase):
 
         store = credential_store.CredentialStore(
             self.directory,
-            native_backend_factory=backend_factory,
+            native_backend_factory=lambda: backend,
             machine_id_provider=machine_id_provider,
         )
         store.store("old-token")
-        native_available = False
+        backend.available = False
         store.store("fresh-token", allow_recovery=True)
         metadata = json.loads(store.path.read_text(encoding="utf-8"))
         self.assertEqual(
@@ -2256,21 +2307,15 @@ class CredentialStoreTests(unittest.TestCase):
     def test_verified_login_uses_local_fallback_for_deferred_native_cleanup(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")
-        backend = FakeNativeBackend()
-        native_available = True
-
-        def backend_factory():
-            if not native_available:
-                raise credential_store.NativeStoreUnavailable("not available")
-            return backend
+        backend = TemporarilyUnavailableBackend()
 
         store = credential_store.CredentialStore(
             self.directory,
-            native_backend_factory=backend_factory,
+            native_backend_factory=lambda: backend,
             machine_id_provider=lambda: b"",
         )
         store.store("old-token")
-        native_available = False
+        backend.available = False
 
         result = store.store("fresh-token", allow_recovery=True)
 
@@ -2291,14 +2336,8 @@ class CredentialStoreTests(unittest.TestCase):
     def test_machine_loss_does_not_discard_deferred_native_cleanup(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")
-        backend = FakeNativeBackend()
-        native_available = True
+        backend = TemporarilyUnavailableBackend()
         machine_id = self.machine_id
-
-        def backend_factory():
-            if not native_available:
-                raise credential_store.NativeStoreUnavailable("not available")
-            return backend
 
         def machine_id_provider():
             if machine_id is None:
@@ -2307,11 +2346,11 @@ class CredentialStoreTests(unittest.TestCase):
 
         store = credential_store.CredentialStore(
             self.directory,
-            native_backend_factory=backend_factory,
+            native_backend_factory=lambda: backend,
             machine_id_provider=machine_id_provider,
         )
         store.store("old-token")
-        native_available = False
+        backend.available = False
         store.store("fresh-token", allow_recovery=True)
         metadata_before = store.path.read_bytes()
         machine_id = None
@@ -2326,13 +2365,16 @@ class CredentialStoreTests(unittest.TestCase):
     def test_deferred_cleanup_never_touches_a_different_native_provider(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")
-        recorded_backend = FakeNativeBackend()
+        recorded_backend = TemporarilyUnavailableBackend()
         store = credential_store.CredentialStore(
             self.directory,
             native_backend_factory=lambda: recorded_backend,
             machine_id_provider=lambda: self.machine_id,
         )
         store.store("old-token")
+        recorded_backend.available = False
+        result = store.store("fresh-token", allow_recovery=True)
+        recorded_backend.available = True
 
         class DifferentBackend(FakeNativeBackend):
             name = "different-native"
@@ -2345,8 +2387,6 @@ class CredentialStoreTests(unittest.TestCase):
 
         different_backend = DifferentBackend("other-token")
         store._native_backend_factory = lambda: different_backend
-
-        result = store.store("fresh-token", allow_recovery=True)
 
         self.assertTrue(result.degraded)
         self.assertEqual("old-token", recorded_backend.token)
@@ -2393,7 +2433,7 @@ class CredentialStoreTests(unittest.TestCase):
     def test_failed_native_recovery_fallback_restores_native_metadata(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")
-        backend = FakeNativeBackend()
+        backend = TemporarilyUnavailableBackend()
         store = credential_store.CredentialStore(
             self.directory,
             native_backend_factory=lambda: backend,
@@ -2401,7 +2441,7 @@ class CredentialStoreTests(unittest.TestCase):
         )
         store.store("old-token")
         metadata_before = json.loads(store.path.read_text(encoding="utf-8"))
-        store._native_backend_factory = self._unavailable
+        backend.available = False
         write_metadata = store._write_metadata
 
         def reject_fallback(metadata):
@@ -2429,21 +2469,15 @@ class CredentialStoreTests(unittest.TestCase):
     def test_deferred_cleanup_provider_is_authenticated(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")
-        backend = FakeNativeBackend()
-        native_available = True
-
-        def backend_factory():
-            if not native_available:
-                raise credential_store.NativeStoreUnavailable("not available")
-            return backend
+        backend = TemporarilyUnavailableBackend()
 
         store = credential_store.CredentialStore(
             self.directory,
-            native_backend_factory=backend_factory,
+            native_backend_factory=lambda: backend,
             machine_id_provider=lambda: self.machine_id,
         )
         store.store("old-token")
-        native_available = False
+        backend.available = False
         store.store("fresh-token", allow_recovery=True)
         metadata = json.loads(store.path.read_text(encoding="utf-8"))
         metadata["native_cleanup_provider"] = "different-native"
@@ -2670,17 +2704,11 @@ class CredentialStoreTests(unittest.TestCase):
                 backend_name = "pycryptodome"
             except ImportError:
                 self.skipTest("PyCryptodome unavailable")
-        backend = FakeNativeBackend()
-        native_available = True
-
-        def backend_factory():
-            if not native_available:
-                raise credential_store.NativeStoreUnavailable("not available")
-            return backend
+        backend = TemporarilyUnavailableBackend()
 
         store = credential_store.CredentialStore(
             self.directory,
-            native_backend_factory=backend_factory,
+            native_backend_factory=lambda: backend,
             machine_id_provider=lambda: self.machine_id,
         )
 
@@ -2689,7 +2717,7 @@ class CredentialStoreTests(unittest.TestCase):
             mock.patch.object(credential_store, "_PYAES", fallback_aes),
         ):
             store.store("old-token")
-            native_available = False
+            backend.available = False
             store.store("fresh-token", allow_recovery=True)
             self.assertEqual("fresh-token", store.read(include_native=False))
 
