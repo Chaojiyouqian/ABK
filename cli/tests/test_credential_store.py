@@ -76,6 +76,22 @@ class CredentialStoreTests(unittest.TestCase):
         self.assertEqual("native", metadata["backend"])
         self.assertNotIn("github-token", store.path.read_text(encoding="utf-8"))
 
+    def test_native_read_rejects_non_string_credentials(self):
+        backend = FakeNativeBackend()
+        store = credential_store.CredentialStore(
+            self.directory,
+            native_backend_factory=lambda: backend,
+            machine_id_provider=lambda: self.machine_id,
+        )
+        store.store("github-token")
+        store._load_or_create_local_key()
+        backend.token = b"invalid-token-bytes"
+
+        with self.assertRaises(credential_store.NativeStoreError):
+            store.read()
+
+        self.assertTrue(store.key_path.exists())
+
     def test_machine_bound_fallback_round_trips_without_plaintext(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")

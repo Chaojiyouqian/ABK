@@ -771,6 +771,10 @@ class CredentialStore:
                     "the configured native credential provider is unavailable"
                 )
             token = backend.get()
+            if token is not None and not isinstance(token, str):
+                raise NativeStoreError(
+                    f"{backend.name} returned an invalid GitHub credential"
+                )
             self._remove_unused_local_key()
             return token
         raise CredentialCorrupt("credential backend is unsupported")
