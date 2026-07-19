@@ -343,7 +343,7 @@ class CredentialStoreTests(unittest.TestCase):
         metadata = json.loads(store.path.read_text(encoding="utf-8"))
         self.assertEqual(credential_store.FALLBACK_BACKEND, metadata["backend"])
 
-    def test_failed_native_rollback_records_authenticated_cleanup_state(self):
+    def test_failed_native_rollback_leaves_write_ahead_cleanup_state(self):
         class RollbackFailureBackend(FakeNativeBackend):
             def __init__(self):
                 super().__init__()
@@ -375,17 +375,125 @@ class CredentialStoreTests(unittest.TestCase):
             store.store("new-token")
 
         self.assertEqual("new-token", backend.token)
-        metadata = json.loads(store.path.read_text(encoding="utf-8"))
-        self.assertEqual(credential_store.FALLBACK_BACKEND, metadata["backend"])
-        self.assertTrue(metadata["native_cleanup_pending"])
-        self.assertEqual("new-token", store._decrypt_fallback(metadata))
+        self.assertFalse(store.path.exists())
+        metadata = json.loads(store.pending_path.read_text(encoding="utf-8"))
+        self.assertEqual("cleanup-required", metadata["state"])
+        self.assertNotIn("new-token", store.pending_path.read_text(encoding="utf-8"))
         with self.assertRaises(credential_store.NativeRollbackError):
             store.read()
 
-        metadata["backend"] = "native"
-        store.path.write_text(json.dumps(metadata), encoding="utf-8")
+        metadata["state"] = "clean"
+        store.pending_path.write_text(json.dumps(metadata), encoding="utf-8")
         with self.assertRaises(credential_store.CredentialCorrupt):
             store.read()
+
+    def test_failed_native_rollback_without_aes_state_stays_fail_closed(self):
+        class RollbackFailureBackend(FakeNativeBackend):
+            def __init__(self):
+                super().__init__()
+                self.fail_verification = False
+                self.fail_rollback = False
+
+            def set(self, token):
+                if self.fail_rollback and token == "old-token":
+                    raise credential_store.NativeStoreError("rollback failed")
+                super().set(token)
+                if token == "new-token":
+                    self.fail_verification = True
+                    self.fail_rollback = True
+
+            def get(self):
+                if self.fail_verification:
+                    self.fail_verification = False
+                    raise credential_store.NativeStoreUnavailable(
+                        "provider disappeared"
+                    )
+                return super().get()
+
+        backend = RollbackFailureBackend()
+        store = credential_store.CredentialStore(
+            self.directory,
+            native_backend_factory=lambda: backend,
+            machine_id_provider=lambda: (_ for _ in ()).throw(
+                credential_store.NativeStoreUnavailable(
+                    "machine identifier unavailable"
+                )
+            ),
+        )
+        store.store("old-token")
+
+        with self.assertRaises(credential_store.NativeRollbackError):
+            store.store("new-token")
+
+        self.assertEqual("new-token", backend.token)
+        primary = store.path.read_text(encoding="utf-8")
+        pending = store.pending_path.read_text(encoding="utf-8")
+        self.assertNotIn("old-token", primary + pending)
+        self.assertNotIn("new-token", primary + pending)
+        metadata = json.loads(pending)
+        self.assertEqual("cleanup-required", metadata["state"])
+        with self.assertRaises(credential_store.NativeRollbackError):
+            store.read()
+        with self.assertRaises(credential_store.NativeRollbackError):
+            store.store("third-token")
+
+        metadata["kind"] = "native"
+        store.pending_path.write_text(json.dumps(metadata), encoding="utf-8")
+        with self.assertRaises(credential_store.CredentialCorrupt):
+            store.read()
+
+    def test_failed_write_ahead_marker_prevents_native_mutation(self):
+        backend = FakeNativeBackend()
+        store = credential_store.CredentialStore(
+            self.directory,
+            native_backend_factory=lambda: backend,
+            machine_id_provider=lambda: self.machine_id,
+        )
+        store.store("old-token")
+
+        with (
+            mock.patch.object(
+                store,
+                "_write_pending_metadata",
+                side_effect=OSError("read-only filesystem"),
+            ),
+            self.assertRaises(credential_store.CredentialStoreError),
+        ):
+            store.store("new-token")
+
+        self.assertEqual("old-token", backend.token)
+        self.assertFalse(store.pending_path.exists())
+        self.assertEqual("old-token", store.read())
+
+    def test_logout_resets_corrupt_pending_marker_after_verified_cleanup(self):
+        backend = FakeNativeBackend("uncertain-token")
+        store = credential_store.CredentialStore(
+            self.directory,
+            native_backend_factory=lambda: backend,
+            machine_id_provider=lambda: self.machine_id,
+        )
+        store.directory.mkdir(parents=True)
+        store.pending_path.write_text('{"version": 1}', encoding="utf-8")
+
+        self.assertTrue(store.delete())
+
+        self.assertIsNone(backend.token)
+        self.assertFalse(store.path.exists())
+        self.assertFalse(store.pending_path.exists())
+
+    def test_logout_retains_corrupt_pending_marker_without_native_cleanup(self):
+        store = credential_store.CredentialStore(
+            self.directory,
+            native_backend_factory=self._unavailable,
+            machine_id_provider=lambda: self.machine_id,
+        )
+        store.directory.mkdir(parents=True)
+        store.pending_path.write_text('{"version": 1}', encoding="utf-8")
+
+        with self.assertRaises(credential_store.CredentialCorrupt):
+            store.delete()
+
+        self.assertTrue(store.pending_path.exists())
 
     def test_uncertain_fallback_upgrade_retains_cleanup_retry_state(self):
         if credential_store._AES_BACKEND is None:
@@ -434,19 +542,22 @@ class CredentialStoreTests(unittest.TestCase):
             store.read()
 
         metadata = json.loads(store.path.read_text(encoding="utf-8"))
-        self.assertTrue(metadata["native_cleanup_pending"])
+        self.assertFalse(metadata["native_cleanup_pending"])
         self.assertEqual("fallback-token", store._decrypt_fallback(metadata))
+        self.assertTrue(store.pending_path.exists())
 
         factory_available = False
         with self.assertRaises(credential_store.NativeStoreUnavailable):
             store.delete()
         self.assertTrue(store.path.exists())
+        self.assertTrue(store.pending_path.exists())
 
         factory_available = True
         backend.allow_cleanup = True
         self.assertTrue(store.delete())
         self.assertIsNone(backend.token)
         self.assertFalse(store.path.exists())
+        self.assertFalse(store.pending_path.exists())
 
     def test_fallback_upgrades_when_native_storage_becomes_available(self):
         if credential_store._AES_BACKEND is None:

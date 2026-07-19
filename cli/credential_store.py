@@ -41,6 +41,7 @@ except ImportError:
 
 
 CREDENTIAL_FILE_NAME = "credentials.json"
+CREDENTIAL_PENDING_FILE_NAME = "credentials.pending.json"
 CREDENTIAL_FORMAT_VERSION = 1
 CREDENTIAL_SERVICE = "ABK CLI"
 CREDENTIAL_ACCOUNT = "github.com"
@@ -341,6 +342,7 @@ class CredentialStore:
     ):
         self.directory = Path(directory)
         self.path = self.directory / CREDENTIAL_FILE_NAME
+        self.pending_path = self.directory / CREDENTIAL_PENDING_FILE_NAME
         self._native_backend_factory = native_backend_factory
         self._machine_id_provider = machine_id_provider
 
@@ -370,7 +372,36 @@ class CredentialStore:
             raise CredentialCorrupt("credential metadata version is unsupported")
         return metadata
 
-    def _write_metadata(self, metadata):
+    def _read_pending_metadata(self):
+        try:
+            try:
+                file_status = self.pending_path.lstat()
+            except FileNotFoundError:
+                return None
+            if not stat.S_ISREG(file_status.st_mode):
+                raise CredentialCorrupt(
+                    "native credential transaction marker is not a regular file"
+                )
+            if os.name != "nt":
+                self.directory.chmod(0o700)
+                self.pending_path.chmod(0o600)
+            if file_status.st_size > MAX_CREDENTIAL_FILE_SIZE:
+                raise CredentialCorrupt(
+                    "native credential transaction marker is too large"
+                )
+            metadata = json.loads(
+                self.pending_path.read_text(encoding="utf-8")
+            )
+        except CredentialCorrupt:
+            raise
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise CredentialCorrupt(
+                "native credential transaction marker is unreadable"
+            ) from exc
+        self._validate_native_transaction(metadata)
+        return metadata
+
+    def _write_json_file(self, path, metadata, *, prefix):
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         if os.name != "nt":
             self.directory.chmod(0o700)
@@ -381,7 +412,7 @@ class CredentialStore:
             sort_keys=True,
         ) + "\n"
         fd, temporary_name = tempfile.mkstemp(
-            prefix=".credentials-",
+            prefix=prefix,
             suffix=".tmp",
             dir=self.directory,
         )
@@ -393,7 +424,7 @@ class CredentialStore:
                 stream.write(payload)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary_name, self.path)
+            os.replace(temporary_name, path)
         finally:
             if fd is not None:
                 os.close(fd)
@@ -401,6 +432,20 @@ class CredentialStore:
                 Path(temporary_name).unlink()
             except FileNotFoundError:
                 pass
+
+    def _write_metadata(self, metadata):
+        self._write_json_file(
+            self.path,
+            metadata,
+            prefix=".credentials-",
+        )
+
+    def _write_pending_metadata(self, metadata):
+        self._write_json_file(
+            self.pending_path,
+            metadata,
+            prefix=".credential-pending-",
+        )
 
     def _remove_metadata(self):
         try:
@@ -411,6 +456,17 @@ class CredentialStore:
         except OSError as exc:
             raise CredentialStoreError(
                 "credential metadata could not be removed"
+            ) from exc
+
+    def _remove_pending_metadata(self):
+        try:
+            self.pending_path.unlink()
+            return True
+        except FileNotFoundError:
+            return False
+        except OSError as exc:
+            raise CredentialStoreError(
+                "native credential transaction marker could not be removed"
             ) from exc
 
     def _fallback_metadata(self, token, *, native_cleanup_pending=False):
@@ -493,6 +549,8 @@ class CredentialStore:
         return token
 
     def read(self, *, include_native=True):
+        if self._read_pending_metadata() is not None:
+            raise NativeRollbackError("native credential cleanup is pending")
         metadata = self._read_metadata()
         if metadata is None:
             return None
@@ -534,26 +592,39 @@ class CredentialStore:
             "account": CREDENTIAL_ACCOUNT,
         }
 
-    def _record_native_cleanup_pending(self, existing_metadata, recovery_token):
+    def _native_transaction_metadata(self, backend):
+        return {
+            "version": CREDENTIAL_FORMAT_VERSION,
+            "kind": "native-credential-transaction",
+            "state": "cleanup-required",
+            "provider": backend.name,
+            "service": CREDENTIAL_SERVICE,
+            "account": CREDENTIAL_ACCOUNT,
+        }
+
+    def _validate_native_transaction(self, metadata):
+        expected = {
+            "version",
+            "kind",
+            "state",
+            "provider",
+            "service",
+            "account",
+        }
         if (
-            isinstance(existing_metadata, dict)
-            and existing_metadata.get("backend") == FALLBACK_BACKEND
+            not isinstance(metadata, dict)
+            or set(metadata) != expected
+            or metadata.get("version") != CREDENTIAL_FORMAT_VERSION
+            or metadata.get("kind") != "native-credential-transaction"
+            or metadata.get("state") != "cleanup-required"
+            or not isinstance(metadata.get("provider"), str)
+            or not metadata["provider"]
+            or metadata.get("service") != CREDENTIAL_SERVICE
+            or metadata.get("account") != CREDENTIAL_ACCOUNT
         ):
-            recovery_token = self._decrypt_fallback(existing_metadata)
-        if not isinstance(recovery_token, str) or not recovery_token:
-            raise NativeRollbackError(
-                "native credential cleanup is pending and recovery state is invalid"
+            raise CredentialCorrupt(
+                "native credential transaction marker is invalid"
             )
-        metadata = self._fallback_metadata(
-            recovery_token,
-            native_cleanup_pending=True,
-        )
-        try:
-            self._write_metadata(metadata)
-        except Exception as exc:
-            raise NativeRollbackError(
-                "native credential cleanup is pending and could not be recorded"
-            ) from exc
 
     def _restore_native_credential(self, backend, previous_token):
         try:
@@ -596,19 +667,79 @@ class CredentialStore:
                 ) from rollback_exc
             raise
 
-    def _write_native_metadata(self, backend, previous_token):
+    def _restore_primary_metadata(self, existing_metadata):
+        try:
+            current_metadata = self._read_metadata()
+        except CredentialStoreError:
+            current_metadata = object()
+        if current_metadata == existing_metadata:
+            return
+        if existing_metadata is None:
+            self._remove_metadata()
+        else:
+            self._write_metadata(existing_metadata)
+        if self._read_metadata() != existing_metadata:
+            raise CredentialStoreError(
+                "previous credential metadata could not be restored"
+            )
+
+    def _store_native_transaction(
+        self,
+        backend,
+        token,
+        previous_token,
+        existing_metadata,
+    ):
+        pending_metadata = self._native_transaction_metadata(backend)
+        try:
+            self._write_pending_metadata(pending_metadata)
+            if self._read_pending_metadata() != pending_metadata:
+                raise CredentialStoreError(
+                    "native credential transaction marker failed verification"
+                )
+        except Exception as exc:
+            raise CredentialStoreError(
+                "native credential transaction could not be started"
+            ) from exc
+
+        try:
+            self._replace_native_credential(backend, token, previous_token)
+        except NativeRollbackError:
+            # The write-ahead marker remains authoritative and prevents any
+            # later process from reading an uncertain native credential.
+            raise
+        except CredentialStoreError:
+            try:
+                self._remove_pending_metadata()
+            except CredentialStoreError as cleanup_exc:
+                raise NativeRollbackError(
+                    "native credential rollback succeeded, but its transaction "
+                    "marker could not be cleared"
+                ) from cleanup_exc
+            raise
+
         try:
             self._write_metadata(self._native_metadata(backend))
         except Exception as exc:
             try:
                 self._restore_native_credential(backend, previous_token)
-            except NativeRollbackError as rollback_exc:
+                self._restore_primary_metadata(existing_metadata)
+                self._remove_pending_metadata()
+            except Exception as rollback_exc:
                 raise NativeRollbackError(
-                    "native credential metadata failed and the credential "
-                    "could not be rolled back"
+                    "native credential metadata failed and the previous state "
+                    "could not be restored"
                 ) from rollback_exc
             raise CredentialStoreError(
                 "native credential metadata could not be persisted"
+            ) from exc
+
+        try:
+            self._remove_pending_metadata()
+        except CredentialStoreError as exc:
+            raise NativeRollbackError(
+                "native credential was stored, but its transaction marker "
+                "could not be cleared"
             ) from exc
 
     def _upgrade_fallback_to_native(self, token):
@@ -621,10 +752,13 @@ class CredentialStore:
         if previous_token is not None and not isinstance(previous_token, str):
             return False
         try:
-            self._replace_native_credential(backend, token, previous_token)
-            self._write_native_metadata(backend, previous_token)
+            self._store_native_transaction(
+                backend,
+                token,
+                previous_token,
+                existing_metadata,
+            )
         except NativeRollbackError:
-            self._record_native_cleanup_pending(existing_metadata, token)
             raise
         except CredentialStoreError:
             # The authenticated fallback remains authoritative until every
@@ -637,6 +771,8 @@ class CredentialStore:
             raise CredentialStoreError("the GitHub credential is empty")
         if len(token.encode("utf-8")) > MAX_TOKEN_SIZE:
             raise CredentialStoreError("the GitHub credential is too large")
+        if self._read_pending_metadata() is not None:
+            raise NativeRollbackError("native credential cleanup is pending")
         existing_metadata = self._read_metadata()
         if existing_metadata is not None:
             existing_backend = existing_metadata.get("backend")
@@ -689,12 +825,12 @@ class CredentialStore:
             raise NativeStoreUnavailable(
                 "the configured native credential provider is unavailable"
             )
-        try:
-            self._replace_native_credential(backend, token, previous_token)
-            self._write_native_metadata(backend, previous_token)
-        except NativeRollbackError:
-            self._record_native_cleanup_pending(existing_metadata, token)
-            raise
+        self._store_native_transaction(
+            backend,
+            token,
+            previous_token,
+            existing_metadata,
+        )
         return StoreResult(
             backend=backend.name,
             degraded=False,
@@ -702,6 +838,29 @@ class CredentialStore:
         )
 
     def delete(self):
+        try:
+            pending_metadata = self._read_pending_metadata()
+        except CredentialCorrupt as exc:
+            return self._delete_corrupt_pending(exc)
+        if pending_metadata is not None:
+            try:
+                backend = self._native_backend_factory()
+            except NativeStoreUnavailable:
+                # Keep the marker until the recorded provider is available.
+                raise
+            if pending_metadata.get("provider") != backend.name:
+                raise NativeStoreUnavailable(
+                    "the pending native credential provider is unavailable"
+                )
+            native_removed = backend.delete()
+            remaining = backend.get()
+            if remaining is not None:
+                raise NativeStoreError(
+                    f"{backend.name} did not verify GitHub credential deletion"
+                )
+            marker_removed = self._remove_metadata()
+            pending_removed = self._remove_pending_metadata()
+            return native_removed or marker_removed or pending_removed
         try:
             metadata = self._read_metadata()
         except CredentialCorrupt:
@@ -745,6 +904,30 @@ class CredentialStore:
         removed = backend.delete()
         marker_removed = self._remove_metadata()
         return removed or marker_removed
+
+    def _delete_corrupt_pending(self, _marker_error):
+        """Reset a damaged transaction marker only after verified cleanup."""
+        try:
+            backend = self._native_backend_factory()
+            native_removed = backend.delete()
+            if backend.get() is not None:
+                raise NativeStoreError(
+                    f"{backend.name} did not verify GitHub credential deletion"
+                )
+        except CredentialStoreError as exc:
+            raise CredentialCorrupt(
+                "native credential transaction metadata is damaged and cleanup "
+                "could not be verified"
+            ) from exc
+        try:
+            marker_removed = self._remove_metadata()
+            pending_removed = self._remove_pending_metadata()
+        except CredentialStoreError as exc:
+            raise CredentialCorrupt(
+                "native credential cleanup succeeded, but damaged transaction "
+                "metadata could not be reset"
+            ) from exc
+        return native_removed or marker_removed or pending_removed
 
     def _delete_unusable_metadata(self, *, backend=None):
         """Reset unreadable metadata while best-effort cleaning fixed native state."""
