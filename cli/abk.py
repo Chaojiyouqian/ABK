@@ -632,6 +632,26 @@ def _read_persisted_token(
 
 
 def _delete_persisted_token():
+    credential_paths = (
+        CONFIG_FILE,
+        CONFIG_DIR / credential_store.CREDENTIAL_FILE_NAME,
+        CONFIG_DIR / credential_store.CREDENTIAL_PENDING_FILE_NAME,
+        CONFIG_DIR / credential_store.CREDENTIAL_KEY_FILE_NAME,
+    )
+    for credential_path in credential_paths:
+        try:
+            credential_path.lstat()
+            break
+        except FileNotFoundError:
+            continue
+        except OSError:
+            # Let the normal locked delete report inaccessible state.
+            break
+    else:
+        # A stateless logout has nothing to serialize or remove. Avoid
+        # creating the configuration directory solely for its lock file.
+        return False, None
+
     with _config_process_lock():
         removed = False
         error = None

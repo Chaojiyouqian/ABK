@@ -1008,7 +1008,7 @@ class SecurityRegressionTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "requires cryptography"):
                 abk.generate_signing_keypair()
 
-    def test_logout_without_config_creates_only_the_serialization_lock(self):
+    def test_logout_without_config_is_stateless(self):
         args = mock.Mock(json=False, token=None, kpm_password=None)
         with (
             mock.patch.object(
@@ -1018,17 +1018,47 @@ class SecurityRegressionTests(unittest.TestCase):
                     "test backend unavailable"
                 ),
             ),
+            mock.patch.object(
+                abk,
+                "_config_process_lock",
+                side_effect=AssertionError("stateless logout must not lock"),
+            ),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             result = abk.cmd_logout(args)
 
         self.assertEqual(0, result)
-        self.assertTrue(self.config_dir.is_dir())
+        self.assertFalse(self.config_dir.exists())
         self.assertFalse(self.config_file.exists())
-        self.assertEqual(
-            {abk.CONFIG_LOCK_FILE},
-            {path.name for path in self.config_dir.iterdir()},
+
+    def test_logout_with_only_a_stale_lock_is_stateless(self):
+        self.config_dir.mkdir(parents=True)
+        lock_path = self.config_dir / abk.CONFIG_LOCK_FILE
+        lock_path.write_bytes(b"\0")
+
+        with mock.patch.object(
+            abk,
+            "_config_process_lock",
+            side_effect=AssertionError("stale lock must not be acquired"),
+        ):
+            removed, error = abk._delete_persisted_token()
+
+        self.assertFalse(removed)
+        self.assertIsNone(error)
+        self.assertEqual(b"\0", lock_path.read_bytes())
+
+    def test_logout_removes_an_orphaned_credential_key(self):
+        self.config_dir.mkdir(parents=True)
+        key_path = (
+            self.config_dir / abk.credential_store.CREDENTIAL_KEY_FILE_NAME
         )
+        key_path.write_text("orphaned-key", encoding="utf-8")
+
+        removed, error = abk._delete_persisted_token()
+
+        self.assertTrue(removed)
+        self.assertIsNone(error)
+        self.assertFalse(key_path.exists())
 
     def test_signing_metadata_rejects_invalid_environment_and_config_keys(self):
         config = {
@@ -1314,6 +1344,12 @@ class SecurityRegressionTests(unittest.TestCase):
         delete_started = threading.Event()
         allow_delete = threading.Event()
         store_started = threading.Event()
+
+        self.config_dir.mkdir(parents=True)
+        credential_path = (
+            self.config_dir / abk.credential_store.CREDENTIAL_FILE_NAME
+        )
+        credential_path.write_text("{}", encoding="utf-8")
 
         class BlockingCredentialStore:
             def __init__(self):
