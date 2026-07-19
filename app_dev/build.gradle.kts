@@ -11,7 +11,7 @@ val githubClientId = providers.gradleProperty("ABK_GITHUB_CLIENT_ID")
     .orElse(providers.environmentVariable("ABK_GITHUB_CLIENT_ID"))
     .orElse("Ov23li8skGo6AFPBeSTh")
 val appVersionCode = 10025
-val appVersionName = "1.2.5-dev"
+val appVersionName = "1.2.5"
 val appUpdateMetadataUrl = providers.environmentVariable("ABK_APP_UPDATE_METADATA_URL")
     .orElse("https://raw.githubusercontent.com/xingguangcuican6666/ABK/dev/version.json")
 val appBuildTimestamp = providers.environmentVariable("ABK_APP_BUILD_TIMESTAMP")
