@@ -70,6 +70,14 @@ abk login
 `config.json` 中的明文 token 会在首次读取时自动迁移。环境变量和 `--token`
 仅用于当前进程，不会被持久化。
 
+若凭据元数据已损坏、无法认证或记录了当前不可用的系统凭据提供方，登出会
+失败关闭：不会猜测删除当前机器上的系统凭据。对于无法认证的本地元数据，
+CLI 会先写入 `credentials.pending.json` 安全标记，再删除本地密文和随机主
+密钥，并明确报告可能需要手动清理；若清理中断，后续 `abk logout` 会继续
+清除本地残留。确认 `credentials.json` 和 `credentials.key` 均已移除，并从
+系统凭据服务中删除 `ABK CLI` 的 `github.com` 条目后，才可手动删除该安全
+标记并重新登录。
+
 首次构建会复用或初始化与 Android App 相同的 fork 签名 Secret、Release tag
 和公钥资产；CLI 本地只按仓库保存公钥，不保存 RSA 私钥。
 

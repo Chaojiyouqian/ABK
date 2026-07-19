@@ -47,6 +47,8 @@ CREDENTIAL_FORMAT_VERSION = 1
 CREDENTIAL_KEY_FORMAT_VERSION = 1
 CREDENTIAL_SERVICE = "ABK CLI"
 CREDENTIAL_ACCOUNT = "github.com"
+CREDENTIAL_CLEANUP_BLOCKED_KIND = "native-credential-cleanup-blocked"
+CREDENTIAL_CLEANUP_BLOCKED_STATE = "provider-unknown"
 FALLBACK_BACKEND = "machine-bound-aes-gcm"
 LOCAL_KEY_FALLBACK_BACKEND = "local-key-aes-gcm"
 FALLBACK_BACKENDS = frozenset({FALLBACK_BACKEND, LOCAL_KEY_FALLBACK_BACKEND})
@@ -434,9 +436,23 @@ class CredentialStore:
             ) from exc
         return metadata
 
+    def _cleanup_blocked_metadata(self):
+        return {
+            "version": CREDENTIAL_FORMAT_VERSION,
+            "kind": CREDENTIAL_CLEANUP_BLOCKED_KIND,
+            "state": CREDENTIAL_CLEANUP_BLOCKED_STATE,
+        }
+
+    def _is_cleanup_blocked(self, metadata):
+        return metadata == self._cleanup_blocked_metadata()
+
     def _read_pending_metadata(self):
         metadata = self._read_pending_document()
         if metadata is not None:
+            if self._is_cleanup_blocked(metadata):
+                raise CredentialCorrupt(
+                    "native credential cleanup requires manual intervention"
+                )
             self._validate_native_transaction(metadata)
         return metadata
 
@@ -1126,6 +1142,45 @@ class CredentialStore:
             location=backend.name,
         )
 
+    def _delete_native_and_verify(self, backend):
+        removed = backend.delete()
+        if backend.get() is not None:
+            raise NativeStoreError(
+                f"{backend.name} did not verify GitHub credential deletion"
+            )
+        return removed
+
+    def _ensure_pending_primary_compatible(self, pending_metadata):
+        try:
+            primary_metadata = self._read_metadata()
+        except CredentialCorrupt as exc:
+            raise CredentialCorrupt(
+                "primary credential metadata cannot be reconciled with "
+                "pending native cleanup"
+            ) from exc
+        if primary_metadata is None:
+            return
+        primary_backend = primary_metadata.get("backend")
+        if primary_backend in FALLBACK_BACKENDS:
+            return
+        expected = {"version", "backend", "provider", "service", "account"}
+        if (
+            primary_backend != "native"
+            or set(primary_metadata) != expected
+            or not isinstance(primary_metadata.get("provider"), str)
+            or not primary_metadata["provider"]
+            or primary_metadata.get("service") != CREDENTIAL_SERVICE
+            or primary_metadata.get("account") != CREDENTIAL_ACCOUNT
+        ):
+            raise CredentialCorrupt(
+                "primary credential metadata cannot identify its native "
+                "provider safely"
+            )
+        if primary_metadata["provider"] != pending_metadata["provider"]:
+            raise NativeStoreUnavailable(
+                "pending native cleanup conflicts with the configured provider"
+            )
+
     def delete(self):
         try:
             pending_metadata = self._read_pending_document()
@@ -1134,10 +1189,13 @@ class CredentialStore:
                 "native credential transaction metadata cannot be safely reset"
             ) from exc
         if pending_metadata is not None:
+            if self._is_cleanup_blocked(pending_metadata):
+                return self._complete_cleanup_blocked_reset()
             try:
                 self._validate_native_transaction(pending_metadata)
             except CredentialCorrupt as exc:
                 return self._delete_corrupt_pending(pending_metadata, exc)
+            self._ensure_pending_primary_compatible(pending_metadata)
             try:
                 backend = self._native_backend_factory()
             except NativeStoreUnavailable:
@@ -1147,12 +1205,7 @@ class CredentialStore:
                 raise NativeStoreUnavailable(
                     "the pending native credential provider is unavailable"
                 )
-            native_removed = backend.delete()
-            remaining = backend.get()
-            if remaining is not None:
-                raise NativeStoreError(
-                    f"{backend.name} did not verify GitHub credential deletion"
-                )
+            native_removed = self._delete_native_and_verify(backend)
             marker_removed = self._remove_metadata()
             key_removed = self._remove_local_key()
             pending_removed = self._remove_pending_metadata()
@@ -1164,29 +1217,32 @@ class CredentialStore:
             )
         try:
             metadata = self._read_metadata()
-        except CredentialCorrupt:
-            return self._delete_unusable_metadata()
+        except CredentialCorrupt as exc:
+            return self._delete_unusable_metadata(exc)
         if metadata is None:
-            native_removed = False
             try:
-                native_removed = self._native_backend_factory().delete()
+                backend = self._native_backend_factory()
             except NativeStoreUnavailable:
-                pass
+                native_removed = False
+            else:
+                native_removed = self._delete_native_and_verify(backend)
             key_removed = self._remove_local_key()
             return native_removed or key_removed
         if metadata.get("backend") in FALLBACK_BACKENDS:
             try:
                 self._decrypt_fallback(metadata)
-            except CredentialCorrupt:
-                return self._delete_unusable_metadata()
+            except CredentialCorrupt as exc:
+                return self._delete_unusable_metadata(exc)
             try:
-                native_removed = self._native_backend_factory().delete()
+                backend = self._native_backend_factory()
             except NativeStoreUnavailable:
                 if metadata["native_cleanup_pending"]:
                     raise NativeStoreUnavailable(
                         "native credential cleanup is still pending"
                     )
                 native_removed = False
+            else:
+                native_removed = self._delete_native_and_verify(backend)
             marker_removed = self._remove_metadata()
             key_removed = self._remove_local_key()
             return native_removed or marker_removed or key_removed
@@ -1194,6 +1250,8 @@ class CredentialStore:
         if (
             metadata.get("backend") != "native"
             or set(metadata) != expected
+            or not isinstance(metadata.get("provider"), str)
+            or not metadata["provider"]
             or metadata.get("service") != CREDENTIAL_SERVICE
             or metadata.get("account") != CREDENTIAL_ACCOUNT
         ):
@@ -1205,8 +1263,10 @@ class CredentialStore:
             # cleanup. Keep it so a later logout can retry the fixed account.
             raise
         if metadata.get("provider") != backend.name:
-            return self._delete_unusable_metadata(backend=backend)
-        removed = backend.delete()
+            raise NativeStoreUnavailable(
+                "the configured native credential provider is unavailable"
+            )
+        removed = self._delete_native_and_verify(backend)
         marker_removed = self._remove_metadata()
         key_removed = self._remove_local_key()
         return removed or marker_removed or key_removed
@@ -1225,16 +1285,13 @@ class CredentialStore:
                 "provider safely"
             ) from marker_error
         try:
+            self._ensure_pending_primary_compatible(metadata)
             backend = self._native_backend_factory()
             if metadata["provider"] != backend.name:
                 raise NativeStoreUnavailable(
                     "the damaged native credential provider is unavailable"
                 )
-            native_removed = backend.delete()
-            if backend.get() is not None:
-                raise NativeStoreError(
-                    f"{backend.name} did not verify GitHub credential deletion"
-                )
+            native_removed = self._delete_native_and_verify(backend)
         except CredentialStoreError as exc:
             raise CredentialCorrupt(
                 "native credential transaction metadata is damaged and cleanup "
@@ -1256,25 +1313,31 @@ class CredentialStore:
             or pending_removed
         )
 
-    def _delete_unusable_metadata(self, *, backend=None):
-        """Reset unreadable metadata while best-effort cleaning fixed native state."""
-        native_removed = False
-        cleanup_error = None
+    def _delete_unusable_metadata(self, metadata_error=None):
+        """Reset untrusted local state without guessing its native provider."""
+        cleanup_blocked = self._cleanup_blocked_metadata()
         try:
-            backend = backend or self._native_backend_factory()
-            native_removed = backend.delete()
-        except NativeStoreUnavailable:
-            # No usable native provider means there is no cleanup operation we
-            # can perform. Removing the unusable marker still resets the CLI.
-            pass
-        except CredentialStoreError as exc:
-            cleanup_error = exc
-
-        marker_removed = self._remove_metadata()
-        key_removed = self._remove_local_key()
-        if cleanup_error is not None:
+            self._write_pending_metadata(cleanup_blocked)
+            if self._read_pending_document() != cleanup_blocked:
+                raise CredentialStoreError(
+                    "native cleanup safety marker failed verification"
+                )
+        except (CredentialStoreError, OSError) as exc:
             raise CredentialCorrupt(
-                "credential metadata was reset, but native cleanup could not "
-                "be verified"
-            ) from cleanup_error
-        return native_removed or marker_removed or key_removed
+                "untrusted credential metadata could not be safely reset"
+            ) from exc
+        return self._complete_cleanup_blocked_reset(metadata_error)
+
+    def _complete_cleanup_blocked_reset(self, metadata_error=None):
+        """Finish local cleanup while retaining the manual-cleanup marker."""
+        try:
+            self._remove_metadata()
+            self._remove_local_key()
+        except (CredentialStoreError, OSError) as exc:
+            raise CredentialCorrupt(
+                "untrusted credential metadata could not be safely reset"
+            ) from exc
+        raise CredentialCorrupt(
+            "credential metadata was reset without modifying native credential "
+            "storage; manual native cleanup is required"
+        ) from metadata_error
