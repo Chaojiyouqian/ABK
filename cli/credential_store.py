@@ -55,6 +55,7 @@ FALLBACK_BACKENDS = frozenset({FALLBACK_BACKEND, LOCAL_KEY_FALLBACK_BACKEND})
 MAX_CREDENTIAL_FILE_SIZE = 64 * 1024
 MAX_CREDENTIAL_KEY_FILE_SIZE = 256
 MAX_TOKEN_SIZE = 4096
+MAX_NATIVE_PROVIDER_SIZE = 256
 _SEED_SIZE = 32
 _LOCAL_KEY_SIZE = 32
 _NONCE_SIZE = 12
@@ -85,6 +86,10 @@ class NativeRollbackError(NativeStoreError):
 
 class CredentialCorrupt(CredentialStoreError):
     """Raised when encrypted credential metadata cannot be authenticated."""
+
+
+class _MachineIdentifierUnavailable(CredentialCorrupt):
+    """Raised when an otherwise structured machine-bound record cannot derive."""
 
 
 @dataclass(frozen=True)
@@ -289,14 +294,49 @@ def _local_key_hkdf_sha256(master_key, seed, length=32):
     return output[:length]
 
 
-def _credential_aad(native_cleanup_pending=False):
-    state = b"pending" if native_cleanup_pending else b"clean"
-    return _AAD + b"|native-cleanup=" + state
+def _valid_native_provider(value):
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeError:
+        return False
+    return len(encoded) <= MAX_NATIVE_PROVIDER_SIZE
 
 
-def _local_key_credential_aad(native_cleanup_pending=False):
+def _fallback_aad(base, native_cleanup_pending, native_cleanup_provider):
     state = b"pending" if native_cleanup_pending else b"clean"
-    return _LOCAL_KEY_AAD + b"|native-cleanup=" + state
+    aad = base + b"|native-cleanup=" + state
+    if native_cleanup_provider is not None:
+        encoded_provider = native_cleanup_provider.encode("utf-8")
+        aad += (
+            b"|native-provider="
+            + len(encoded_provider).to_bytes(2, "big")
+            + encoded_provider
+        )
+    return aad
+
+
+def _credential_aad(
+    native_cleanup_pending=False,
+    native_cleanup_provider=None,
+):
+    return _fallback_aad(
+        _AAD,
+        native_cleanup_pending,
+        native_cleanup_provider,
+    )
+
+
+def _local_key_credential_aad(
+    native_cleanup_pending=False,
+    native_cleanup_provider=None,
+):
+    return _fallback_aad(
+        _LOCAL_KEY_AAD,
+        native_cleanup_pending,
+        native_cleanup_provider,
+    )
 
 
 def _encrypt_aes_gcm(key, nonce, plaintext, aad=None):
@@ -649,10 +689,20 @@ class CredentialStore:
         backend=FALLBACK_BACKEND,
         machine_id=None,
         native_cleanup_pending=False,
+        native_cleanup_provider=None,
     ):
         if _AES_BACKEND is None:
             raise CredentialStoreError(
                 "persistent credentials require an AES-GCM backend"
+            )
+        if native_cleanup_pending:
+            if not _valid_native_provider(native_cleanup_provider):
+                raise CredentialStoreError(
+                    "the deferred native credential provider is invalid"
+                )
+        elif native_cleanup_provider is not None:
+            raise CredentialStoreError(
+                "a native cleanup provider requires pending cleanup"
             )
         encoded_token = token.encode("utf-8")
         if not encoded_token or len(encoded_token) > MAX_TOKEN_SIZE:
@@ -662,11 +712,17 @@ class CredentialStore:
         if backend == FALLBACK_BACKEND:
             machine_id = machine_id or self._validated_machine_id()
             key = _hkdf_sha256(seed, machine_id)
-            aad = _credential_aad(native_cleanup_pending)
+            aad = _credential_aad(
+                native_cleanup_pending,
+                native_cleanup_provider,
+            )
         elif backend == LOCAL_KEY_FALLBACK_BACKEND:
             master_key = self._load_or_create_local_key()
             key = _local_key_hkdf_sha256(master_key, seed)
-            aad = _local_key_credential_aad(native_cleanup_pending)
+            aad = _local_key_credential_aad(
+                native_cleanup_pending,
+                native_cleanup_provider,
+            )
         else:
             raise CredentialStoreError("credential fallback backend is unsupported")
         ciphertext, tag = _encrypt_aes_gcm(
@@ -675,7 +731,7 @@ class CredentialStore:
             encoded_token,
             aad,
         )
-        return {
+        metadata = {
             "version": CREDENTIAL_FORMAT_VERSION,
             "backend": backend,
             "native_cleanup_pending": native_cleanup_pending,
@@ -686,6 +742,9 @@ class CredentialStore:
             "ciphertext": _encode(ciphertext),
             "tag": _encode(tag),
         }
+        if native_cleanup_pending:
+            metadata["native_cleanup_provider"] = native_cleanup_provider
+        return metadata
 
     def _decrypt_fallback(self, metadata):
         expected = {
@@ -699,16 +758,28 @@ class CredentialStore:
             "ciphertext",
             "tag",
         }
+        native_cleanup_pending = metadata.get("native_cleanup_pending")
+        if native_cleanup_pending is True:
+            expected.add("native_cleanup_provider")
         if set(metadata) != expected:
             raise CredentialCorrupt("credential metadata fields are invalid")
         backend = metadata.get("backend")
         if (
             backend not in FALLBACK_BACKENDS
-            or not isinstance(metadata.get("native_cleanup_pending"), bool)
+            or not isinstance(native_cleanup_pending, bool)
             or metadata.get("kdf") != "hkdf-sha256"
             or metadata.get("cipher") != "aes-256-gcm"
         ):
             raise CredentialCorrupt("credential algorithms are unsupported")
+        native_cleanup_provider = None
+        if native_cleanup_pending:
+            native_cleanup_provider = metadata.get(
+                "native_cleanup_provider"
+            )
+            if not _valid_native_provider(native_cleanup_provider):
+                raise CredentialCorrupt(
+                    "the deferred native credential provider is invalid"
+                )
         seed = _decode(metadata["seed"], name="seed", expected_size=_SEED_SIZE)
         nonce = _decode(metadata["nonce"], name="nonce", expected_size=_NONCE_SIZE)
         ciphertext = _decode(
@@ -721,16 +792,20 @@ class CredentialStore:
             try:
                 machine_id = self._validated_machine_id()
             except NativeStoreUnavailable as exc:
-                raise CredentialCorrupt(
+                raise _MachineIdentifierUnavailable(
                     "the machine identifier is unavailable"
                 ) from exc
             key = _hkdf_sha256(seed, machine_id)
-            aad = _credential_aad(metadata["native_cleanup_pending"])
+            aad = _credential_aad(
+                native_cleanup_pending,
+                native_cleanup_provider,
+            )
         else:
             master_key = self._read_local_key()
             key = _local_key_hkdf_sha256(master_key, seed)
             aad = _local_key_credential_aad(
-                metadata["native_cleanup_pending"]
+                native_cleanup_pending,
+                native_cleanup_provider,
             )
         plaintext = _decrypt_aes_gcm(
             key,
@@ -757,9 +832,9 @@ class CredentialStore:
         if backend_name in FALLBACK_BACKENDS:
             token = self._decrypt_fallback(metadata)
             if metadata["native_cleanup_pending"]:
-                raise NativeRollbackError(
-                    "native credential cleanup is pending"
-                )
+                # This authenticated fallback is authoritative. The recorded
+                # provider is retained solely for exact stale-native cleanup.
+                return token
             if include_native:
                 upgraded = self._upgrade_fallback_to_native(token)
                 if (
@@ -777,6 +852,7 @@ class CredentialStore:
             if (
                 metadata.get("service") != CREDENTIAL_SERVICE
                 or metadata.get("account") != CREDENTIAL_ACCOUNT
+                or not _valid_native_provider(metadata.get("provider"))
             ):
                 raise CredentialCorrupt("native credential identity is invalid")
             if not include_native:
@@ -1047,12 +1123,55 @@ class CredentialStore:
         self._remove_unused_local_key()
         return True
 
+    def _store_fallback_credential(
+        self,
+        token,
+        existing_metadata,
+        *,
+        native_cleanup_provider=None,
+        force_local=False,
+        before_fallback=None,
+        before_local_fallback=None,
+    ):
+        if force_local:
+            fallback_backend = LOCAL_KEY_FALLBACK_BACKEND
+            machine_id = None
+        else:
+            fallback_backend, machine_id = self._select_new_fallback_backend()
+        if before_fallback is not None:
+            before_fallback()
+        if (
+            fallback_backend == LOCAL_KEY_FALLBACK_BACKEND
+            and before_local_fallback is not None
+        ):
+            before_local_fallback()
+        metadata = self._fallback_metadata(
+            token,
+            backend=fallback_backend,
+            machine_id=machine_id,
+            native_cleanup_pending=native_cleanup_provider is not None,
+            native_cleanup_provider=native_cleanup_provider,
+        )
+        self._persist_fallback_metadata(
+            token,
+            metadata,
+            existing_metadata,
+        )
+        if fallback_backend != LOCAL_KEY_FALLBACK_BACKEND:
+            self._remove_unused_local_key()
+        return StoreResult(
+            backend=fallback_backend,
+            degraded=True,
+            location=str(self.path),
+        )
+
     def store(
         self,
         token,
         *,
         before_fallback=None,
         before_local_fallback=None,
+        allow_recovery=False,
     ):
         if not isinstance(token, str) or not token:
             raise CredentialStoreError("the GitHub credential is empty")
@@ -1061,73 +1180,58 @@ class CredentialStore:
         if self._read_pending_metadata() is not None:
             raise NativeRollbackError("native credential cleanup is pending")
         existing_metadata = self._read_metadata()
+        required_native_provider = None
+        machine_identifier_recovery = False
         if existing_metadata is not None:
             existing_backend = existing_metadata.get("backend")
             if existing_backend in FALLBACK_BACKENDS:
-                self._decrypt_fallback(existing_metadata)
+                try:
+                    self._decrypt_fallback(existing_metadata)
+                except _MachineIdentifierUnavailable:
+                    if not allow_recovery:
+                        raise
+                    if existing_metadata.get("native_cleanup_pending"):
+                        raise NativeRollbackError(
+                            "native credential cleanup is pending"
+                        )
+                    machine_identifier_recovery = True
                 if existing_metadata["native_cleanup_pending"]:
-                    raise NativeRollbackError(
-                        "native credential cleanup is pending"
-                    )
+                    if not allow_recovery:
+                        raise NativeRollbackError(
+                            "native credential cleanup is pending"
+                        )
+                    required_native_provider = existing_metadata[
+                        "native_cleanup_provider"
+                    ]
             elif existing_backend == "native":
                 self.read(include_native=False)
+                required_native_provider = existing_metadata["provider"]
             else:
                 raise CredentialCorrupt("credential backend is unsupported")
         try:
             backend = self._native_backend_factory()
+            if (
+                required_native_provider is not None
+                and backend.name != required_native_provider
+            ):
+                raise NativeStoreUnavailable(
+                    "the configured native credential provider is unavailable"
+                )
             previous_token = backend.get()
         except NativeStoreUnavailable:
-            if (
-                existing_metadata is not None
-                and existing_metadata.get("backend") not in FALLBACK_BACKENDS
-            ):
+            if required_native_provider is not None and not allow_recovery:
                 raise
-            if existing_metadata is None:
-                fallback_backend, machine_id = (
-                    self._select_new_fallback_backend()
-                )
-            elif existing_metadata["backend"] == LOCAL_KEY_FALLBACK_BACKEND:
-                fallback_backend, machine_id = (
-                    self._select_new_fallback_backend()
-                )
-            else:
-                fallback_backend = existing_metadata["backend"]
-                machine_id = None
-            if before_fallback is not None:
-                before_fallback()
-            if (
-                fallback_backend == LOCAL_KEY_FALLBACK_BACKEND
-                and before_local_fallback is not None
-            ):
-                before_local_fallback()
-            metadata = self._fallback_metadata(
+            return self._store_fallback_credential(
                 token,
-                backend=fallback_backend,
-                machine_id=machine_id,
-            )
-            self._persist_fallback_metadata(
-                token,
-                metadata,
                 existing_metadata,
-            )
-            if fallback_backend != LOCAL_KEY_FALLBACK_BACKEND:
-                self._remove_unused_local_key()
-            return StoreResult(
-                backend=fallback_backend,
-                degraded=True,
-                location=str(self.path),
+                native_cleanup_provider=required_native_provider,
+                force_local=machine_identifier_recovery,
+                before_fallback=before_fallback,
+                before_local_fallback=before_local_fallback,
             )
         if previous_token is not None and not isinstance(previous_token, str):
             raise NativeStoreError(
                 f"{backend.name} returned an invalid GitHub credential"
-            )
-        if (
-            existing_metadata is not None
-            and existing_metadata.get("backend") == "native"
-            and existing_metadata.get("provider") != backend.name
-        ):
-            raise NativeStoreUnavailable(
-                "the configured native credential provider is unavailable"
             )
         self._store_native_transaction(
             backend,
@@ -1162,6 +1266,15 @@ class CredentialStore:
             return
         primary_backend = primary_metadata.get("backend")
         if primary_backend in FALLBACK_BACKENDS:
+            self._decrypt_fallback(primary_metadata)
+            if (
+                primary_metadata["native_cleanup_pending"]
+                and primary_metadata["native_cleanup_provider"]
+                != pending_metadata["provider"]
+            ):
+                raise NativeStoreUnavailable(
+                    "pending native cleanup conflicts with the deferred provider"
+                )
             return
         expected = {"version", "backend", "provider", "service", "account"}
         if (
@@ -1233,15 +1346,25 @@ class CredentialStore:
                 self._decrypt_fallback(metadata)
             except CredentialCorrupt as exc:
                 return self._delete_unusable_metadata(exc)
+            cleanup_provider = None
+            if metadata["native_cleanup_pending"]:
+                cleanup_provider = metadata["native_cleanup_provider"]
             try:
                 backend = self._native_backend_factory()
             except NativeStoreUnavailable:
-                if metadata["native_cleanup_pending"]:
+                if cleanup_provider is not None:
                     raise NativeStoreUnavailable(
                         "native credential cleanup is still pending"
                     )
                 native_removed = False
             else:
+                if (
+                    cleanup_provider is not None
+                    and backend.name != cleanup_provider
+                ):
+                    raise NativeStoreUnavailable(
+                        "the deferred native credential provider is unavailable"
+                    )
                 native_removed = self._delete_native_and_verify(backend)
             marker_removed = self._remove_metadata()
             key_removed = self._remove_local_key()

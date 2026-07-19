@@ -1331,6 +1331,7 @@ class SecurityRegressionTests(unittest.TestCase):
                 token,
                 before_fallback=None,
                 before_local_fallback=None,
+                allow_recovery=False,
             ):
                 store_started.set()
                 self.token = token

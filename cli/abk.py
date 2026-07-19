@@ -547,13 +547,14 @@ def _verify_legacy_credential_removed():
         )
 
 
-def _store_persisted_token(token, *, args=None):
+def _store_persisted_token(token, *, args=None, allow_recovery=False):
     with _config_process_lock():
         store = _credential_store()
         result = store.store(
             token,
             before_fallback=lambda: _warn_credential_fallback(args),
             before_local_fallback=lambda: _warn_credential_local_key_fallback(args),
+            allow_recovery=allow_recovery,
         )
         persisted = store.read(include_native=not result.degraded)
         if (
@@ -3180,7 +3181,13 @@ def cmd_login(args):
     try:
         user = client.get_user()
         try:
-            storage = _store_persisted_token(token, args=args)
+            # The device-flow token was verified by get_user(), so it may
+            # replace a credential whose old storage provider is unavailable.
+            storage = _store_persisted_token(
+                token,
+                args=args,
+                allow_recovery=True,
+            )
         except credential_store.CredentialStoreError as exc:
             print(t("credential_store_failed", error=exc), file=sys.stderr)
             return 1

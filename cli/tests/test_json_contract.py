@@ -487,6 +487,11 @@ class JsonContractTests(unittest.TestCase):
             mock.patch.object(abk, "make_client", return_value=client),
             mock.patch.object(
                 abk,
+                "_store_persisted_token",
+                wraps=abk._store_persisted_token,
+            ) as store_token,
+            mock.patch.object(
+                abk,
                 "ensure_signing_key",
                 side_effect=abk.SigningStateIndeterminateError("repair signing state"),
             ),
@@ -506,6 +511,7 @@ class JsonContractTests(unittest.TestCase):
         self.assertIn("repair signing state", stderr.getvalue())
         self.assertIn(abk.t("credential_fallback_warning"), stderr.getvalue())
         self.assertNotIn("Login/fork check failed", stderr.getvalue())
+        self.assertTrue(store_token.call_args.kwargs["allow_recovery"])
 
     def test_legacy_plaintext_token_migrates_to_encrypted_fallback(self):
         abk.save_config({"token": "legacy-token", "download_dir": "/tmp/out"})
@@ -539,6 +545,9 @@ class JsonContractTests(unittest.TestCase):
             abk.get_token(mock.Mock(token=None))
 
         self.assertEqual("legacy-token", abk.load_config()["token"])
+        self.assertFalse(
+            failing_store.store.call_args.kwargs["allow_recovery"]
+        )
 
     def test_failed_secure_store_verification_keeps_legacy_plaintext(self):
         abk.save_config({"token": "legacy-token", "download_dir": "/tmp/out"})
