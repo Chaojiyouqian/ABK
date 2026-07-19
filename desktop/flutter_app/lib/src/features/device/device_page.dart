@@ -13,6 +13,7 @@ import '../../core/models/device_models.dart';
 import '../../core/models/sidecar_models.dart';
 import '../../core/platform/desktop_webui_api.dart';
 import '../../core/state/dashboard_controller.dart';
+import '../../widgets/monaco_code_view.dart';
 import '../../widgets/panel_card.dart';
 import '../../widgets/status_pill.dart';
 import 'device_page_controller.dart';
@@ -2888,6 +2889,8 @@ class _DeviceTaskLogDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final output = <String>[
       if (task.message != null) '## ${task.message}',
       ...task.output,
@@ -2896,16 +2899,46 @@ class _DeviceTaskLogDialog extends StatelessWidget {
         const JsonEncoder.withIndent('  ').convert(task.result),
       ],
     ];
+    final content = output.join('\n');
     return AlertDialog(
       title: Text(context.strings.buildTaskDetailsTitle),
       content: SizedBox(
         width: 760,
-        child: SingleChildScrollView(
-          child: SelectableText(
-            output.join('\n'),
-            style: const TextStyle(fontFamily: 'monospace'),
-          ),
-        ),
+        height: Platform.isLinux ? 520 : null,
+        child: Platform.isLinux
+            ? DecoratedBox(
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: scheme.outlineVariant),
+                ),
+                child: content.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          context.strings.buildTaskNoOutput,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      )
+                    : MonacoLogView(
+                        content: content,
+                        language: MonacoCodeLanguage.plaintext,
+                        nativeInsets: const EdgeInsets.fromLTRB(1, 0, 1, 1),
+                        fallbackPadding: const EdgeInsets.all(16),
+                        fallbackStyle: theme.textTheme.bodySmall?.copyWith(
+                          fontFamily: 'monospace',
+                          height: 1.45,
+                        ),
+                      ),
+              )
+            : SingleChildScrollView(
+                child: SelectableText(
+                  content,
+                  style: const TextStyle(fontFamily: 'monospace'),
+                ),
+              ),
       ),
       actions: <Widget>[
         TextButton(

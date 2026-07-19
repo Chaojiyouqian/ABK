@@ -17,9 +17,12 @@ use crate::local_build::{
     LocalBuildProfilesResponse, LocalBuildSettings, LocalBuildSourceInstance,
     LocalBuildSourceInstancesResponse, LocalBuildSourceSyncPlan, SaveLocalBuildProfileRequest,
     SyncLocalBuildSourceInstanceRequest, UpdateLocalBuildSettingsRequest,
+    InstallLocalBuildBackendRequest, LocalBuildBackendInstallAction,
+    LocalBuildBackendInstallPlan, LocalBuildBackendKind,
 };
 use crate::local_build_paths::{
-    load_local_build_path_settings, resolve_local_build_root, resolve_local_build_workspace_dir,
+    load_local_build_path_settings, resolve_local_build_profile_store_dir,
+    resolve_local_build_root, resolve_local_build_workspace_dir,
 };
 use crate::proxy::{normalize_proxy_value, ProxySettings};
 use anyhow::{anyhow, Context, Result};
@@ -573,6 +576,10 @@ async fn main() -> Result<()> {
         .route(
             "/api/v1/local-build/backends",
             get(list_local_build_backends),
+        )
+        .route(
+            "/api/v1/local-build/backends/{backend_kind}/install",
+            post(install_local_build_backend),
         )
         .route("/api/v1/local-build/catalog", get(get_local_build_catalog))
         .route(
@@ -1163,6 +1170,26 @@ async fn list_local_build_backends(
     ))
 }
 
+async fn install_local_build_backend(
+    State(state): State<AppState>,
+    Path(backend_kind): Path<String>,
+    Json(request): Json<InstallLocalBuildBackendRequest>,
+) -> Result<(StatusCode, Json<TaskSnapshot>), ApiError> {
+    let backend_kind = parse_local_build_backend_kind(&backend_kind)?;
+    let plan = state
+        .write_local_build(|manager| manager.plan_backend_install(backend_kind, &request))
+        .map_err(ApiError::from)?;
+    Ok(queue_local_build_backend_install_task(
+        state,
+        plan,
+        "local.backend.install",
+        "local backend install accepted",
+        "installing local backend asset",
+        "local backend asset installed",
+        "local backend asset install failed",
+    ))
+}
+
 async fn get_local_build_catalog(
     State(state): State<AppState>,
 ) -> Result<Json<LocalBuildCatalogResponse>, ApiError> {
@@ -1393,6 +1420,18 @@ async fn start_local_build_rebuild(
     ))
 }
 
+fn parse_local_build_backend_kind(value: &str) -> Result<LocalBuildBackendKind, ApiError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "docker" => Ok(LocalBuildBackendKind::Docker),
+        "podman" => Ok(LocalBuildBackendKind::Podman),
+        "wsl" => Ok(LocalBuildBackendKind::Wsl),
+        "script" => Ok(LocalBuildBackendKind::Script),
+        other => Err(ApiError::bad_request(format!(
+            "unsupported local build backend {other}"
+        ))),
+    }
+}
+
 fn queue_local_build_source_sync_task(
     state: AppState,
     plan: LocalBuildSourceSyncPlan,
@@ -1590,6 +1629,168 @@ fn queue_local_build_source_sync_task(
     (StatusCode::ACCEPTED, Json(accepted_snapshot))
 }
 
+fn queue_local_build_backend_install_task(
+    state: AppState,
+    plan: LocalBuildBackendInstallPlan,
+    kind: &'static str,
+    accepted_message: &'static str,
+    running_message: &'static str,
+    success_message: &'static str,
+    failure_message: &'static str,
+) -> (StatusCode, Json<TaskSnapshot>) {
+    let id = Uuid::new_v4().to_string();
+    let preview = match &plan.action {
+        LocalBuildBackendInstallAction::PullContainerImage { command } => command.display(),
+        LocalBuildBackendInstallAction::ImportWslRootfs { command } => command.display(),
+        LocalBuildBackendInstallAction::RestoreScriptAssets => {
+            "re-materialize local build scripts".into()
+        }
+    };
+    let snapshot = TaskSnapshot {
+        id: id.clone(),
+        kind: kind.into(),
+        state: "pending".into(),
+        message: Some(accepted_message.into()),
+        output: vec![
+            "## prepare backend install".into(),
+            format!("backend: {}", plan.backend.label),
+            format!("action: {preview}"),
+        ],
+        result: mark_task_result_cancelable(
+            json!({
+                "backend": plan.backend,
+            }),
+            true,
+        ),
+        download_name: None,
+        download_content_type: None,
+    };
+    state.upsert_task(LocalTask {
+        snapshot: snapshot.clone(),
+        download_path: None,
+    });
+    let cancel_rx = state.register_task_canceller(&id);
+
+    let task_state = state.clone();
+    let accepted_snapshot = snapshot.clone();
+    tokio::spawn(async move {
+        let running_snapshot = TaskSnapshot {
+            state: "running".into(),
+            message: Some(running_message.into()),
+            result: mark_task_result_cancelable(snapshot.result.clone(), true),
+            ..snapshot.clone()
+        };
+        task_state.upsert_task(LocalTask {
+            snapshot: running_snapshot.clone(),
+            download_path: None,
+        });
+
+        let execution = async {
+            match plan.action.clone() {
+                LocalBuildBackendInstallAction::PullContainerImage { command }
+                | LocalBuildBackendInstallAction::ImportWslRootfs { command } => {
+                    run_streaming_command_for_task(
+                        task_state.clone(),
+                        running_snapshot.clone(),
+                        command,
+                        cancel_rx,
+                    )
+                    .await
+                }
+                LocalBuildBackendInstallAction::RestoreScriptAssets => {
+                    task_state
+                        .write_local_build(|manager| manager.restore_script_backend_assets())
+                        .map_err(ApiError::from)?;
+                    Ok(CommandStreamingOutcome::Succeeded {
+                        text: "local build scripts restored".into(),
+                        lines: vec![
+                            "## prepare backend install".into(),
+                            format!("backend: {}", plan.backend.label),
+                            "local build scripts restored".into(),
+                        ],
+                    })
+                }
+            }
+        }
+        .await;
+
+        match execution {
+            Ok(CommandStreamingOutcome::Succeeded { text, lines }) => {
+                let backends = task_state.read_local_build(LocalBuildManager::list_backends);
+                task_state.upsert_task(LocalTask {
+                    snapshot: TaskSnapshot {
+                        state: "succeeded".into(),
+                        message: Some(success_message.into()),
+                        output: lines,
+                        result: json!({
+                            "backend": plan.backend,
+                            "backends": backends,
+                            "stdout": text,
+                            "cancelable": false,
+                        }),
+                        ..snapshot.clone()
+                    },
+                    download_path: None,
+                });
+            }
+            Ok(CommandStreamingOutcome::Cancelled { text, lines }) => {
+                task_state.upsert_task(LocalTask {
+                    snapshot: TaskSnapshot {
+                        state: "cancelled".into(),
+                        message: Some("local backend install cancelled".into()),
+                        output: lines,
+                        result: json!({
+                            "backend": plan.backend,
+                            "stdout": text,
+                            "cancelable": false,
+                        }),
+                        ..snapshot.clone()
+                    },
+                    download_path: None,
+                });
+            }
+            Ok(CommandStreamingOutcome::Failed { message, lines }) => {
+                task_state.upsert_task(LocalTask {
+                    snapshot: TaskSnapshot {
+                        state: "failed".into(),
+                        message: Some(failure_message.into()),
+                        output: lines,
+                        result: json!({
+                            "backend": plan.backend,
+                            "error": message,
+                            "cancelable": false,
+                        }),
+                        ..snapshot.clone()
+                    },
+                    download_path: None,
+                });
+            }
+            Err(error) => {
+                let lines = error
+                    .message
+                    .lines()
+                    .map(|line| line.to_string())
+                    .collect();
+                task_state.upsert_task(LocalTask {
+                    snapshot: TaskSnapshot {
+                        state: "failed".into(),
+                        message: Some(failure_message.into()),
+                        output: lines,
+                        result: json!({
+                            "backend": plan.backend,
+                            "error": error.message,
+                            "cancelable": false,
+                        }),
+                        ..snapshot.clone()
+                    },
+                    download_path: None,
+                });
+            }
+        }
+    });
+    (StatusCode::ACCEPTED, Json(accepted_snapshot))
+}
+
 fn queue_local_build_profile_build_task(
     state: AppState,
     plan: LocalBuildProfileBuildPlan,
@@ -1695,8 +1896,13 @@ fn queue_local_build_profile_build_task(
                     })
                     .map_err(ApiError::from)?;
             }
-            let status = inspect_local_build_status().map_err(ApiError::from)?;
-            sync_local_build_env_with_request(&status, &plan.build_request)
+            task_state
+                .write_local_build(|manager| {
+                    manager.materialize_profile_environment(
+                        &plan.source_instance.id,
+                        &plan.build_request,
+                    )
+                })
                 .map_err(ApiError::from)?;
             push_task_output_line(&mut lines, "## run build".into());
             task_state.upsert_task(LocalTask {
@@ -3264,8 +3470,8 @@ fn clear_cli_token_at_path(path: &PathBuf) -> Result<(), ApiError> {
 }
 
 fn cli_config_path() -> Result<PathBuf, ApiError> {
-    let home = resolve_user_home_dir()
-        .ok_or_else(|| ApiError::service_unavailable("HOME is not set"))?;
+    let home =
+        resolve_user_home_dir().ok_or_else(|| ApiError::service_unavailable("HOME is not set"))?;
     Ok(home.join(CLI_CONFIG_PATH_SUFFIX))
 }
 
@@ -3287,9 +3493,7 @@ fn resolve_user_home_dir() -> Option<PathBuf> {
     let drive = env::var("HOMEDRIVE").ok();
     let path = env::var("HOMEPATH").ok();
     match (drive, path) {
-        (Some(drive), Some(path))
-            if !drive.trim().is_empty() && !path.trim().is_empty() =>
-        {
+        (Some(drive), Some(path)) if !drive.trim().is_empty() && !path.trim().is_empty() => {
             Some(PathBuf::from(format!("{}{}", drive.trim(), path.trim())))
         }
         _ => None,
@@ -3444,10 +3648,16 @@ fn inspect_local_build_status() -> Result<LocalBuildStatus> {
     let script_root = resolve_local_build_root(&repo_root, &path_settings);
     let init_script_path = script_root.join("init.sh");
     let rebuild_script_path = script_root.join("rebuild.sh");
-    let state_dir = script_root.join(".local-build");
-    let env_file_path = state_dir.join("env.sh");
+    let default_state_dir = script_root.join(".local-build");
+    let default_env_file_path = default_state_dir.join("env.sh");
     let default_workspace_dir = resolve_local_build_workspace_dir(&script_root, &path_settings);
-    let default_sources_dir = state_dir.join("sources");
+    let default_sources_dir = default_state_dir.join("sources");
+    let active_source = active_local_build_source_instance(&repo_root, &path_settings);
+    let (state_dir, env_file_path) = resolve_local_build_status_paths(
+        &default_state_dir,
+        &default_env_file_path,
+        active_source.as_ref(),
+    )?;
     let env = if env_file_path.is_file() {
         read_exported_env_file(&env_file_path)?
     } else {
@@ -3516,6 +3726,179 @@ fn inspect_local_build_status() -> Result<LocalBuildStatus> {
     })
 }
 
+fn active_local_build_source_instance(
+    repo_root: &FsPath,
+    path_settings: &crate::local_build_paths::LocalBuildPathSettings,
+) -> Option<LocalBuildSourceInstance> {
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct LocalBuildStatusStoreSnapshot {
+        settings: LocalBuildSettings,
+        source_instances: Vec<LocalBuildSourceInstance>,
+    }
+
+    let store_path =
+        resolve_local_build_profile_store_dir(repo_root, path_settings).join("state.json");
+    let content = fs::read_to_string(store_path).ok()?;
+    let store: LocalBuildStatusStoreSnapshot = serde_json::from_str(&content).ok()?;
+    let active_source_id = store.settings.active_source_instance_id?;
+    store
+        .source_instances
+        .into_iter()
+        .find(|item| item.id == active_source_id)
+}
+
+fn resolve_local_build_status_paths(
+    default_state_dir: &FsPath,
+    default_env_file_path: &FsPath,
+    active_source: Option<&LocalBuildSourceInstance>,
+) -> Result<(PathBuf, PathBuf)> {
+    let Some(source) = active_source else {
+        return Ok((
+            default_state_dir.to_path_buf(),
+            default_env_file_path.to_path_buf(),
+        ));
+    };
+
+    let source_state_dir = source_materialized_state_dir(source, default_state_dir);
+    let source_env_file_path = source_materialized_env_file_path(source, &source_state_dir);
+
+    if source_env_file_path.is_file() {
+        return Ok((source_state_dir.clone(), source_env_file_path));
+    }
+
+    if let Some(materialized) = source.materialized.as_ref() {
+        let state_dir = materialized
+            .state_dir
+            .clone()
+            .and_then(non_empty_string)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| source_state_dir.clone());
+        let env_file_path = materialized
+            .env_file_path
+            .clone()
+            .and_then(non_empty_string)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| state_dir.join("env.sh"));
+        if env_file_path.is_file() {
+            return Ok((state_dir, env_file_path));
+        }
+    }
+
+    if default_env_file_path.is_file() {
+        let legacy_env = read_exported_env_file(default_env_file_path)?;
+        if legacy_env_matches_source(&legacy_env, source) {
+            let migrated_env_file_path =
+                migrate_legacy_local_build_env(default_env_file_path, &source_state_dir)?;
+            return Ok((source_state_dir, migrated_env_file_path));
+        }
+    }
+
+    if let Some(materialized) = source.materialized.as_ref() {
+        let state_dir = materialized
+            .state_dir
+            .clone()
+            .and_then(non_empty_string)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| default_state_dir.to_path_buf());
+        let env_file_path = materialized
+            .env_file_path
+            .clone()
+            .and_then(non_empty_string)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| state_dir.join("env.sh"));
+        return Ok((state_dir, env_file_path));
+    }
+
+    Ok((source_state_dir, source_env_file_path))
+}
+
+fn source_materialized_state_dir(
+    source: &LocalBuildSourceInstance,
+    default_state_dir: &FsPath,
+) -> PathBuf {
+    source
+        .materialized
+        .as_ref()
+        .and_then(|materialized| materialized.state_dir.clone())
+        .and_then(non_empty_string)
+        .map(PathBuf::from)
+        .or_else(|| {
+            non_empty_string(source.cache_root.clone())
+                .map(PathBuf::from)
+                .map(|cache_root| cache_root.join(".local-build"))
+        })
+        .unwrap_or_else(|| default_state_dir.to_path_buf())
+}
+
+fn source_materialized_env_file_path(
+    source: &LocalBuildSourceInstance,
+    source_state_dir: &FsPath,
+) -> PathBuf {
+    source
+        .materialized
+        .as_ref()
+        .and_then(|materialized| materialized.env_file_path.clone())
+        .and_then(non_empty_string)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| source_state_dir.join("env.sh"))
+}
+
+fn migrate_legacy_local_build_env(
+    legacy_env_file_path: &FsPath,
+    target_state_dir: &FsPath,
+) -> Result<PathBuf> {
+    let target_env_file_path = target_state_dir.join("env.sh");
+    if target_env_file_path.is_file() {
+        return Ok(target_env_file_path);
+    }
+
+    fs::create_dir_all(target_state_dir)
+        .with_context(|| format!("failed to create {}", target_state_dir.display()))?;
+    fs::copy(legacy_env_file_path, &target_env_file_path).with_context(|| {
+        format!(
+            "failed to copy {} -> {}",
+            legacy_env_file_path.display(),
+            target_env_file_path.display()
+        )
+    })?;
+
+    let mut updates = HashMap::<String, String>::new();
+    updates.insert(
+        "STATE_DIR".into(),
+        target_state_dir.to_string_lossy().to_string(),
+    );
+    rewrite_exported_env_file(&target_env_file_path, &updates)?;
+    Ok(target_env_file_path)
+}
+
+fn legacy_env_matches_source(
+    env: &HashMap<String, String>,
+    source: &LocalBuildSourceInstance,
+) -> bool {
+    let workspace_matches = env
+        .get("WORKSPACE_DIR")
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .is_some_and(|value| value == source.working_tree_root);
+    let template_matches = env
+        .get("TEMPLATE_ANDROID_VERSION")
+        .and_then(|value| non_empty_string(value.clone()))
+        .as_deref()
+        == Some(source.android_version.as_str())
+        && env
+            .get("TEMPLATE_KERNEL_VERSION")
+            .and_then(|value| non_empty_string(value.clone()))
+            .as_deref()
+            == Some(source.kernel_version.as_str())
+        && env
+            .get("TEMPLATE_BRANCH")
+            .and_then(|value| extract_branch_month(value))
+            .as_deref()
+            == Some(source.branch_month.as_str());
+    workspace_matches || template_matches
+}
+
 fn discover_local_build_templates(root: &FsPath) -> Vec<LocalBuildTemplate> {
     let mut templates = fs::read_dir(root)
         .ok()
@@ -3542,123 +3925,6 @@ fn discover_local_build_templates(root: &FsPath) -> Vec<LocalBuildTemplate> {
         .collect::<Vec<_>>();
     templates.sort_by(|left, right| left.name.cmp(&right.name));
     templates
-}
-
-fn sync_local_build_env_with_request(
-    status: &LocalBuildStatus,
-    request: &BuildGkiRequest,
-) -> Result<()> {
-    let env_file_path = PathBuf::from(status.env_file_path.clone());
-    if !env_file_path.is_file() {
-        return Err(anyhow!(
-            "missing {}. Run init.sh before rebuild.",
-            env_file_path.display()
-        ));
-    }
-
-    let custom_modules = request
-        .custom_modules
-        .clone()
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    let ksu_branch = request
-        .ksu_branch
-        .clone()
-        .unwrap_or_else(|| "Stable".into());
-
-    let mut updates = HashMap::<String, String>::new();
-    updates.insert(
-        "KSU_VARIANT".into(),
-        request
-            .ksu_variant
-            .clone()
-            .unwrap_or_else(|| "ReSukiSU".into())
-            .trim()
-            .to_string(),
-    );
-    updates.insert(
-        "KSU_TRACK".into(),
-        local_ksu_track_label(&ksu_branch).into(),
-    );
-    updates.insert(
-        "KSU_CUSTOM_REF".into(),
-        request
-            .custom_ref
-            .clone()
-            .unwrap_or_default()
-            .trim()
-            .to_string(),
-    );
-    updates.insert("ENABLE_SUSFS".into(), bool_env(request.susfs));
-    updates.insert("USE_ZRAM".into(), bool_env(request.zram));
-    updates.insert("ZRAM_FULL_ALGO".into(), bool_env(request.zram_full_algo));
-    updates.insert(
-        "ZRAM_EXTRA_ALGOS".into(),
-        request
-            .zram_extra_algos
-            .clone()
-            .unwrap_or_default()
-            .trim()
-            .to_string(),
-    );
-    updates.insert("USE_BBG".into(), bool_env(request.bbg));
-    updates.insert("USE_DDK".into(), bool_env(request.ddk));
-    updates.insert("USE_NTSYNC".into(), bool_env(request.ntsync));
-    updates.insert("USE_NETWORKING".into(), bool_env(request.networking));
-    updates.insert("USE_KPM".into(), bool_env(request.kpm));
-    updates.insert(
-        "KPM_PASSWORD".into(),
-        request
-            .kpm_password
-            .clone()
-            .unwrap_or_default()
-            .trim()
-            .to_string(),
-    );
-    updates.insert("USE_REKERNEL".into(), bool_env(request.rekernel));
-    updates.insert(
-        "USE_CUSTOM_EXTERNAL_MODULES".into(),
-        bool_env(!custom_modules.is_empty()),
-    );
-    updates.insert("CUSTOM_EXTERNAL_MODULES".into(), custom_modules);
-    updates.insert(
-        "VIRTUALIZATION_SUPPORT".into(),
-        request
-            .virt
-            .clone()
-            .unwrap_or_else(|| "off".into())
-            .trim()
-            .to_string(),
-    );
-    updates.insert(
-        "VERSION_INPUT".into(),
-        request
-            .version
-            .clone()
-            .unwrap_or_default()
-            .trim()
-            .to_string(),
-    );
-    updates.insert(
-        "BUILD_TIME".into(),
-        request
-            .build_time
-            .clone()
-            .unwrap_or_default()
-            .trim()
-            .to_string(),
-    );
-    if let Some(revision) = request
-        .revision
-        .clone()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    {
-        updates.insert("REVISION".into(), revision);
-    }
-
-    rewrite_exported_env_file(&env_file_path, &updates)
 }
 
 fn read_exported_env_file(path: &FsPath) -> Result<HashMap<String, String>> {
@@ -3750,22 +4016,6 @@ fn non_empty_string(value: String) -> Option<String> {
         None
     } else {
         Some(trimmed.to_string())
-    }
-}
-
-fn bool_env(value: bool) -> String {
-    if value {
-        "true".into()
-    } else {
-        "false".into()
-    }
-}
-
-fn local_ksu_track_label(value: &str) -> &'static str {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "dev" => "Dev(开发)",
-        "custom" => "Custom(自定义)",
-        _ => "Stable(标准)",
     }
 }
 
@@ -4407,6 +4657,7 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::local_build::LocalBuildBackendKind;
 
     #[test]
     fn parses_adb_detect_output() {
@@ -4627,5 +4878,69 @@ mod tests {
             fallback_webui_asset_candidates("assets/index-BphXklzb.js"),
             vec!["assets/index-BphXklzb.js".to_string()]
         );
+    }
+
+    #[test]
+    fn migrates_legacy_local_build_env_to_active_source_state_dir() {
+        let temp_root = std::env::temp_dir().join(format!("abk-test-{}", Uuid::new_v4()));
+        let script_root = temp_root.join("script");
+        let legacy_state_dir = script_root.join(".local-build");
+        let legacy_env_path = legacy_state_dir.join("env.sh");
+        let source_cache_root = temp_root
+            .join("profile")
+            .join("sources")
+            .join("android13-5.15@2025-03");
+        let source_workspace_root = temp_root.join("workspace").join("android13-5.15@2025-03");
+        let target_state_dir = source_cache_root.join(".local-build");
+        fs::create_dir_all(&legacy_state_dir).unwrap();
+        fs::write(
+            &legacy_env_path,
+            format!(
+                "export ROOT_DIR='{}'\nexport STATE_DIR='{}'\nexport WORKSPACE_DIR='{}'\nexport TEMPLATE_ANDROID_VERSION='android13'\nexport TEMPLATE_KERNEL_VERSION='5.15'\nexport TEMPLATE_BRANCH='common-android13-5.15-2025-03'\n",
+                script_root.display(),
+                legacy_state_dir.display(),
+                source_workspace_root.display()
+            ),
+        )
+        .unwrap();
+
+        let source = LocalBuildSourceInstance {
+            id: "android13-5.15@2025-03".into(),
+            display_name: "android13/5.15@2025-03".into(),
+            kernel_line_id: "android13/5.15".into(),
+            android_version: "android13".into(),
+            kernel_version: "5.15".into(),
+            branch_month: "2025-03".into(),
+            cache_root: source_cache_root.to_string_lossy().to_string(),
+            working_tree_root: source_workspace_root.to_string_lossy().to_string(),
+            state: "ready".into(),
+            created_at_ms: 0,
+            updated_at_ms: 0,
+            last_synced_at_ms: Some(1),
+            active_backend_kind: Some(LocalBuildBackendKind::Docker),
+            last_task_id: None,
+            last_error: None,
+            materialized: None,
+        };
+
+        let (state_dir, env_file_path) =
+            resolve_local_build_status_paths(&legacy_state_dir, &legacy_env_path, Some(&source))
+                .unwrap();
+
+        assert_eq!(state_dir, target_state_dir);
+        assert_eq!(env_file_path, target_state_dir.join("env.sh"));
+        assert!(env_file_path.is_file());
+
+        let env = read_exported_env_file(&env_file_path).unwrap();
+        assert_eq!(
+            env.get("STATE_DIR").map(String::as_str),
+            Some(target_state_dir.to_string_lossy().as_ref())
+        );
+        assert_eq!(
+            env.get("WORKSPACE_DIR").map(String::as_str),
+            Some(source_workspace_root.to_string_lossy().as_ref())
+        );
+
+        fs::remove_dir_all(temp_root).ok();
     }
 }

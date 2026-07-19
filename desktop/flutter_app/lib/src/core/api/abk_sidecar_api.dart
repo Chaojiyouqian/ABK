@@ -83,6 +83,11 @@ abstract interface class AbkSidecarApi {
 
   Future<List<LocalBuildBackendDescriptor>> getLocalBuildBackends();
 
+  Future<DesktopTaskSnapshot> installLocalBuildBackend(
+    LocalBuildBackendKind kind,
+    Map<String, dynamic> request,
+  );
+
   Future<List<SupportedKernelLine>> getLocalBuildCatalog();
 
   Future<LocalBuildSettings> updateLocalBuildSettings(
@@ -455,6 +460,19 @@ class HttpAbkSidecarClient implements AbkSidecarApi {
     return _readMapList(
       json['backends'],
     ).map(LocalBuildBackendDescriptor.fromJson).toList(growable: false);
+  }
+
+  @override
+  Future<DesktopTaskSnapshot> installLocalBuildBackend(
+    LocalBuildBackendKind kind,
+    Map<String, dynamic> request,
+  ) async {
+    final json = await _requestJson(
+      'POST',
+      'api/v1/local-build/backends/${Uri.encodeComponent(kind.name)}/install',
+      body: request,
+    );
+    return DesktopTaskSnapshot.fromJson(json);
   }
 
   @override

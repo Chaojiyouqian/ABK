@@ -237,6 +237,28 @@ class DesktopKernelSupport {
         : const <String>['off', '678', '123', '345'];
   }
 
+  static KernelSupportEntry? entryForPatchLevel(
+    String androidVersion,
+    String kernelVersion,
+    String osPatchLevel,
+  ) {
+    final line = lineFor(androidVersion, kernelVersion);
+    final matches = entries
+        .where(
+          (entry) =>
+              entry.androidVersion == line.androidVersion &&
+              entry.kernelVersion == line.kernelVersion &&
+              entry.osPatchLevel == osPatchLevel,
+        )
+        .toList(growable: false);
+    if (matches.isEmpty) {
+      return null;
+    }
+    final sorted = matches.toList(growable: true)
+      ..sort((left, right) => _numericCompare(left.subLevel, right.subLevel));
+    return sorted.last;
+  }
+
   static bool isKpmSupported({
     required String ksuVariant,
     required String ksuBranch,

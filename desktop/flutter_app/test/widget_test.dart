@@ -700,6 +700,9 @@ class _FakeSidecarApi implements AbkSidecarApi {
         label: 'Script adapter',
         available: true,
         isGlobalDefault: true,
+        installSupported: false,
+        installLabel: null,
+        installDetail: null,
         authorizationRequired: false,
         authorizationKind: null,
         authorizationMessage: null,
@@ -714,6 +717,23 @@ class _FakeSidecarApi implements AbkSidecarApi {
         detail: null,
       ),
     ];
+  }
+
+  @override
+  Future<DesktopTaskSnapshot> installLocalBuildBackend(
+    LocalBuildBackendKind kind,
+    Map<String, dynamic> request,
+  ) async {
+    return const DesktopTaskSnapshot(
+      id: 'task-local-backend-install',
+      kind: 'local.backend.install',
+      state: 'pending',
+      message: 'pending',
+      output: <String>[],
+      result: <String, dynamic>{},
+      downloadName: null,
+      downloadContentType: null,
+    );
   }
 
   @override

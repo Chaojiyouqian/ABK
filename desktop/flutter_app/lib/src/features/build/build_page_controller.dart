@@ -9,6 +9,7 @@ import '../../core/models/build_models.dart';
 import '../../core/state/dashboard_controller.dart';
 import 'build_form_state.dart';
 import 'build_module_catalog.dart';
+import 'kernel_support.dart';
 
 const _missing = Object();
 
@@ -56,6 +57,7 @@ class BuildPageState {
     required this.localProfileNameDraft,
     required this.localProfileBackendKind,
     required this.localForm,
+    required this.localFormDirty,
     required this.localSelectedModules,
     required this.localArtifacts,
     required this.localLogs,
@@ -112,6 +114,7 @@ class BuildPageState {
       localProfileNameDraft: '',
       localProfileBackendKind: null,
       localForm: BuildFormState.defaults(),
+      localFormDirty: false,
       localSelectedModules: const <SelectedBuildModule>[],
       localArtifacts: const <LocalBuildArtifactEntry>[],
       localLogs: const <LocalBuildLogEntry>[],
@@ -167,6 +170,7 @@ class BuildPageState {
   final String localProfileNameDraft;
   final LocalBuildBackendKind? localProfileBackendKind;
   final BuildFormState localForm;
+  final bool localFormDirty;
   final List<SelectedBuildModule> localSelectedModules;
   final List<LocalBuildArtifactEntry> localArtifacts;
   final List<LocalBuildLogEntry> localLogs;
@@ -292,6 +296,7 @@ class BuildPageState {
     String? localProfileNameDraft,
     Object? localProfileBackendKind = _missing,
     BuildFormState? localForm,
+    bool? localFormDirty,
     List<SelectedBuildModule>? localSelectedModules,
     List<LocalBuildArtifactEntry>? localArtifacts,
     List<LocalBuildLogEntry>? localLogs,
@@ -370,6 +375,7 @@ class BuildPageState {
           ? this.localProfileBackendKind
           : localProfileBackendKind as LocalBuildBackendKind?,
       localForm: localForm ?? this.localForm,
+      localFormDirty: localFormDirty ?? this.localFormDirty,
       localSelectedModules: localSelectedModules ?? this.localSelectedModules,
       localArtifacts: localArtifacts ?? this.localArtifacts,
       localLogs: localLogs ?? this.localLogs,
@@ -437,34 +443,42 @@ class BuildPageController extends StateNotifier<BuildPageState> {
     }
     if (!mounted) return;
 
+    final loadModuleCatalog = state.moduleRepositories.isEmpty;
     state = state.copyWith(
       isRefreshing: true,
       lastError: null,
       infoMessage: null,
+      moduleCatalogLoading: loadModuleCatalog ? true : state.moduleCatalogLoading,
+      moduleCatalogError: loadModuleCatalog ? null : state.moduleCatalogError,
     );
 
+    String? remoteError;
     try {
-      final session = await api.getGitHubSession();
-      final runtime = await api.getRuntimeBuildSummary();
-      final localBuildStatus = await api.getLocalBuildStatus();
-      final localBackends = await api.getLocalBuildBackends();
-      final localCatalog = await api.getLocalBuildCatalog();
-      final localSources = await api.getLocalBuildSourceInstances();
-      final localProfiles = await api.getLocalBuildProfiles();
-      final localArtifacts = await api.getLocalBuildArtifacts();
-      final localLogs = await api.getLocalBuildLogs();
-      final runsResult = await api.listBuildRuns(limit: 20);
-      final repositories = await _loadModuleRepositories();
-      final form = prefillFromRuntime && !state.formDirty
-          ? BuildFormState.defaults(runtime: runtime)
-          : state.form;
+      RuntimeBuildSummary? runtime;
+      final Future<RuntimeBuildSummary?> runtimeFuture = api
+          .getRuntimeBuildSummary()
+          .then<RuntimeBuildSummary?>((value) => value)
+          .catchError((Object error) => null);
+      final localBuildStatusFuture = api.getLocalBuildStatus();
+      final localBackendsFuture = api.getLocalBuildBackends();
+      final localCatalogFuture = api.getLocalBuildCatalog();
+      final localSourcesFuture = api.getLocalBuildSourceInstances();
+      final localProfilesFuture = api.getLocalBuildProfiles();
+      final localArtifactsFuture = api.getLocalBuildArtifacts();
+      final localLogsFuture = api.getLocalBuildLogs();
+
+      final localBuildStatus = await localBuildStatusFuture;
+      final localBackends = await localBackendsFuture;
+      final localCatalog = await localCatalogFuture;
+      final localSources = await localSourcesFuture;
+      final localProfiles = await localProfilesFuture;
+      final localArtifacts = await localArtifactsFuture;
+      final localLogs = await localLogsFuture;
+      final form = state.form;
       final selectedModules = form.customModules == state.form.customModules
           ? state.selectedModules
           : parseSelectedBuildModules(form.customModules);
 
-      final filteredRuns = runsResult.runs
-          .where((run) => run.looksLikeKernelBuild)
-          .toList(growable: false);
       final selectedLocalSourceInstanceId = _resolveLocalSourceInstanceId(
         candidates: localSources.sourceInstances,
         preferredId: state.selectedLocalSourceInstanceId,
@@ -481,28 +495,29 @@ class BuildPageController extends StateNotifier<BuildPageState> {
       final selectedLocalProfile = localProfiles.profiles
           .where((profile) => profile.id == selectedLocalProfileId)
           .firstOrNull;
-      final localFormSeed = selectedLocalProfile == null
+      final localFormSeed = state.localFormDirty
+          ? _syncFormToSource(state.localForm, selectedLocalSourceInstance)
+          : selectedLocalProfile == null
           ? _syncFormToSource(state.localForm, selectedLocalSourceInstance)
           : _syncFormToSource(
               BuildFormState.fromRequest(selectedLocalProfile.build),
               selectedLocalSourceInstance,
             );
-      final localSelectedModules =
-          selectedLocalProfile != null ||
-              localFormSeed.customModules != state.localForm.customModules
+      final localSelectedModules = state.localFormDirty
+          ? parseSelectedBuildModules(localFormSeed.customModules)
+          : selectedLocalProfile != null ||
+                localFormSeed.customModules != state.localForm.customModules
           ? parseSelectedBuildModules(localFormSeed.customModules)
           : state.localSelectedModules;
       if (!mounted) return;
 
       state = state.copyWith(
-        session: session,
-        runtime: runtime,
+        runtime: runtime ?? state.runtime,
         localBuildStatus: localBuildStatus,
         localBuildStatusLoading: false,
         localBuildBranchMonth: state.localBuildBranchMonth.trim().isNotEmpty
             ? state.localBuildBranchMonth
             : (localBuildStatus.branchMonth ?? form.osPatchLevel),
-        runs: filteredRuns,
         form: form,
         formDirty: state.formDirty,
         localBackends: localBackends,
@@ -529,21 +544,29 @@ class BuildPageController extends StateNotifier<BuildPageState> {
         localProfileBackendKind:
             selectedLocalProfile?.backendKind ?? state.localProfileBackendKind,
         localForm: localFormSeed,
+        localFormDirty: state.localFormDirty,
         localSelectedModules: localSelectedModules,
         localArtifacts: localArtifacts,
         localLogs: localLogs,
         selectedModules: selectedModules,
-        moduleRepositories: repositories,
-        moduleCatalogLoading: false,
-        isRefreshing: false,
         isBootstrapping: false,
       );
-      final selectedRunId = _resolveSelectedRunId(filteredRuns);
-      if (selectedRunId != null) {
-        await selectRun(selectedRunId);
-      } else {
-        if (!mounted) return;
-        state = state.copyWith(selectedRunId: null, artifacts: const []);
+      runtime = await runtimeFuture;
+
+      if (runtime != null && mounted) {
+        final runtimeForm = prefillFromRuntime && !state.formDirty
+            ? BuildFormState.defaults(runtime: runtime)
+            : null;
+        final runtimeSelectedModules = runtimeForm == null
+            ? state.selectedModules
+            : runtimeForm.customModules == state.form.customModules
+            ? state.selectedModules
+            : parseSelectedBuildModules(runtimeForm.customModules);
+        state = state.copyWith(
+          runtime: runtime,
+          form: runtimeForm ?? state.form,
+          selectedModules: runtimeSelectedModules,
+        );
       }
     } on SidecarException catch (error) {
       if (!mounted) return;
@@ -552,6 +575,67 @@ class BuildPageController extends StateNotifier<BuildPageState> {
         isBootstrapping: false,
         lastError: error.message,
       );
+      return;
+    }
+
+    GitHubSessionStatus? session;
+    List<BuildRunSummary>? filteredRuns;
+    List<BuildModuleRepository>? repositories;
+    String? moduleCatalogError;
+
+    try {
+      session = await api.getGitHubSession();
+    } on SidecarException catch (error) {
+      remoteError ??= error.message;
+    }
+
+    try {
+      final runsResult = await api.listBuildRuns(limit: 20);
+      filteredRuns = runsResult.runs
+          .where((run) => run.looksLikeKernelBuild)
+          .toList(growable: false);
+    } on SidecarException catch (error) {
+      remoteError ??= error.message;
+    }
+
+    try {
+      repositories = await _loadModuleRepositories();
+      moduleCatalogError = repositories
+          .firstWhere(
+            (repository) => repository.error != null,
+            orElse: () => const BuildModuleRepository(
+              url: '',
+              name: '',
+              modules: <BuildModuleCatalogItem>[],
+              error: null,
+              indexUrl: null,
+            ),
+          )
+          .error;
+    } catch (error) {
+      moduleCatalogError = error.toString();
+    }
+
+    if (!mounted) return;
+    state = state.copyWith(
+      session: session ?? state.session,
+      runs: filteredRuns ?? state.runs,
+      moduleRepositories: repositories ?? state.moduleRepositories,
+      moduleCatalogLoading: false,
+      moduleCatalogError: moduleCatalogError,
+      isRefreshing: false,
+      isBootstrapping: false,
+      lastError: remoteError,
+    );
+
+    if (filteredRuns != null) {
+      final selectedRunId = _resolveSelectedRunId(filteredRuns);
+      if (selectedRunId != null) {
+        await selectRun(selectedRunId);
+      } else {
+        if (!mounted) return;
+        state = state.copyWith(selectedRunId: null, artifacts: const []);
+      }
     }
   }
 
@@ -570,6 +654,7 @@ class BuildPageController extends StateNotifier<BuildPageState> {
     final normalized = form.normalized();
     state = state.copyWith(
       localForm: normalized,
+      localFormDirty: true,
       localSelectedModules:
           normalized.customModules == state.localForm.customModules
           ? state.localSelectedModules
@@ -590,11 +675,11 @@ class BuildPageController extends StateNotifier<BuildPageState> {
   }
 
   void updateLocalBuildBranchMonth(String value) {
-    state = state.copyWith(localBuildBranchMonth: value);
+    _applyLocalSourceDraft(branchMonth: value);
   }
 
   void updateLocalSourceKernelLineId(String value) {
-    state = state.copyWith(localSourceKernelLineId: value);
+    _applyLocalSourceDraft(kernelLineId: value);
   }
 
   void updateLocalBuildForceInit(bool value) {
@@ -664,6 +749,33 @@ class BuildPageController extends StateNotifier<BuildPageState> {
     } on SidecarException catch (error) {
       if (!mounted) return;
       state = state.copyWith(lastError: error.message);
+    }
+  }
+
+  Future<void> installLocalBackend(
+    LocalBuildBackendDescriptor backend, {
+    String? sudoPassword,
+  }) async {
+    if (!mounted || state.isSubmitting || !backend.installSupported) return;
+    state = state.copyWith(
+      isSubmitting: true,
+      lastError: null,
+      infoMessage: null,
+    );
+    try {
+      final accepted = await api.installLocalBuildBackend(backend.kind, <String, dynamic>{
+        'sudoPassword': sudoPassword,
+      });
+      if (!mounted) return;
+      _upsertTask(accepted);
+      state = state.copyWith(
+        isSubmitting: false,
+        infoMessage: _strings.buildLocalBackendInstallQueued(backend.label),
+      );
+      unawaited(_trackTask(accepted.id));
+    } on SidecarException catch (error) {
+      if (!mounted) return;
+      state = state.copyWith(isSubmitting: false, lastError: error.message);
     }
   }
 
@@ -750,16 +862,26 @@ class BuildPageController extends StateNotifier<BuildPageState> {
               .firstOrNull;
     final nextForm = profile != null
         ? _syncFormToSource(BuildFormState.fromRequest(profile.build), source)
-        : _syncFormToSource(state.localForm, source);
+        : _syncFormToSourceDraft(
+            state.localForm,
+            kernelLineId: source?.kernelLineId ?? state.localSourceKernelLineId,
+            branchMonth: source?.branchMonth ?? state.localBuildBranchMonth,
+          );
     state = state.copyWith(
       selectedLocalSourceInstanceId: source?.id,
       selectedLocalProfileId: profile?.id,
       localSourceKernelLineId:
           source?.kernelLineId ?? state.localSourceKernelLineId,
       localBuildBranchMonth: source?.branchMonth ?? state.localBuildBranchMonth,
-      localProfileNameDraft: profile?.name ?? state.localProfileNameDraft,
+      localProfileNameDraft:
+          profile?.name ??
+          _defaultLocalProfileName(
+            source?.kernelLineId ?? state.localSourceKernelLineId,
+            source?.branchMonth ?? state.localBuildBranchMonth,
+          ),
       localProfileBackendKind: profile?.backendKind,
       localForm: nextForm,
+      localFormDirty: false,
       localSelectedModules: parseSelectedBuildModules(nextForm.customModules),
     );
   }
@@ -767,23 +889,47 @@ class BuildPageController extends StateNotifier<BuildPageState> {
   void selectLocalProfile(String? profileId) {
     final profile = _findLocalProfileById(profileId);
     if (profile == null) {
-      state = state.copyWith(selectedLocalProfileId: null);
+      final selectedSource = state.selectedLocalSourceInstance;
+      final nextForm = _syncFormToSourceDraft(
+        state.localForm,
+        kernelLineId:
+            selectedSource?.kernelLineId ?? state.localSourceKernelLineId,
+        branchMonth: selectedSource?.branchMonth ?? state.localBuildBranchMonth,
+      );
+      state = state.copyWith(
+        selectedLocalProfileId: null,
+        localProfileNameDraft: _defaultLocalProfileName(
+          selectedSource?.kernelLineId ?? state.localSourceKernelLineId,
+          selectedSource?.branchMonth ?? state.localBuildBranchMonth,
+        ),
+        localProfileBackendKind: null,
+        localForm: nextForm,
+        localFormDirty: false,
+        localSelectedModules: parseSelectedBuildModules(nextForm.customModules),
+      );
       return;
     }
     final source = _findLocalSourceById(profile.sourceInstanceId);
+    final sourceKey = _sourceKeyFromSourceInstanceId(profile.sourceInstanceId);
     final nextForm = _syncFormToSource(
       BuildFormState.fromRequest(profile.build),
       source,
     );
     state = state.copyWith(
       selectedLocalProfileId: profile.id,
-      selectedLocalSourceInstanceId: profile.sourceInstanceId,
+      selectedLocalSourceInstanceId: source?.id,
       localProfileNameDraft: profile.name,
       localProfileBackendKind: profile.backendKind,
       localSourceKernelLineId:
-          source?.kernelLineId ?? state.localSourceKernelLineId,
-      localBuildBranchMonth: source?.branchMonth ?? state.localBuildBranchMonth,
+          source?.kernelLineId ??
+          sourceKey?.kernelLineId ??
+          state.localSourceKernelLineId,
+      localBuildBranchMonth:
+          source?.branchMonth ??
+          sourceKey?.branchMonth ??
+          state.localBuildBranchMonth,
       localForm: nextForm,
+      localFormDirty: false,
       localSelectedModules: parseSelectedBuildModules(nextForm.customModules),
     );
   }
@@ -817,10 +963,11 @@ class BuildPageController extends StateNotifier<BuildPageState> {
 
   Future<void> syncSelectedLocalSourceInstance({String? sudoPassword}) async {
     if (state.isSubmitting) return;
-    final selected =
-        _findLocalSourceById(state.selectedLocalSourceInstanceId) ??
-        await createLocalSourceInstance();
-    if (selected == null) {
+    final selected = _findLocalSourceById(state.selectedLocalSourceInstanceId);
+    final effectiveSource = selected != null && _sourceMatchesDraft(selected)
+        ? selected
+        : await createLocalSourceInstance();
+    if (effectiveSource == null) {
       return;
     }
     state = state.copyWith(
@@ -831,7 +978,7 @@ class BuildPageController extends StateNotifier<BuildPageState> {
     );
     try {
       final accepted = await api
-          .syncLocalBuildSourceInstance(selected.id, <String, dynamic>{
+          .syncLocalBuildSourceInstance(effectiveSource.id, <String, dynamic>{
             'backendKind':
                 (state.localProfileBackendKind ??
                         state.localSettings?.globalDefaultBackendKind)
@@ -880,6 +1027,7 @@ class BuildPageController extends StateNotifier<BuildPageState> {
         selectedLocalProfileId: profile.id,
         localProfileNameDraft: profile.name,
         localProfileBackendKind: profile.backendKind,
+        localFormDirty: false,
       );
       await refreshLocalBuildStatus();
       selectLocalProfile(profile.id);
@@ -1310,9 +1458,7 @@ class BuildPageController extends StateNotifier<BuildPageState> {
 
   Future<void> startLocalBuildRebuild({String? sudoPassword}) async {
     if (!mounted || state.isSubmitting) return;
-    final profile =
-        _findLocalProfileById(state.selectedLocalProfileId) ??
-        await saveLocalProfile();
+    final profile = await saveLocalProfile();
     if (profile == null) {
       return;
     }
@@ -1558,6 +1704,8 @@ class BuildPageController extends StateNotifier<BuildPageState> {
           }
           if (task.kind.startsWith('local.build')) {
             await refreshLocalBuildStatus();
+          } else if (task.kind == 'local.backend.install') {
+            await refreshAll(prefillFromRuntime: false);
           }
           return;
         }
@@ -1681,9 +1829,15 @@ class BuildPageController extends StateNotifier<BuildPageState> {
     required String? preferredId,
     required String? selectedSourceInstanceId,
   }) {
-    if (preferredId != null &&
-        candidates.any((profile) => profile.id == preferredId)) {
-      return preferredId;
+    if (preferredId != null) {
+      final preferred = candidates
+          .where((profile) => profile.id == preferredId)
+          .firstOrNull;
+      if (preferred != null &&
+          (selectedSourceInstanceId == null ||
+              preferred.sourceInstanceId == selectedSourceInstanceId)) {
+        return preferredId;
+      }
     }
     if (selectedSourceInstanceId != null) {
       final match = candidates
@@ -1695,7 +1849,7 @@ class BuildPageController extends StateNotifier<BuildPageState> {
         return match.id;
       }
     }
-    return candidates.isEmpty ? null : candidates.first.id;
+    return null;
   }
 
   BuildFormState _syncFormToSource(
@@ -1705,14 +1859,20 @@ class BuildPageController extends StateNotifier<BuildPageState> {
     if (source == null) {
       return form.normalized();
     }
+    final sourceEntry = source.materialized?.osPatchLevel == null
+        ? DesktopKernelSupport.entryForPatchLevel(
+            source.androidVersion,
+            source.kernelVersion,
+            source.branchMonth,
+          )
+        : null;
     final patchLevel =
         source.materialized?.osPatchLevel ??
         (source.branchMonth.trim().isNotEmpty
             ? source.branchMonth.trim()
             : form.osPatchLevel);
     final subLevel =
-        source.materialized?.subLevel ??
-        (form.subLevel.trim().isNotEmpty ? form.subLevel : form.subLevel);
+        source.materialized?.subLevel ?? sourceEntry?.subLevel ?? form.subLevel;
     return form
         .copyWith(
           androidVersion: source.androidVersion,
@@ -1721,6 +1881,136 @@ class BuildPageController extends StateNotifier<BuildPageState> {
           osPatchLevel: patchLevel,
         )
         .normalized();
+  }
+
+  BuildFormState _syncFormToSourceDraft(
+    BuildFormState form, {
+    required String kernelLineId,
+    required String branchMonth,
+  }) {
+    final sourceKey = _sourceKeyFromKernelLineAndBranchMonth(
+      kernelLineId,
+      branchMonth,
+    );
+    if (sourceKey == null) {
+      return form.normalized();
+    }
+    final sourceEntry = DesktopKernelSupport.entryForPatchLevel(
+      sourceKey.androidVersion,
+      sourceKey.kernelVersion,
+      sourceKey.branchMonth,
+    );
+    return form
+        .copyWith(
+          androidVersion: sourceKey.androidVersion,
+          kernelVersion: sourceKey.kernelVersion,
+          subLevel: sourceEntry?.subLevel ?? form.subLevel,
+          osPatchLevel: sourceKey.branchMonth,
+        )
+        .normalized();
+  }
+
+  void _applyLocalSourceDraft({String? kernelLineId, String? branchMonth}) {
+    final nextKernelLineId = kernelLineId ?? state.localSourceKernelLineId;
+    final nextBranchMonth = branchMonth ?? state.localBuildBranchMonth;
+    final matchingSource = state.localSourceInstances
+        .where(
+          (source) =>
+              source.kernelLineId == nextKernelLineId &&
+              source.branchMonth == nextBranchMonth.trim(),
+        )
+        .firstOrNull;
+    final retainedProfile = matchingSource == null
+        ? null
+        : state.localProfiles
+                  .where(
+                    (profile) =>
+                        profile.sourceInstanceId == matchingSource.id &&
+                        profile.id == state.selectedLocalProfileId,
+                  )
+                  .firstOrNull ??
+              state.localProfiles
+                  .where(
+                    (profile) => profile.sourceInstanceId == matchingSource.id,
+                  )
+                  .firstOrNull;
+    final nextForm = retainedProfile != null
+        ? _syncFormToSource(
+            BuildFormState.fromRequest(retainedProfile.build),
+            matchingSource,
+          )
+        : _syncFormToSourceDraft(
+            state.localForm,
+            kernelLineId: nextKernelLineId,
+            branchMonth: nextBranchMonth,
+          );
+    state = state.copyWith(
+      localSourceKernelLineId: nextKernelLineId,
+      localBuildBranchMonth: nextBranchMonth,
+      selectedLocalSourceInstanceId: matchingSource?.id,
+      selectedLocalProfileId: retainedProfile?.id,
+      localProfileNameDraft:
+          retainedProfile?.name ??
+          _defaultLocalProfileName(nextKernelLineId, nextBranchMonth),
+      localProfileBackendKind: retainedProfile?.backendKind,
+      localForm: nextForm,
+      localSelectedModules: parseSelectedBuildModules(nextForm.customModules),
+    );
+  }
+
+  bool _sourceMatchesDraft(LocalBuildSourceInstance source) {
+    return source.kernelLineId == state.localSourceKernelLineId &&
+        source.branchMonth == state.localBuildBranchMonth.trim();
+  }
+
+  String _defaultLocalProfileName(String kernelLineId, String branchMonth) {
+    final sourceKey = _sourceKeyFromKernelLineAndBranchMonth(
+      kernelLineId,
+      branchMonth,
+    );
+    if (sourceKey == null) {
+      return state.localProfileNameDraft;
+    }
+    return 'Profile ${sourceKey.androidVersion}/${sourceKey.kernelVersion}@${sourceKey.branchMonth}';
+  }
+
+  _SourceKey? _sourceKeyFromSourceInstanceId(String sourceInstanceId) {
+    final trimmed = sourceInstanceId.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+    final atIndex = trimmed.indexOf('@');
+    if (atIndex <= 0 || atIndex + 1 >= trimmed.length) {
+      return null;
+    }
+    final kernelLineId = trimmed.substring(0, atIndex).replaceFirst('-', '/');
+    final branchMonth = trimmed.substring(atIndex + 1);
+    return _sourceKeyFromKernelLineAndBranchMonth(kernelLineId, branchMonth);
+  }
+
+  _SourceKey? _sourceKeyFromKernelLineAndBranchMonth(
+    String kernelLineId,
+    String branchMonth,
+  ) {
+    final cleanKernelLineId = kernelLineId.trim();
+    final cleanBranchMonth = branchMonth.trim();
+    final slashIndex = cleanKernelLineId.indexOf('/');
+    if (slashIndex <= 0 || slashIndex + 1 >= cleanKernelLineId.length) {
+      return null;
+    }
+    final androidVersion = cleanKernelLineId.substring(0, slashIndex);
+    final kernelVersion = cleanKernelLineId.substring(slashIndex + 1);
+    if (androidVersion.isEmpty ||
+        kernelVersion.isEmpty ||
+        cleanBranchMonth.isEmpty) {
+      return null;
+    }
+    return _SourceKey(
+      kernelLineId: cleanKernelLineId,
+      androidVersion: androidVersion,
+      kernelVersion: kernelVersion,
+      branchMonth: cleanBranchMonth,
+    );
   }
 
   Future<List<BuildModuleRepository>> _loadModuleRepositories() async {
@@ -1769,4 +2059,18 @@ class BuildPageController extends StateNotifier<BuildPageState> {
 
 extension<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
+}
+
+class _SourceKey {
+  const _SourceKey({
+    required this.kernelLineId,
+    required this.androidVersion,
+    required this.kernelVersion,
+    required this.branchMonth,
+  });
+
+  final String kernelLineId;
+  final String androidVersion;
+  final String kernelVersion;
+  final String branchMonth;
 }

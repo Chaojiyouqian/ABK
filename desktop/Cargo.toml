@@ -13,6 +13,10 @@ path = "src/main.rs"
 name = "abk_launcher"
 path = "src/launcher.rs"
 
+[[bin]]
+name = "abk-desktop"
+path = "src/desktop_entry.rs"
+
 [dependencies]
 anyhow = "1.0"
 axum = "0.8"

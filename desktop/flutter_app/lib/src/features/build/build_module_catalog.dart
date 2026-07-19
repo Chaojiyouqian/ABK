@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -54,16 +55,14 @@ class BuildModuleCatalogItem {
         ),
       ),
     );
-    final recommendedStages = _readStringOrCsvList(
-          json['recommendedStages'],
-        )
-            .followedBy(_readStringOrCsvList(json['recommend']))
-            .followedBy(_readStringOrCsvList(json['recommendedStage']))
-            .followedBy(_readStringOrCsvList(json['recommendStage']))
-            .map(normalizeCustomModuleStage)
-            .where(effectiveSupported.contains)
-            .toSet()
-            .toList(growable: false);
+    final recommendedStages = _readStringOrCsvList(json['recommendedStages'])
+        .followedBy(_readStringOrCsvList(json['recommend']))
+        .followedBy(_readStringOrCsvList(json['recommendedStage']))
+        .followedBy(_readStringOrCsvList(json['recommendStage']))
+        .map(normalizeCustomModuleStage)
+        .where(effectiveSupported.contains)
+        .toSet()
+        .toList(growable: false);
 
     return BuildModuleCatalogItem(
       name: _readString(json['name']).trim().isEmpty
@@ -201,10 +200,13 @@ class SelectedBuildModule {
 }
 
 class BuildModuleCatalogClient {
-  BuildModuleCatalogClient({http.Client? client})
-    : _client = client ?? http.Client();
+  BuildModuleCatalogClient({
+    http.Client? client,
+    this.requestTimeout = const Duration(seconds: 12),
+  }) : _client = client ?? http.Client();
 
   final http.Client _client;
+  final Duration requestTimeout;
 
   Future<BuildModuleRepository> fetchRepository(String repositoryUrl) async {
     final cleanUrl = normalizeRepositoryUrl(repositoryUrl);
@@ -221,8 +223,8 @@ class BuildModuleCatalogClient {
     var lastError = 'catalog unreadable';
     for (final candidate in catalogIndexCandidates(cleanUrl)) {
       try {
-        final response = await _client.get(
-          Uri.parse(candidate),
+        final response = await _getCandidate(
+          candidate,
           headers: const <String, String>{
             'accept': 'application/json,text/plain,*/*',
           },
@@ -240,6 +242,8 @@ class BuildModuleCatalogClient {
           error: null,
           indexUrl: candidate,
         );
+      } on TimeoutException {
+        lastError = 'request timed out';
       } catch (error) {
         lastError = error.toString();
       }
@@ -265,8 +269,8 @@ class BuildModuleCatalogClient {
     var lastError = 'module.conf unreadable';
     for (final candidate in externalModuleConfCandidates(cleanUrl)) {
       try {
-        final response = await _client.get(
-          Uri.parse(candidate),
+        final response = await _getCandidate(
+          candidate,
           headers: const <String, String>{'accept': 'text/plain,*/*'},
         );
         if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -274,6 +278,8 @@ class BuildModuleCatalogClient {
           continue;
         }
         return parseExternalModuleConf(response.body);
+      } on TimeoutException {
+        lastError = 'request timed out';
       } catch (error) {
         lastError = error.toString();
       }
@@ -284,6 +290,15 @@ class BuildModuleCatalogClient {
 
   void close() {
     _client.close();
+  }
+
+  Future<http.Response> _getCandidate(
+    String candidate, {
+    required Map<String, String> headers,
+  }) {
+    return _client
+        .get(Uri.parse(candidate), headers: headers)
+        .timeout(requestTimeout);
   }
 }
 
@@ -327,24 +342,24 @@ ParsedBuildModuleCatalog parseBuildModuleCatalogDocument(
 BuildExternalModuleMetadata parseExternalModuleConf(String body) {
   final values = parseShellLikeConf(body);
   final kind = normalizeCatalogKind(values['ABK_MODULE_KIND'] ?? '');
-  final name = (kind == _moduleSetKind
-          ? values['ABK_MODULE_SET_NAME']
-          : values['ABK_MODULE_NAME'])
-      .orEmpty
-      .trim();
+  final name =
+      (kind == _moduleSetKind
+              ? values['ABK_MODULE_SET_NAME']
+              : values['ABK_MODULE_NAME'])
+          .orEmpty
+          .trim();
   if (name.isEmpty) {
     throw const FormatException('missing module name');
   }
 
-  final supportedStages =
-      (values['ABK_MODULE_SUPPORTED_STAGES'] ?? '')
-          .split(',')
-          .map((value) => value.trim())
-          .where((value) => value.isNotEmpty)
-          .map(normalizeCustomModuleStage)
-          .toSet()
-          .toList(growable: false)
-          .ifEmpty(const <String>[_defaultCustomModuleStage]);
+  final supportedStages = (values['ABK_MODULE_SUPPORTED_STAGES'] ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .where((value) => value.isNotEmpty)
+      .map(normalizeCustomModuleStage)
+      .toSet()
+      .toList(growable: false)
+      .ifEmpty(const <String>[_defaultCustomModuleStage]);
   final defaultStage = normalizeCustomModuleStage(
     values['ABK_MODULE_DEFAULT_STAGE'] ??
         values['ABK_MODULE_RECOMMENDED_STAGE'] ??
@@ -367,13 +382,11 @@ BuildExternalModuleMetadata parseExternalModuleConf(String body) {
           .where(supportedStages.contains)
           .toSet()
           .toList(growable: false)
-          .ifEmpty(
-            <String>[
-              supportedStages.contains(defaultStage)
-                  ? defaultStage
-                  : supportedStages.first,
-            ],
-          );
+          .ifEmpty(<String>[
+            supportedStages.contains(defaultStage)
+                ? defaultStage
+                : supportedStages.first,
+          ]);
   final children = kind == _moduleSetKind
       ? parseModuleSetChildren(values['ABK_MODULE_SET_ITEMS'] ?? '')
       : const <BuildModuleSetChildMetadata>[];
@@ -383,16 +396,18 @@ BuildExternalModuleMetadata parseExternalModuleConf(String body) {
 
   return BuildExternalModuleMetadata(
     name: name,
-    version: (kind == _moduleSetKind
-            ? values['ABK_MODULE_SET_VERSION']
-            : values['ABK_MODULE_VERSION'])
-        .orEmpty
-        .trim(),
-    description: (kind == _moduleSetKind
-            ? values['ABK_MODULE_SET_DESCRIPTION']
-            : values['ABK_MODULE_DESCRIPTION'])
-        .orEmpty
-        .trim(),
+    version:
+        (kind == _moduleSetKind
+                ? values['ABK_MODULE_SET_VERSION']
+                : values['ABK_MODULE_VERSION'])
+            .orEmpty
+            .trim(),
+    description:
+        (kind == _moduleSetKind
+                ? values['ABK_MODULE_SET_DESCRIPTION']
+                : values['ABK_MODULE_DESCRIPTION'])
+            .orEmpty
+            .trim(),
     kind: kind,
     moduleSetId: (values['ABK_MODULE_SET_ID'] ?? '').trim(),
     supportedStages: supportedStages,
@@ -402,8 +417,8 @@ BuildExternalModuleMetadata parseExternalModuleConf(String body) {
     recommendedStages: recommendedStages,
     children: children,
     magiskModuleName: (values['ABK_MAGISK_MODULE_NAME'] ?? '').trim(),
-    magiskModuleDownloadUrl:
-        (values['ABK_MAGISK_MODULE_DOWNLOAD_URL'] ?? '').trim(),
+    magiskModuleDownloadUrl: (values['ABK_MAGISK_MODULE_DOWNLOAD_URL'] ?? '')
+        .trim(),
   );
 }
 
@@ -441,14 +456,14 @@ List<BuildModuleSetChildMetadata> parseModuleSetChildren(String raw) {
         .where(supportedStages.contains)
         .toSet()
         .toList(growable: false)
-        .ifEmpty(
-          <String>[
-            supportedStages.contains(defaultStage)
-                ? defaultStage
-                : supportedStages.first,
-          ],
-        );
-    if (children.any((existing) => existing.id.toLowerCase() == id.toLowerCase())) {
+        .ifEmpty(<String>[
+          supportedStages.contains(defaultStage)
+              ? defaultStage
+              : supportedStages.first,
+        ]);
+    if (children.any(
+      (existing) => existing.id.toLowerCase() == id.toLowerCase(),
+    )) {
       continue;
     }
     children.add(

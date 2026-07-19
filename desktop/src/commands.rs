@@ -351,7 +351,10 @@ mod tests {
     #[test]
     fn builds_cli_command() {
         let spec = build_cli_command("status --run-id 42").unwrap();
-        assert_eq!(spec.program, if cfg!(windows) { "python" } else { "python3" });
+        assert_eq!(
+            spec.program,
+            if cfg!(windows) { "python" } else { "python3" }
+        );
         assert!(spec.args[0].ends_with("cli/abk.py"));
         assert_eq!(&spec.args[1..], ["status", "--run-id", "42"]);
     }

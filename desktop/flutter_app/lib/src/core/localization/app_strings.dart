@@ -337,6 +337,13 @@ class AppStrings {
       : 'Override the template/script root, workspace directory, and profile storage directory here. Leave a field empty to use the default path.';
   String get buildLocalGlobalBackendLabel =>
       isChinese ? '全局默认 backend' : 'Global default backend';
+  String get buildLocalBackendIssuesTitle =>
+      isChinese ? 'Backend 问题与操作' : 'Backend issues and actions';
+  String get buildLocalBackendInstallAction =>
+      isChinese ? '安装 backend 资产' : 'Install backend asset';
+  String buildLocalBackendInstallQueued(String label) => isChinese
+      ? '$label 安装任务已加入队列。'
+      : '$label install task was queued.';
   String get buildLocalScriptRootLabel =>
       isChinese ? '模板 / 脚本目录' : 'Template / script root';
   String get buildLocalWorkspaceDirSettingLabel =>
@@ -355,6 +362,8 @@ class AppStrings {
   String get buildLocalOpenWorkspace => isChinese ? '打开工作区' : 'Open workspace';
   String get buildLocalOpenArtifacts => isChinese ? '打开产物目录' : 'Open artifacts';
   String get buildLocalOpenLogs => isChinese ? '打开日志目录' : 'Open logs';
+  String get buildLocalAddSourceInstance =>
+      isChinese ? '添加源码实例' : 'Add source instance';
   String get buildLocalFormTitle =>
       isChinese ? '本地构建参数' : 'Local build parameters';
   String get buildLocalFormSubtitle => isChinese

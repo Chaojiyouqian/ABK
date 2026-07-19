@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STATE_DIR="$ROOT_DIR/.local-build"
+STATE_DIR="${ABK_LOCAL_BUILD_STATE_DIR:-$ROOT_DIR/.local-build}"
 ENV_FILE="$STATE_DIR/env.sh"
 export ABK_LOCAL_BUILD_WORKSPACE_DIR="${ABK_LOCAL_BUILD_WORKSPACE_DIR:-}"
 
@@ -1492,13 +1492,23 @@ prepare_defconfig_fragment() {
     cp "$DEFCONFIG.orig" "$DEFCONFIG"
 }
 
-run_bazel_build() {
+kernel_dist_dir() {
+    case "$ANDROID_VERSION" in
+        android12|android13)
+            printf '%s\n' "$KERNEL_ROOT/out/${ANDROID_VERSION}-${KERNEL_VERSION}/dist"
+            ;;
+        *)
+            printf '%s\n' "$KERNEL_ROOT/bazel-bin/common/kernel_aarch64"
+            ;;
+    esac
+}
+
+run_kernel_build() {
     local frag_flag=""
     local lto_flag="--lto=thin"
-
-    if [[ -s "$FRAG_PATH" ]]; then
-        frag_flag="--defconfig_fragment=//common:arch/arm64/configs/ksu.fragment"
-    fi
+    local bazel_help=""
+    local -a build_args
+    local dist_dir=""
 
     mkdir -p "$CCACHE_DIR" "$BAZEL_DISK_CACHE"
     ccache --max-size=15G >/dev/null
@@ -1508,18 +1518,45 @@ run_bazel_build() {
     sed -i '/MODULES_ORDER=android\/gki_aarch64_modules/d' "$KERNEL_ROOT/common/build.config.gki.aarch64"
     sed -i '/KMI_SYMBOL_LIST_STRICT_MODE/d' "$KERNEL_ROOT/common/build.config.gki.aarch64"
 
-    log_info "building kernel with Bazel"
     (
         cd "$KERNEL_ROOT"
-        tools/bazel build \
-            --disk_cache="$BAZEL_DISK_CACHE" \
-            --config=fast \
-            --nokmi_symbol_list_strict_mode \
-            --nokmi_symbol_list_violations_check \
-            "$lto_flag" \
-            ${frag_flag:+$frag_flag} \
-            //common:kernel_aarch64_dist
+        if [[ -f "build/build.sh" ]]; then
+            log_info "building kernel with legacy build/build.sh"
+            LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh CC="/usr/bin/ccache clang"
+        else
+            log_info "building kernel with Bazel"
+            if [[ -s "$FRAG_PATH" ]]; then
+                frag_flag="--defconfig_fragment=//common:arch/arm64/configs/ksu.fragment"
+            fi
+            if [[ "$KERNEL_VERSION" == "6.12" ]]; then
+                lto_flag="--lto=none"
+            fi
+            bazel_help="$(tools/bazel help build 2>&1 || true)"
+            build_args=(
+                "--disk_cache=$BAZEL_DISK_CACHE"
+                "--config=fast"
+                "$lto_flag"
+            )
+            if grep -Fq "kmi_symbol_list_strict_mode" <<<"$bazel_help"; then
+                build_args+=("--nokmi_symbol_list_strict_mode")
+            else
+                log_warn "skipping unsupported Bazel flag: --nokmi_symbol_list_strict_mode"
+            fi
+            if grep -Fq "kmi_symbol_list_violations_check" <<<"$bazel_help"; then
+                build_args+=("--nokmi_symbol_list_violations_check")
+            else
+                log_warn "skipping unsupported Bazel flag: --nokmi_symbol_list_violations_check"
+            fi
+            if [[ -n "$frag_flag" ]]; then
+                build_args+=("$frag_flag")
+            fi
+            build_args+=("//common:kernel_aarch64_dist")
+            tools/bazel build "${build_args[@]}"
+        fi
     )
+
+    dist_dir="$(kernel_dist_dir)"
+    require_file "$dist_dir/Image"
 }
 
 apply_kpm_patch() {
@@ -1531,7 +1568,8 @@ apply_kpm_patch() {
         *) return 0 ;;
     esac
 
-    target_path="$KERNEL_ROOT/bazel-bin/common/kernel_aarch64"
+    target_path="$(kernel_dist_dir)"
+    require_dir "$target_path"
     cp -r "$SUKISU_PATCHES_SOURCE/kpm/patch_linux" "$target_path/patch"
     (
         cd "$target_path"
@@ -1580,10 +1618,12 @@ EOF
 }
 
 package_anykernel() {
-    local src_dir="$KERNEL_ROOT/bazel-bin/common/kernel_aarch64"
+    local src_dir
     local stage_dir="$WORKSPACE_DIR/staging/AnyKernel3"
     local zip_name="${ANDROID_VERSION}-${KERNEL_VERSION}.${SUB_LEVEL}-${OS_PATCH_LEVEL}-AnyKernel3.zip"
 
+    src_dir="$(kernel_dist_dir)"
+    require_file "$src_dir/Image"
     rm -rf "$stage_dir"
     mkdir -p "$stage_dir"
     rsync -a --delete --exclude='.git' "$ANYKERNEL3_SOURCE"/ "$stage_dir"/
@@ -1595,10 +1635,13 @@ package_anykernel() {
 }
 
 package_boot_images() {
-    local src_dir="$KERNEL_ROOT/bazel-bin/common/kernel_aarch64"
+    local src_dir
     local stage_dir="$WORKSPACE_DIR/staging/bootimgs"
     local prefix="${ANDROID_VERSION}-${KERNEL_VERSION}.${SUB_LEVEL}-${OS_PATCH_LEVEL}"
 
+    src_dir="$(kernel_dist_dir)"
+    require_file "$src_dir/Image"
+    require_file "$src_dir/Image.lz4"
     rm -rf "$stage_dir"
     mkdir -p "$stage_dir"
     cp "$src_dir/Image" "$stage_dir/"
@@ -1687,7 +1730,7 @@ main() {
     fi
 
     prepare_defconfig_fragment
-    run_bazel_build
+    run_kernel_build
     apply_kpm_patch
     mkdir -p "$ARTIFACTS_DIR"
     write_metadata

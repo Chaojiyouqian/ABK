@@ -168,7 +168,11 @@ fn write_local_build_asset(target_path: &Path, content: &str) -> Result<()> {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
-    if !target_path.is_file() {
+    let needs_write = match fs::read_to_string(target_path) {
+        Ok(existing) => existing != content,
+        Err(_) => true,
+    };
+    if needs_write {
         fs::write(target_path, content)
             .with_context(|| format!("failed to write {}", target_path.display()))?;
     }

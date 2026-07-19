@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:abk_desktop/src/features/build/build_module_catalog.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -87,4 +90,33 @@ battery|Battery Pack|Battery tuning|https://github.com/acme/battery|after_patch|
     expect(modules.single.groupName, 'ABK Extras');
     expect(modules.single.childName, 'Graphics Pack');
   });
+
+  test(
+    'fetchModuleMetadata times out instead of hanging indefinitely',
+    () async {
+      final client = BuildModuleCatalogClient(
+        client: _NeverRespondingClient(),
+        requestTimeout: const Duration(milliseconds: 10),
+      );
+      addTearDown(client.close);
+
+      expect(
+        () => client.fetchModuleMetadata('https://github.com/acme/abk-set'),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('timed out'),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _NeverRespondingClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    return Completer<http.StreamedResponse>().future;
+  }
 }

@@ -11,6 +11,7 @@ import '../../core/api/abk_sidecar_api.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/models/build_models.dart';
 import '../../core/state/dashboard_controller.dart';
+import '../../widgets/monaco_code_view.dart';
 import '../../widgets/panel_card.dart';
 import '../../widgets/status_pill.dart';
 import 'build_form_state.dart';
@@ -63,6 +64,7 @@ class _BuildPageState extends ConsumerState<BuildPage> {
     final state = ref.watch(buildPageControllerProvider);
     final controller = ref.read(buildPageControllerProvider.notifier);
     final strings = context.strings;
+    final theme = Theme.of(context);
     final scheme = Theme.of(context).colorScheme;
 
     return DefaultTabController(
@@ -153,6 +155,36 @@ class _BuildPageState extends ConsumerState<BuildPage> {
                         message: state.infoMessage!,
                         color: scheme.primaryContainer,
                         foreground: scheme.onPrimaryContainer,
+                      ),
+                    ),
+                  if (state.isRefreshing)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(28, 16, 28, 0),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: scheme.secondaryContainer.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: scheme.outlineVariant),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 14,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                strings.refreshing,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  color: scheme.onSecondaryContainer,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              const LinearProgressIndicator(minHeight: 5),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   const SizedBox(height: 16),
@@ -1184,6 +1216,9 @@ class _TaskWorkspaceTaskBody extends ConsumerWidget {
                   title: strings.buildTaskConsoleTitle,
                   lines: consoleLines,
                   emptyLabel: strings.buildTaskNoOutput,
+                  language: MonacoCodeLanguage.plaintext,
+                  followTail: true,
+                  incrementalAppends: true,
                 ),
               ),
               const SizedBox(width: 12),
@@ -1193,6 +1228,9 @@ class _TaskWorkspaceTaskBody extends ConsumerWidget {
                   title: strings.buildTaskResultTitle,
                   lines: resultLines,
                   emptyLabel: strings.buildTaskNoResult,
+                  language: MonacoCodeLanguage.json,
+                  followTail: false,
+                  incrementalAppends: false,
                 ),
               ),
             ],
@@ -1704,6 +1742,9 @@ class _BuildFormCard extends StatelessWidget {
                   SizedBox(
                     width: width,
                     child: DropdownButtonFormField<String>(
+                      key: ValueKey<String>(
+                        'build-${scope.name}-android-${form.androidVersion}',
+                      ),
                       initialValue: form.androidVersion,
                       decoration: InputDecoration(
                         labelText: strings.buildAndroidVersionLabel,
@@ -1732,6 +1773,9 @@ class _BuildFormCard extends StatelessWidget {
                   SizedBox(
                     width: width,
                     child: DropdownButtonFormField<String>(
+                      key: ValueKey<String>(
+                        'build-${scope.name}-kernel-${form.kernelVersion}',
+                      ),
                       initialValue: form.kernelVersion,
                       decoration: InputDecoration(
                         labelText: strings.buildKernelVersionLabel,
@@ -1760,6 +1804,9 @@ class _BuildFormCard extends StatelessWidget {
                   SizedBox(
                     width: width,
                     child: DropdownButtonFormField<String>(
+                      key: ValueKey<String>(
+                        'build-${scope.name}-sub-${form.androidVersion}-${form.kernelVersion}-${form.subLevel}',
+                      ),
                       initialValue: form.subLevel,
                       decoration: InputDecoration(
                         labelText: strings.buildSubLevelLabel,
@@ -1782,6 +1829,9 @@ class _BuildFormCard extends StatelessWidget {
                   SizedBox(
                     width: width,
                     child: DropdownButtonFormField<String>(
+                      key: ValueKey<String>(
+                        'build-${scope.name}-patch-${form.androidVersion}-${form.kernelVersion}-${form.subLevel}-${form.osPatchLevel}',
+                      ),
                       initialValue: form.osPatchLevel,
                       decoration: InputDecoration(
                         labelText: strings.buildPatchLevelLabel,
@@ -1809,6 +1859,9 @@ class _BuildFormCard extends StatelessWidget {
                   SizedBox(
                     width: width,
                     child: DropdownButtonFormField<String>(
+                      key: ValueKey<String>(
+                        'build-${scope.name}-ksu-variant-${form.ksuVariant}',
+                      ),
                       initialValue: form.ksuVariant,
                       decoration: InputDecoration(
                         labelText: strings.buildKsuTitle,
@@ -1830,6 +1883,9 @@ class _BuildFormCard extends StatelessWidget {
                   SizedBox(
                     width: width,
                     child: DropdownButtonFormField<String>(
+                      key: ValueKey<String>(
+                        'build-${scope.name}-ksu-branch-${form.ksuVariant}-${form.ksuBranch}',
+                      ),
                       initialValue: form.ksuBranch,
                       decoration: InputDecoration(
                         labelText: strings.buildKsuBranchLabel,
@@ -1853,8 +1909,11 @@ class _BuildFormCard extends StatelessWidget {
                   if (form.ksuBranch == 'Custom' && form.ksuVariant != 'None')
                     SizedBox(
                       width: width,
-                      child: TextFormField(
-                        initialValue: form.customRef,
+                      child: _SyncedTextFormField(
+                        fieldKey: ValueKey<String>(
+                          'build-${scope.name}-custom-ref-${form.customRef}',
+                        ),
+                        value: form.customRef,
                         decoration: InputDecoration(
                           labelText: strings.buildCustomRefLabel,
                         ),
@@ -1864,8 +1923,11 @@ class _BuildFormCard extends StatelessWidget {
                     ),
                   SizedBox(
                     width: width,
-                    child: TextFormField(
-                      initialValue: form.version,
+                    child: _SyncedTextFormField(
+                      fieldKey: ValueKey<String>(
+                        'build-${scope.name}-version-${form.version}',
+                      ),
+                      value: form.version,
                       decoration: InputDecoration(
                         labelText: strings.buildVersionTitle,
                       ),
@@ -1876,8 +1938,11 @@ class _BuildFormCard extends StatelessWidget {
                   if (form.kernelVersion == '5.10')
                     SizedBox(
                       width: width,
-                      child: TextFormField(
-                        initialValue: form.revision,
+                      child: _SyncedTextFormField(
+                        fieldKey: ValueKey<String>(
+                          'build-${scope.name}-revision-${form.revision}',
+                        ),
+                        value: form.revision,
                         decoration: InputDecoration(
                           labelText: strings.buildRevisionLabel,
                         ),
@@ -1888,6 +1953,9 @@ class _BuildFormCard extends StatelessWidget {
                   SizedBox(
                     width: width,
                     child: DropdownButtonFormField<String>(
+                      key: ValueKey<String>(
+                        'build-${scope.name}-virt-${form.kernelVersion}-${form.virt}',
+                      ),
                       initialValue: form.virt,
                       decoration: InputDecoration(
                         labelText: strings.buildVirtLabel,
@@ -2131,6 +2199,31 @@ class _LocalBuildSourceCardState extends State<_LocalBuildSourceCard> {
     final selectedSource = widget.state.selectedLocalSourceInstance;
     final backends = widget.state.localBackends;
     final runtime = selectedSource?.materialized;
+    final localBusy =
+        widget.state.localBuildStatusLoading ||
+        widget.state.isSubmitting ||
+        widget.state.activeLocalTask != null;
+    final backendIssues = backends
+        .where(
+          (backend) =>
+              (backend.detail?.trim().isNotEmpty ?? false) ||
+              backend.installSupported,
+        )
+        .toList(growable: false);
+
+    Future<void> installBackend(LocalBuildBackendDescriptor backend) async {
+      String? password;
+      if (backend.authorizationRequired) {
+        password = await _showLocalAuthorizationDialog(context, backend);
+        if (password == null) {
+          return;
+        }
+      }
+      await widget.controller.installLocalBackend(
+        backend,
+        sudoPassword: password,
+      );
+    }
 
     return PanelCard(
       title: strings.buildLocalSourceTitle,
@@ -2156,6 +2249,77 @@ class _LocalBuildSourceCardState extends State<_LocalBuildSourceCard> {
               ),
             ],
           ),
+          if (backendIssues.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 14),
+            Text(
+              strings.buildLocalBackendIssuesTitle,
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: 8),
+            Column(
+              children: backendIssues
+                  .map(
+                    (backend) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerHighest.withValues(
+                            alpha: 0.22,
+                          ),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: scheme.outlineVariant.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              backend.label,
+                              style: theme.textTheme.titleSmall,
+                            ),
+                            if (backend.detail?.trim().isNotEmpty == true) ...<Widget>[
+                              const SizedBox(height: 6),
+                              Text(
+                                backend.detail!,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                            if (backend.installDetail?.trim().isNotEmpty ==
+                                true) ...<Widget>[
+                              const SizedBox(height: 6),
+                              Text(
+                                backend.installDetail!,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                            if (backend.installSupported) ...<Widget>[
+                              const SizedBox(height: 12),
+                              FilledButton.tonalIcon(
+                                onPressed: localBusy
+                                    ? null
+                                    : () => installBackend(backend),
+                                icon: const Icon(Icons.download_rounded),
+                                label: Text(
+                                  backend.installLabel ??
+                                      strings.buildLocalBackendInstallAction,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          ],
           const SizedBox(height: 12),
           DropdownButtonFormField<LocalBuildBackendKind>(
             initialValue: widget.state.localSettings?.globalDefaultBackendKind,
@@ -2294,7 +2458,23 @@ class _LocalBuildSourceCardState extends State<_LocalBuildSourceCard> {
             onChanged: widget.controller.updateLocalBuildSkipDeps,
           ),
           const SizedBox(height: 12),
-          Text('Source instances', style: theme.textTheme.titleMedium),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  'Source instances',
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: localBusy
+                    ? null
+                    : () => widget.controller.createLocalSourceInstance(),
+                icon: const Icon(Icons.create_new_folder_rounded),
+                label: Text(strings.buildLocalAddSourceInstance),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           if (widget.state.localSourceInstances.isEmpty)
             Text('No source instances yet')
@@ -2429,6 +2609,15 @@ class _LocalBuildActionCard extends StatelessWidget {
     final strings = context.strings;
     final selectedProfile = state.selectedLocalProfile;
     final selectedSource = state.selectedLocalSourceInstance;
+    final sourceProfiles = selectedSource == null
+        ? const <LocalBuildProfile>[]
+        : _dedupeLocalProfilesForSource(state.localProfiles, selectedSource.id);
+    final profileDropdownValue =
+        sourceProfiles.any(
+          (profile) => profile.id == state.selectedLocalProfileId,
+        )
+        ? state.selectedLocalProfileId
+        : '';
     final runtime = selectedSource?.materialized;
     final localBusy =
         state.localBuildStatusLoading || state.activeLocalTask != null;
@@ -2440,20 +2629,26 @@ class _LocalBuildActionCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           TextFormField(
+            key: ValueKey<String>(
+              'local-profile-name-${state.selectedLocalSourceInstanceId ?? 'draft'}-${state.selectedLocalProfileId ?? 'new'}',
+            ),
             initialValue: state.localProfileNameDraft,
             decoration: const InputDecoration(labelText: 'Profile name'),
             onChanged: controller.updateLocalProfileNameDraft,
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            initialValue: state.selectedLocalProfileId,
+            key: ValueKey<String>(
+              'local-profile-picker-${selectedSource?.id ?? 'none'}-$profileDropdownValue',
+            ),
+            initialValue: profileDropdownValue,
             decoration: const InputDecoration(labelText: 'Profile'),
             items: <DropdownMenuItem<String>>[
               const DropdownMenuItem<String>(
                 value: '',
                 child: Text('New profile'),
               ),
-              ...state.localProfiles.map(
+              ...sourceProfiles.map(
                 (profile) => DropdownMenuItem<String>(
                   value: profile.id,
                   child: Text(profile.name),
@@ -2466,6 +2661,9 @@ class _LocalBuildActionCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<LocalBuildBackendKind?>(
+            key: ValueKey<String>(
+              'local-profile-backend-${state.selectedLocalProfileId ?? 'new'}-${state.localProfileBackendKind?.name ?? 'default'}',
+            ),
             initialValue: state.localProfileBackendKind,
             decoration: const InputDecoration(labelText: 'Profile backend'),
             items: <DropdownMenuItem<LocalBuildBackendKind?>>[
@@ -2664,6 +2862,24 @@ class _BuildQueueEntry {
   final BuildRunSummary? run;
 }
 
+List<LocalBuildProfile> _dedupeLocalProfilesForSource(
+  List<LocalBuildProfile> profiles,
+  String sourceInstanceId,
+) {
+  final seen = <String>{};
+  final filtered = <LocalBuildProfile>[];
+  for (final profile in profiles) {
+    if (profile.sourceInstanceId != sourceInstanceId) {
+      continue;
+    }
+    if (!seen.add(profile.id)) {
+      continue;
+    }
+    filtered.add(profile);
+  }
+  return filtered;
+}
+
 class _CustomModulesCard extends StatefulWidget {
   const _CustomModulesCard({
     required this.state,
@@ -2683,7 +2899,9 @@ class _CustomModulesCardState extends State<_CustomModulesCard> {
   late final TextEditingController _repositoryUrlController;
   late final TextEditingController _manualModuleUrlController;
   bool _manualAddBusy = false;
-  bool _moduleSetBusy = false;
+  String? _loadingModuleSetRepoUrl;
+
+  bool get _moduleSetBusy => _loadingModuleSetRepoUrl != null;
 
   @override
   void initState() {
@@ -2725,7 +2943,7 @@ class _CustomModulesCardState extends State<_CustomModulesCard> {
       return;
     }
     setState(() {
-      _moduleSetBusy = true;
+      _loadingModuleSetRepoUrl = normalizeRepositoryUrl(module.repoUrl);
     });
     try {
       final metadata = await widget.controller.fetchModuleMetadata(
@@ -2745,7 +2963,7 @@ class _CustomModulesCardState extends State<_CustomModulesCard> {
     } finally {
       if (mounted) {
         setState(() {
-          _moduleSetBusy = false;
+          _loadingModuleSetRepoUrl = null;
         });
       }
     }
@@ -2842,7 +3060,7 @@ class _CustomModulesCardState extends State<_CustomModulesCard> {
   Future<void> _editSelectedModule(_SelectedModuleListItem item) async {
     if (item.isModuleSet) {
       setState(() {
-        _moduleSetBusy = true;
+        _loadingModuleSetRepoUrl = normalizeRepositoryUrl(item.repoUrl);
       });
       try {
         final metadata = await widget.controller.fetchModuleMetadata(
@@ -2862,7 +3080,7 @@ class _CustomModulesCardState extends State<_CustomModulesCard> {
       } finally {
         if (mounted) {
           setState(() {
-            _moduleSetBusy = false;
+            _loadingModuleSetRepoUrl = null;
           });
         }
       }
@@ -3310,6 +3528,15 @@ class _CustomModulesCardState extends State<_CustomModulesCard> {
                                         final disabled =
                                             state.moduleCatalogLoading ||
                                             _moduleSetBusy;
+                                        final moduleRepoKey =
+                                            normalizeRepositoryUrl(
+                                              module.repoUrl,
+                                            ).toLowerCase();
+                                        final loadingThisModuleSet =
+                                            module.isModuleSet &&
+                                            _loadingModuleSetRepoUrl
+                                                    ?.toLowerCase() ==
+                                                moduleRepoKey;
                                         return Padding(
                                           padding: EdgeInsets.only(
                                             bottom:
@@ -3404,17 +3631,30 @@ class _CustomModulesCardState extends State<_CustomModulesCard> {
                                                       ),
                                                     ),
                                                     const SizedBox(width: 12),
-                                                    Icon(
-                                                      module.isModuleSet
-                                                          ? Icons
-                                                                .chevron_right_rounded
-                                                          : Icons
-                                                                .add_circle_outline_rounded,
-                                                      color: disabled
-                                                          ? scheme
-                                                                .onSurfaceVariant
-                                                          : scheme.primary,
-                                                    ),
+                                                    loadingThisModuleSet
+                                                        ? SizedBox(
+                                                            width: 20,
+                                                            height: 20,
+                                                            child:
+                                                                CircularProgressIndicator(
+                                                                  strokeWidth:
+                                                                      2.2,
+                                                                  color: scheme
+                                                                      .primary,
+                                                                ),
+                                                          )
+                                                        : Icon(
+                                                            module.isModuleSet
+                                                                ? Icons
+                                                                      .chevron_right_rounded
+                                                                : Icons
+                                                                      .add_circle_outline_rounded,
+                                                            color: disabled
+                                                                ? scheme
+                                                                      .onSurfaceVariant
+                                                                : scheme
+                                                                      .primary,
+                                                          ),
                                                   ],
                                                 ),
                                               ),
@@ -4028,12 +4268,79 @@ class _TextRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: width,
-      child: TextFormField(
-        initialValue: value,
+      child: _SyncedTextFormField(
+        fieldKey: ValueKey<String>('text-row-$label-$value'),
+        value: value,
         obscureText: obscure,
         decoration: InputDecoration(labelText: label),
         onChanged: onChanged,
       ),
+    );
+  }
+}
+
+class _SyncedTextFormField extends StatefulWidget {
+  const _SyncedTextFormField({
+    required this.fieldKey,
+    required this.value,
+    required this.decoration,
+    required this.onChanged,
+    this.obscureText = false,
+  });
+
+  final Key fieldKey;
+  final String value;
+  final InputDecoration decoration;
+  final ValueChanged<String> onChanged;
+  final bool obscureText;
+
+  @override
+  State<_SyncedTextFormField> createState() => _SyncedTextFormFieldState();
+}
+
+class _SyncedTextFormFieldState extends State<_SyncedTextFormField> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+    _focusNode = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SyncedTextFormField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_controller.text == widget.value) {
+      return;
+    }
+    if (_focusNode.hasFocus) {
+      return;
+    }
+    _controller.value = _controller.value.copyWith(
+      text: widget.value,
+      selection: TextSelection.collapsed(offset: widget.value.length),
+      composing: TextRange.empty,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      key: widget.fieldKey,
+      controller: _controller,
+      focusNode: _focusNode,
+      obscureText: widget.obscureText,
+      decoration: widget.decoration,
+      onChanged: widget.onChanged,
     );
   }
 }
@@ -4083,10 +4390,14 @@ _BuildQueueEntry _buildQueueEntryFromTask(
   AppStrings strings,
   DesktopTaskSnapshot task,
 ) {
+  final localScopeSuffix = _taskSourceInstanceDisplay(task);
+  final localHeadline = localScopeSuffix == null
+      ? '${strings.buildLocalTaskScope} · ${strings.buildTaskLabel(task.kind)}'
+      : '${strings.buildLocalTaskScope} · ${strings.buildTaskLabel(task.kind)} · $localScopeSuffix';
   return _BuildQueueEntry(
     id: task.id,
     headline: task.kind.startsWith('local.build.')
-        ? '${strings.buildLocalTaskScope} · ${strings.buildTaskLabel(task.kind)}'
+        ? localHeadline
         : '${_taskWorkflowLabel(strings, task)} · ${strings.buildTaskLabel(task.kind)}',
     currentStep: _taskCurrentStep(strings, task),
     preview: _taskTaskPreview(strings, task),
@@ -4136,6 +4447,54 @@ Set<int> _taskAssociatedRunIds(DesktopTaskSnapshot task) {
     }
   }
   return runIds;
+}
+
+String? _taskSourceInstanceDisplay(DesktopTaskSnapshot task) {
+  final sourceInstance = task.result['sourceInstance'];
+  if (sourceInstance is Map) {
+    final displayName = sourceInstance['displayName'];
+    if (displayName is String && displayName.trim().isNotEmpty) {
+      return displayName.trim();
+    }
+    final androidVersion = sourceInstance['androidVersion'];
+    final kernelVersion = sourceInstance['kernelVersion'];
+    final branchMonth = sourceInstance['branchMonth'];
+    if (androidVersion is String &&
+        androidVersion.trim().isNotEmpty &&
+        kernelVersion is String &&
+        kernelVersion.trim().isNotEmpty &&
+        branchMonth is String &&
+        branchMonth.trim().isNotEmpty) {
+      return '${androidVersion.trim()}/${kernelVersion.trim()}@${branchMonth.trim()}';
+    }
+  }
+
+  final sourceInstanceId = task.result['sourceInstanceId'];
+  if (sourceInstanceId is String && sourceInstanceId.trim().isNotEmpty) {
+    final normalized = sourceInstanceId.trim();
+    final atIndex = normalized.indexOf('@');
+    if (atIndex > 0) {
+      final kernelLine = normalized
+          .substring(0, atIndex)
+          .replaceFirst('-', '/');
+      final branchMonth = normalized.substring(atIndex + 1);
+      if (kernelLine.isNotEmpty && branchMonth.isNotEmpty) {
+        return '$kernelLine@$branchMonth';
+      }
+    }
+    return normalized;
+  }
+
+  final outputDisplay = task.output
+      .map((line) => line.trim())
+      .firstWhere(
+        (line) => line.toLowerCase().startsWith('source instance: '),
+        orElse: () => '',
+      );
+  if (outputDisplay.isNotEmpty) {
+    return outputDisplay.substring('source instance: '.length).trim();
+  }
+  return null;
 }
 
 String _taskWorkflowLabel(AppStrings strings, DesktopTaskSnapshot task) {
@@ -4517,11 +4876,17 @@ class _TaskDetailsDialog extends ConsumerWidget {
                             title: strings.buildTaskConsoleTitle,
                             lines: consoleLines,
                             emptyLabel: strings.buildTaskNoOutput,
+                            language: MonacoCodeLanguage.plaintext,
+                            followTail: true,
+                            incrementalAppends: true,
                           );
                           final resultPanel = _TaskLogPanel(
                             title: strings.buildTaskResultTitle,
                             lines: resultLines,
                             emptyLabel: strings.buildTaskNoResult,
+                            language: MonacoCodeLanguage.json,
+                            followTail: false,
+                            incrementalAppends: false,
                           );
                           if (!wide) {
                             return Column(
@@ -4556,15 +4921,89 @@ class _TaskLogPanel extends StatelessWidget {
     required this.title,
     required this.lines,
     required this.emptyLabel,
+    required this.language,
+    required this.followTail,
+    required this.incrementalAppends,
   });
 
   final String title;
   final List<String> lines;
   final String emptyLabel;
+  final MonacoCodeLanguage language;
+  final bool followTail;
+  final bool incrementalAppends;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    if (!Platform.isLinux) {
+      return _buildLegacyPanel(context, theme);
+    }
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: Text(
+              title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: theme.colorScheme.onSurface,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Divider(height: 1, color: theme.colorScheme.outlineVariant),
+          Expanded(
+            child: lines.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      emptyLabel,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  )
+                : MonacoCodeView(
+                    content: lines.join('\n'),
+                    language: language,
+                    followTail: followTail,
+                    incrementalAppends: incrementalAppends,
+                    maxRetainedLines: 5000,
+                    nativeInsets: const EdgeInsets.fromLTRB(1, 0, 1, 1),
+                    fallbackPadding: const EdgeInsets.symmetric(vertical: 10),
+                    fallbackStyle: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                      fontFamily: 'monospace',
+                      height: 1.45,
+                    ),
+                    fallbackBuilder: (context, content) {
+                      return _buildLegacyLogBody(context, content, theme);
+                    },
+                  ),
+          ),
+          if (lines.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Text(
+                '${lines.length} line(s)',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegacyPanel(BuildContext context, ThemeData theme) {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: const Color(0xFF0D1117),
@@ -4596,53 +5035,7 @@ class _TaskLogPanel extends StatelessWidget {
                       ),
                     ),
                   )
-                : Scrollbar(
-                    thumbVisibility: true,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      itemCount: lines.length,
-                      itemBuilder: (context, index) {
-                        final line = lines[index];
-                        final isDivider = line.startsWith('## ');
-                        return Container(
-                          color: index.isEven
-                              ? const Color(0xFF0D1117)
-                              : const Color(0xFF111827),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 6,
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              SizedBox(
-                                width: 52,
-                                child: Text(
-                                  '${index + 1}',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: const Color(0xFF7D8590),
-                                    fontFamily: 'monospace',
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: SelectableText(
-                                  isDivider ? line.substring(3) : line,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: isDivider
-                                        ? const Color(0xFF7EE787)
-                                        : Colors.white,
-                                    fontFamily: 'monospace',
-                                    height: 1.45,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+                : _buildLegacyLogBody(context, lines.join('\n'), theme),
           ),
           if (lines.isNotEmpty)
             Padding(
@@ -4658,6 +5051,56 @@ class _TaskLogPanel extends StatelessWidget {
       ),
     );
   }
+}
+
+Widget _buildLegacyLogBody(
+  BuildContext context,
+  String content,
+  ThemeData theme,
+) {
+  final lines = content.split('\n');
+  return Scrollbar(
+    thumbVisibility: true,
+    child: ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      itemCount: lines.length,
+      itemBuilder: (context, index) {
+        final line = lines[index];
+        final isDivider = line.startsWith('## ');
+        return Container(
+          color: index.isEven
+              ? const Color(0xFF0D1117)
+              : const Color(0xFF111827),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              SizedBox(
+                width: 52,
+                child: Text(
+                  '${index + 1}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF7D8590),
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+              Expanded(
+                child: SelectableText(
+                  isDivider ? line.substring(3) : line,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: isDivider ? const Color(0xFF7EE787) : Colors.white,
+                    fontFamily: 'monospace',
+                    height: 1.45,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
 }
 
 String _taskPreviewText(DesktopTaskSnapshot task) {

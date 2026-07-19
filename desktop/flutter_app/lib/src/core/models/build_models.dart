@@ -296,6 +296,9 @@ class LocalBuildBackendDescriptor {
     required this.label,
     required this.available,
     required this.isGlobalDefault,
+    required this.installSupported,
+    required this.installLabel,
+    required this.installDetail,
     required this.authorizationRequired,
     required this.authorizationKind,
     required this.authorizationMessage,
@@ -307,6 +310,9 @@ class LocalBuildBackendDescriptor {
   final String label;
   final bool available;
   final bool isGlobalDefault;
+  final bool installSupported;
+  final String? installLabel;
+  final String? installDetail;
   final bool authorizationRequired;
   final String? authorizationKind;
   final String? authorizationMessage;
@@ -319,6 +325,9 @@ class LocalBuildBackendDescriptor {
       label: _readString(json['label']),
       available: json['available'] == true,
       isGlobalDefault: json['isGlobalDefault'] == true,
+      installSupported: json['installSupported'] == true,
+      installLabel: _nullableString(json['installLabel']),
+      installDetail: _nullableString(json['installDetail']),
       authorizationRequired: json['authorizationRequired'] == true,
       authorizationKind: _nullableString(json['authorizationKind']),
       authorizationMessage: _nullableString(json['authorizationMessage']),
