@@ -42,6 +42,38 @@ void main() {
     expect(controller.state.lastError, isNull);
   });
 
+  test('local backend install tasks appear in local task list', () {
+    final state = BuildPageState.initial().copyWith(
+      tasks: const <DesktopTaskSnapshot>[
+        DesktopTaskSnapshot(
+          id: 'backend-install',
+          kind: 'local.backend.install',
+          state: 'running',
+          message: 'running',
+          output: <String>[],
+          result: <String, dynamic>{},
+          downloadName: null,
+          downloadContentType: null,
+        ),
+        DesktopTaskSnapshot(
+          id: 'remote-build',
+          kind: 'build.gki',
+          state: 'running',
+          message: 'running',
+          output: <String>[],
+          result: <String, dynamic>{},
+          downloadName: null,
+          downloadContentType: null,
+        ),
+      ],
+      taskOrder: const <String>['backend-install', 'remote-build'],
+    );
+
+    expect(state.localBuildTasks.length, 1);
+    expect(state.localBuildTasks.single.kind, 'local.backend.install');
+    expect(state.activeLocalTask?.id, 'backend-install');
+  });
+
   test('replaceModuleSetSelection keeps set workflow syntax', () {
     final controller = BuildPageController(
       api: _FakeBuildApi(pollResults: const <GitHubLoginResult>[]),

@@ -1,3 +1,6 @@
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
 #include "utils.h"
 
 #include <flutter_windows.h>
@@ -5,7 +8,116 @@
 #include <stdio.h>
 #include <windows.h>
 
+#include <filesystem>
 #include <iostream>
+#include <optional>
+
+namespace {
+
+constexpr wchar_t kSidecarHost[] = L"127.0.0.1";
+constexpr unsigned short kSidecarPort = 38765;
+constexpr DWORD kSidecarStartupTimeoutMs = 15000;
+constexpr wchar_t kSidecarExeName[] = L"abk_sidecar.exe";
+constexpr wchar_t kPythonExeRelative[] = L"runtime\\python\\python.exe";
+constexpr wchar_t kAppRootSentinel1[] = L"cli\\abk.py";
+constexpr wchar_t kAppRootSentinel2[] = L"hmbird_patch.c";
+
+std::filesystem::path GetExecutablePath() {
+  wchar_t buffer[MAX_PATH];
+  const DWORD length = ::GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+  return std::filesystem::path(std::wstring(buffer, length));
+}
+
+bool FileExists(const std::filesystem::path& path) {
+  std::error_code error;
+  return std::filesystem::is_regular_file(path, error);
+}
+
+bool DirectoryExists(const std::filesystem::path& path) {
+  std::error_code error;
+  return std::filesystem::is_directory(path, error);
+}
+
+std::optional<std::filesystem::path> ResolveExistingFile(
+    const std::filesystem::path& base_dir,
+    const std::vector<std::filesystem::path>& candidates) {
+  for (const auto& relative : candidates) {
+    const auto candidate = std::filesystem::weakly_canonical(base_dir / relative);
+    if (FileExists(candidate)) {
+      return candidate;
+    }
+  }
+  return std::nullopt;
+}
+
+bool LooksLikeAppRoot(const std::filesystem::path& path) {
+  return DirectoryExists(path) && FileExists(path / kAppRootSentinel1) &&
+         FileExists(path / kAppRootSentinel2);
+}
+
+std::optional<std::filesystem::path> ResolveAppRoot(
+    const std::filesystem::path& exe_dir) {
+  for (const auto& relative : {
+           std::filesystem::path(L"resources\\abk"),
+           std::filesystem::path(L"..\\resources\\abk"),
+           std::filesystem::path(L"..\\..\\..\\..\\..\\..\\.."),
+       }) {
+    const auto candidate = std::filesystem::weakly_canonical(exe_dir / relative);
+    if (LooksLikeAppRoot(candidate)) {
+      return candidate;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<std::filesystem::path> ResolvePythonPath(
+    const std::filesystem::path& exe_dir) {
+  for (const auto& relative : {
+           std::filesystem::path(kPythonExeRelative),
+           std::filesystem::path(L"..\\") / kPythonExeRelative,
+       }) {
+    const auto candidate = std::filesystem::weakly_canonical(exe_dir / relative);
+    if (FileExists(candidate)) {
+      return candidate;
+    }
+  }
+  return std::nullopt;
+}
+
+bool WaitForLocalPort(unsigned short port, DWORD timeout_ms) {
+  WSADATA wsa_data;
+  if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+    return false;
+  }
+
+  const DWORD deadline = ::GetTickCount() + timeout_ms;
+  while (::GetTickCount() < deadline) {
+    SOCKET socket_handle = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (socket_handle != INVALID_SOCKET) {
+      sockaddr_in address{};
+      address.sin_family = AF_INET;
+      address.sin_port = htons(port);
+      ::InetPtonW(AF_INET, kSidecarHost, &address.sin_addr);
+      if (::connect(socket_handle, reinterpret_cast<sockaddr*>(&address),
+                    sizeof(address)) == 0) {
+        ::closesocket(socket_handle);
+        WSACleanup();
+        return true;
+      }
+      ::closesocket(socket_handle);
+    }
+    ::Sleep(250);
+  }
+
+  WSACleanup();
+  return false;
+}
+
+std::wstring Utf16Path(const std::filesystem::path& path) {
+  return path.wstring();
+}
+
+}  // namespace
 
 void CreateAndAttachConsole() {
   if (::AllocConsole()) {
@@ -66,4 +178,93 @@ std::string Utf8FromUtf16(const wchar_t* utf16_string) {
     return std::string();
   }
   return utf8_string;
+}
+
+SidecarProcess::~SidecarProcess() {
+  Stop();
+}
+
+bool SidecarProcess::EnsureRunning(std::wstring* error_message) {
+  if (::GetEnvironmentVariableW(L"ABK_DESKTOP_BASE_URL", nullptr, 0) > 0) {
+    return true;
+  }
+
+  if (WaitForLocalPort(kSidecarPort, 100)) {
+    ::SetEnvironmentVariableW(
+        L"ABK_DESKTOP_BASE_URL",
+        L"http://127.0.0.1:38765");
+    return true;
+  }
+
+  const auto exe_path = GetExecutablePath();
+  const auto exe_dir = exe_path.parent_path();
+  const auto sidecar_path = ResolveExistingFile(
+      exe_dir, {std::filesystem::path(kSidecarExeName),
+                std::filesystem::path(L"..\\") / kSidecarExeName});
+  if (!sidecar_path.has_value()) {
+    if (error_message != nullptr) {
+      *error_message = L"Missing abk_sidecar.exe next to the Windows desktop bundle.";
+    }
+    return false;
+  }
+
+  const auto app_root = ResolveAppRoot(exe_dir);
+  if (!app_root.has_value()) {
+    if (error_message != nullptr) {
+      *error_message = L"Failed to locate ABK runtime resources (resources\\\\abk).";
+    }
+    return false;
+  }
+
+  ::SetEnvironmentVariableW(L"ABK_DESKTOP_BASE_URL",
+                            L"http://127.0.0.1:38765");
+  ::SetEnvironmentVariableW(L"ABK_DESKTOP_APP_ROOT",
+                            Utf16Path(*app_root).c_str());
+  if (const auto python_path = ResolvePythonPath(exe_dir); python_path.has_value()) {
+    ::SetEnvironmentVariableW(L"ABK_DESKTOP_PYTHON",
+                              Utf16Path(*python_path).c_str());
+  }
+
+  std::wstring command_line =
+      L"\"" + Utf16Path(*sidecar_path) + L"\" --port 38765";
+  STARTUPINFOW startup_info{};
+  startup_info.cb = sizeof(startup_info);
+  ZeroMemory(&process_info_, sizeof(process_info_));
+
+  if (!::CreateProcessW(
+          nullptr, command_line.data(), nullptr, nullptr, FALSE,
+          CREATE_NO_WINDOW, nullptr, exe_dir.c_str(), &startup_info,
+          &process_info_)) {
+    if (error_message != nullptr) {
+      *error_message = L"Failed to start abk_sidecar.exe.";
+    }
+    return false;
+  }
+  started_ = true;
+
+  if (!WaitForLocalPort(kSidecarPort, kSidecarStartupTimeoutMs)) {
+    Stop();
+    if (error_message != nullptr) {
+      *error_message = L"abk_sidecar.exe did not start listening on 127.0.0.1:38765.";
+    }
+    return false;
+  }
+
+  return true;
+}
+
+void SidecarProcess::Stop() {
+  if (!started_) {
+    return;
+  }
+  if (process_info_.hProcess != nullptr) {
+    ::TerminateProcess(process_info_.hProcess, 0);
+    ::CloseHandle(process_info_.hProcess);
+    process_info_.hProcess = nullptr;
+  }
+  if (process_info_.hThread != nullptr) {
+    ::CloseHandle(process_info_.hThread);
+    process_info_.hThread = nullptr;
+  }
+  started_ = false;
 }

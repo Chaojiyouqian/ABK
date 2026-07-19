@@ -1014,6 +1014,7 @@ class AppStrings {
       'local.build.source.sync' => isChinese ? '源码同步' : 'Source sync',
       'local.build.rebuild' => isChinese ? '本地内核编译' : 'Local kernel build',
       'local.build.profile.build' => isChinese ? 'Profile 构建' : 'Profile build',
+      'local.backend.install' => isChinese ? 'Backend 安装' : 'Backend install',
       _ => kind,
     };
   }

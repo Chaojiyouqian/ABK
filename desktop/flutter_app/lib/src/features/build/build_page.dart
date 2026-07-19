@@ -290,6 +290,7 @@ _QueueSpec _queueSpecForTab(int tabIndex, AppStrings strings) {
       'local.build.source.sync',
       'local.build.rebuild',
       'local.build.profile.build',
+      'local.backend.install',
     },
     includeTakeoverRuns: false,
   );
@@ -337,7 +338,8 @@ class _BuildTopActions extends StatelessWidget {
     final localBusy = state.localBuildStatusLoading || activeLocalTask != null;
     final initTaskRunning =
         activeLocalTask?.kind == 'local.build.init' ||
-        activeLocalTask?.kind == 'local.build.source.sync';
+        activeLocalTask?.kind == 'local.build.source.sync' ||
+        activeLocalTask?.kind == 'local.backend.install';
     final buildTaskRunning =
         activeLocalTask?.kind == 'local.build.rebuild' ||
         activeLocalTask?.kind == 'local.build.profile.build';
@@ -1369,6 +1371,7 @@ class _LocalBuildTab extends StatelessWidget {
                 'local.build.source.sync',
                 'local.build.rebuild',
                 'local.build.profile.build',
+                'local.backend.install',
               },
               includeTakeoverRuns: false,
             ),
@@ -4396,7 +4399,8 @@ _BuildQueueEntry _buildQueueEntryFromTask(
       : '${strings.buildLocalTaskScope} · ${strings.buildTaskLabel(task.kind)} · $localScopeSuffix';
   return _BuildQueueEntry(
     id: task.id,
-    headline: task.kind.startsWith('local.build.')
+    headline: task.kind.startsWith('local.build.') ||
+            task.kind.startsWith('local.backend.')
         ? localHeadline
         : '${_taskWorkflowLabel(strings, task)} · ${strings.buildTaskLabel(task.kind)}',
     currentStep: _taskCurrentStep(strings, task),

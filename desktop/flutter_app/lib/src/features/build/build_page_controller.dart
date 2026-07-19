@@ -198,7 +198,11 @@ class BuildPageState {
   List<DesktopTaskSnapshot> get localBuildTasks => taskOrder
       .map(taskById)
       .whereType<DesktopTaskSnapshot>()
-      .where((task) => task.kind.startsWith('local.build'))
+      .where(
+        (task) =>
+            task.kind.startsWith('local.build') ||
+            task.kind.startsWith('local.backend'),
+      )
       .toList(growable: false);
 
   DesktopTaskSnapshot? get activeLocalTask {

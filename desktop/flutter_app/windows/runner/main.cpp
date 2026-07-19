@@ -17,6 +17,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
+  SidecarProcess sidecar;
+  std::wstring sidecar_error;
+  if (!sidecar.EnsureRunning(&sidecar_error)) {
+    ::MessageBoxW(nullptr, sidecar_error.c_str(), L"ABK startup failed",
+                  MB_OK | MB_ICONERROR);
+    ::CoUninitialize();
+    return EXIT_FAILURE;
+  }
+
   flutter::DartProject project(L"data");
 
   std::vector<std::string> command_line_arguments =
@@ -38,6 +47,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     ::DispatchMessage(&msg);
   }
 
+  sidecar.Stop();
   ::CoUninitialize();
   return EXIT_SUCCESS;
 }

@@ -71,9 +71,26 @@ endif()
 
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
+set(DESKTOP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+set(REPO_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+set(ABK_RESOURCE_DIR "${CMAKE_INSTALL_PREFIX}/resources/abk")
+set(ABK_SIDECAR_DEBUG "${DESKTOP_DIR}/target/debug/abk_sidecar.exe")
+set(ABK_SIDECAR_RELEASE "${DESKTOP_DIR}/target/release/abk_sidecar.exe")
+
+add_custom_target(abk_sidecar_build ALL
+  COMMAND cargo build --manifest-path "${DESKTOP_DIR}/Cargo.toml" --bin abk_sidecar $<$<NOT:$<CONFIG:Debug>>:--release>
+  WORKING_DIRECTORY "${DESKTOP_DIR}"
+  VERBATIM
+)
+add_dependencies(${BINARY_NAME} abk_sidecar_build)
 
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
+
+install(FILES "${ABK_SIDECAR_DEBUG}" DESTINATION "${CMAKE_INSTALL_PREFIX}"
+  CONFIGURATIONS Debug COMPONENT Runtime)
+install(FILES "${ABK_SIDECAR_RELEASE}" DESTINATION "${CMAKE_INSTALL_PREFIX}"
+  CONFIGURATIONS Profile;Release COMPONENT Runtime)
 
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
@@ -101,6 +118,25 @@ install(CODE "
   " COMPONENT Runtime)
 install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
+
+install(DIRECTORY "${REPO_ROOT_DIR}/cli" DESTINATION "${ABK_RESOURCE_DIR}"
+  COMPONENT Runtime)
+install(DIRECTORY "${REPO_ROOT_DIR}/zram" DESTINATION "${ABK_RESOURCE_DIR}"
+  COMPONENT Runtime)
+install(DIRECTORY "${REPO_ROOT_DIR}/ddk" DESTINATION "${ABK_RESOURCE_DIR}"
+  COMPONENT Runtime)
+install(DIRECTORY "${REPO_ROOT_DIR}/config" DESTINATION "${ABK_RESOURCE_DIR}"
+  COMPONENT Runtime)
+install(FILES "${REPO_ROOT_DIR}/hmbird_patch.c" DESTINATION "${ABK_RESOURCE_DIR}"
+  COMPONENT Runtime)
+install(FILES "${REPO_ROOT_DIR}/app/signing/abk-manager-cert.env"
+  DESTINATION "${ABK_RESOURCE_DIR}/app/signing" COMPONENT Runtime)
+
+if(DEFINED ENV{pythonLocation} AND NOT "$ENV{pythonLocation}" STREQUAL "")
+  install(DIRECTORY "$ENV{pythonLocation}/"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/runtime/python"
+    COMPONENT Runtime)
+endif()
 
 # Install the AOT library on non-Debug builds only.
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
