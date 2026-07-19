@@ -2361,6 +2361,14 @@ fn command_available(program: &str, args: &[&str]) -> bool {
         .unwrap_or(false)
 }
 
+fn command_exists(program: &str, args: &[&str]) -> bool {
+    Command::new(program)
+        .args(args)
+        .current_dir(repo_root())
+        .output()
+        .is_ok()
+}
+
 fn powershell_quote(value: &str) -> String {
     value.replace('\'', "''")
 }
@@ -2520,7 +2528,7 @@ fn inspect_container_backend(program: &str, image: &str) -> BackendProbe {
 }
 
 fn inspect_wsl_backend() -> BackendProbe {
-    if !command_available("wsl", &["--status"]) {
+    if !cfg!(windows) {
         return BackendProbe {
             available: false,
             install_supported: false,
@@ -2534,8 +2542,34 @@ fn inspect_wsl_backend() -> BackendProbe {
             authorization_message: None,
         };
     }
+
+    if !command_exists("wsl.exe", &["--help"]) {
+        return BackendProbe {
+            available: false,
+            install_supported: false,
+            install_label: None,
+            install_detail: None,
+            detail: Some("wsl.exe is not available on this host.".into()),
+            authorization_required: false,
+            authorization_kind: None,
+            authorization_message: None,
+        };
+    }
+
+    let distro_list = Command::new("wsl.exe")
+        .args(["-l", "-q"])
+        .current_dir(repo_root())
+        .output()
+        .ok()
+        .map(|output| String::from_utf8_lossy(&output.stdout).to_string())
+        .unwrap_or_default();
+    let distro_ready = distro_list
+        .lines()
+        .map(str::trim)
+        .any(|line| line.eq_ignore_ascii_case(DEFAULT_WSL_DISTRO_NAME));
+
     BackendProbe {
-        available: false,
+        available: distro_ready,
         install_supported: cfg!(windows),
         install_label: if cfg!(windows) {
             Some("Import ABK WSL rootfs".into())
@@ -2549,7 +2583,11 @@ fn inspect_wsl_backend() -> BackendProbe {
         } else {
             None
         },
-        detail: Some("WSL backend protocol is reserved but not wired yet.".into()),
+        detail: if distro_ready {
+            Some("ABK WSL distro is already imported. Execution wiring is still pending.".into())
+        } else {
+            Some("wsl.exe is available, but the ABK WSL distro has not been imported yet.".into())
+        },
         authorization_required: false,
         authorization_kind: None,
         authorization_message: None,
