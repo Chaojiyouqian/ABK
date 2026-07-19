@@ -42,17 +42,27 @@ except ImportError:
 
 CREDENTIAL_FILE_NAME = "credentials.json"
 CREDENTIAL_PENDING_FILE_NAME = "credentials.pending.json"
+CREDENTIAL_KEY_FILE_NAME = "credentials.key"
 CREDENTIAL_FORMAT_VERSION = 1
+CREDENTIAL_KEY_FORMAT_VERSION = 1
 CREDENTIAL_SERVICE = "ABK CLI"
 CREDENTIAL_ACCOUNT = "github.com"
 FALLBACK_BACKEND = "machine-bound-aes-gcm"
+LOCAL_KEY_FALLBACK_BACKEND = "local-key-aes-gcm"
+FALLBACK_BACKENDS = frozenset({FALLBACK_BACKEND, LOCAL_KEY_FALLBACK_BACKEND})
 MAX_CREDENTIAL_FILE_SIZE = 64 * 1024
+MAX_CREDENTIAL_KEY_FILE_SIZE = 256
 MAX_TOKEN_SIZE = 4096
 _SEED_SIZE = 32
+_LOCAL_KEY_SIZE = 32
 _NONCE_SIZE = 12
 _TAG_SIZE = 16
 _HKDF_INFO = b"abk-cli/github-token/key/v1"
+_LOCAL_KEY_HKDF_INFO = b"abk-cli/github-token/local-key/v1"
 _AAD = b"abk-cli|github.com|credential|v1|hkdf-sha256|aes-256-gcm"
+_LOCAL_KEY_AAD = (
+    b"abk-cli|github.com|credential|local-key|v1|hkdf-sha256|aes-256-gcm"
+)
 
 
 class CredentialStoreError(RuntimeError):
@@ -259,9 +269,32 @@ def _hkdf_sha256(seed, machine_id, length=32):
     return output[:length]
 
 
+def _local_key_hkdf_sha256(master_key, seed, length=32):
+    """Derive a record key from a separately stored random master key."""
+    salt = hashlib.sha256(b"abk-cli/local-key/v1\0" + seed).digest()
+    pseudorandom_key = hmac.new(salt, master_key, hashlib.sha256).digest()
+    output = b""
+    previous = b""
+    counter = 1
+    while len(output) < length:
+        previous = hmac.new(
+            pseudorandom_key,
+            previous + _LOCAL_KEY_HKDF_INFO + bytes((counter,)),
+            hashlib.sha256,
+        ).digest()
+        output += previous
+        counter += 1
+    return output[:length]
+
+
 def _credential_aad(native_cleanup_pending=False):
     state = b"pending" if native_cleanup_pending else b"clean"
     return _AAD + b"|native-cleanup=" + state
+
+
+def _local_key_credential_aad(native_cleanup_pending=False):
+    state = b"pending" if native_cleanup_pending else b"clean"
+    return _LOCAL_KEY_AAD + b"|native-cleanup=" + state
 
 
 def _encrypt_aes_gcm(key, nonce, plaintext, aad=None):
@@ -343,6 +376,7 @@ class CredentialStore:
         self.directory = Path(directory)
         self.path = self.directory / CREDENTIAL_FILE_NAME
         self.pending_path = self.directory / CREDENTIAL_PENDING_FILE_NAME
+        self.key_path = self.directory / CREDENTIAL_KEY_FILE_NAME
         self._native_backend_factory = native_backend_factory
         self._machine_id_provider = machine_id_provider
 
@@ -430,6 +464,7 @@ class CredentialStore:
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(temporary_name, path)
+            self._fsync_directory()
         finally:
             if fd is not None:
                 os.close(fd)
@@ -437,6 +472,16 @@ class CredentialStore:
                 Path(temporary_name).unlink()
             except FileNotFoundError:
                 pass
+
+    def _fsync_directory(self):
+        if os.name == "nt":
+            return
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        directory_fd = os.open(self.directory, flags)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
 
     def _write_metadata(self, metadata):
         self._write_json_file(
@@ -474,7 +519,121 @@ class CredentialStore:
                 "native credential transaction marker could not be removed"
             ) from exc
 
-    def _fallback_metadata(self, token, *, native_cleanup_pending=False):
+    def _read_local_key(self, *, required=True):
+        try:
+            try:
+                file_status = self.key_path.lstat()
+            except FileNotFoundError:
+                if required:
+                    raise CredentialCorrupt(
+                        "the local credential encryption key is missing"
+                    )
+                return None
+            if not stat.S_ISREG(file_status.st_mode):
+                raise CredentialCorrupt(
+                    "the local credential encryption key is not a regular file"
+                )
+            if os.name != "nt":
+                self.directory.chmod(0o700)
+                self.key_path.chmod(0o600)
+            if file_status.st_size > MAX_CREDENTIAL_KEY_FILE_SIZE:
+                raise CredentialCorrupt(
+                    "the local credential encryption key is too large"
+                )
+            key_metadata = json.loads(
+                self.key_path.read_text(encoding="utf-8")
+            )
+        except CredentialCorrupt:
+            raise
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise CredentialCorrupt(
+                "the local credential encryption key is unreadable"
+            ) from exc
+        if (
+            not isinstance(key_metadata, dict)
+            or set(key_metadata) != {"version", "kind", "key"}
+            or key_metadata.get("version") != CREDENTIAL_KEY_FORMAT_VERSION
+            or key_metadata.get("kind") != "local-credential-master-key"
+        ):
+            raise CredentialCorrupt(
+                "the local credential encryption key metadata is invalid"
+            )
+        return _decode(
+            key_metadata["key"],
+            name="local encryption key",
+            expected_size=_LOCAL_KEY_SIZE,
+        )
+
+    def _load_or_create_local_key(self):
+        existing_key = self._read_local_key(required=False)
+        if existing_key is not None:
+            return existing_key
+
+        try:
+            key = secrets.token_bytes(_LOCAL_KEY_SIZE)
+            key_metadata = {
+                "version": CREDENTIAL_KEY_FORMAT_VERSION,
+                "kind": "local-credential-master-key",
+                "key": _encode(key),
+            }
+            self._write_json_file(
+                self.key_path,
+                key_metadata,
+                prefix=".credential-key-",
+            )
+        except Exception as exc:
+            raise CredentialStoreError(
+                "the local credential encryption key could not be persisted"
+            ) from exc
+
+        persisted_key = self._read_local_key()
+        if not hmac.compare_digest(persisted_key, key):
+            raise CredentialStoreError(
+                "the local credential encryption key failed verification"
+            )
+        return persisted_key
+
+    def _remove_local_key(self):
+        try:
+            self.key_path.unlink()
+            return True
+        except FileNotFoundError:
+            return False
+        except OSError as exc:
+            raise CredentialStoreError(
+                "the local credential encryption key could not be removed"
+            ) from exc
+
+    def _remove_unused_local_key(self):
+        try:
+            return self._remove_local_key()
+        except CredentialStoreError:
+            # An unpaired random key contains no credential. Logout retries
+            # cleanup without making an otherwise valid store operation fail.
+            return False
+
+    def _validated_machine_id(self):
+        machine_id = self._machine_id_provider()
+        if not isinstance(machine_id, bytes) or not machine_id:
+            raise NativeStoreUnavailable(
+                "a stable machine identifier is unavailable"
+            )
+        return machine_id
+
+    def _select_new_fallback_backend(self):
+        try:
+            return FALLBACK_BACKEND, self._validated_machine_id()
+        except NativeStoreUnavailable:
+            return LOCAL_KEY_FALLBACK_BACKEND, None
+
+    def _fallback_metadata(
+        self,
+        token,
+        *,
+        backend=FALLBACK_BACKEND,
+        machine_id=None,
+        native_cleanup_pending=False,
+    ):
         if _AES_BACKEND is None:
             raise CredentialStoreError(
                 "persistent credentials require an AES-GCM backend"
@@ -482,21 +641,27 @@ class CredentialStore:
         encoded_token = token.encode("utf-8")
         if not encoded_token or len(encoded_token) > MAX_TOKEN_SIZE:
             raise CredentialStoreError("the GitHub credential has an invalid size")
-        machine_id = self._machine_id_provider()
-        if not isinstance(machine_id, bytes) or not machine_id:
-            raise NativeStoreUnavailable("a stable machine identifier is unavailable")
         seed = secrets.token_bytes(_SEED_SIZE)
         nonce = secrets.token_bytes(_NONCE_SIZE)
-        key = _hkdf_sha256(seed, machine_id)
+        if backend == FALLBACK_BACKEND:
+            machine_id = machine_id or self._validated_machine_id()
+            key = _hkdf_sha256(seed, machine_id)
+            aad = _credential_aad(native_cleanup_pending)
+        elif backend == LOCAL_KEY_FALLBACK_BACKEND:
+            master_key = self._load_or_create_local_key()
+            key = _local_key_hkdf_sha256(master_key, seed)
+            aad = _local_key_credential_aad(native_cleanup_pending)
+        else:
+            raise CredentialStoreError("credential fallback backend is unsupported")
         ciphertext, tag = _encrypt_aes_gcm(
             key,
             nonce,
             encoded_token,
-            _credential_aad(native_cleanup_pending),
+            aad,
         )
         return {
             "version": CREDENTIAL_FORMAT_VERSION,
-            "backend": FALLBACK_BACKEND,
+            "backend": backend,
             "native_cleanup_pending": native_cleanup_pending,
             "kdf": "hkdf-sha256",
             "cipher": "aes-256-gcm",
@@ -520,8 +685,9 @@ class CredentialStore:
         }
         if set(metadata) != expected:
             raise CredentialCorrupt("credential metadata fields are invalid")
+        backend = metadata.get("backend")
         if (
-            metadata.get("backend") != FALLBACK_BACKEND
+            backend not in FALLBACK_BACKENDS
             or not isinstance(metadata.get("native_cleanup_pending"), bool)
             or metadata.get("kdf") != "hkdf-sha256"
             or metadata.get("cipher") != "aes-256-gcm"
@@ -535,15 +701,27 @@ class CredentialStore:
             maximum_size=MAX_TOKEN_SIZE,
         )
         tag = _decode(metadata["tag"], name="tag", expected_size=_TAG_SIZE)
-        machine_id = self._machine_id_provider()
-        if not isinstance(machine_id, bytes) or not machine_id:
-            raise CredentialCorrupt("the machine identifier is unavailable")
+        if backend == FALLBACK_BACKEND:
+            try:
+                machine_id = self._validated_machine_id()
+            except NativeStoreUnavailable as exc:
+                raise CredentialCorrupt(
+                    "the machine identifier is unavailable"
+                ) from exc
+            key = _hkdf_sha256(seed, machine_id)
+            aad = _credential_aad(metadata["native_cleanup_pending"])
+        else:
+            master_key = self._read_local_key()
+            key = _local_key_hkdf_sha256(master_key, seed)
+            aad = _local_key_credential_aad(
+                metadata["native_cleanup_pending"]
+            )
         plaintext = _decrypt_aes_gcm(
-            _hkdf_sha256(seed, machine_id),
+            key,
             nonce,
             ciphertext,
             tag,
-            _credential_aad(metadata["native_cleanup_pending"]),
+            aad,
         )
         try:
             token = plaintext.decode("utf-8")
@@ -560,14 +738,21 @@ class CredentialStore:
         if metadata is None:
             return None
         backend_name = metadata.get("backend")
-        if backend_name == FALLBACK_BACKEND:
+        if backend_name in FALLBACK_BACKENDS:
             token = self._decrypt_fallback(metadata)
             if metadata["native_cleanup_pending"]:
                 raise NativeRollbackError(
                     "native credential cleanup is pending"
                 )
             if include_native:
-                self._upgrade_fallback_to_native(token)
+                upgraded = self._upgrade_fallback_to_native(token)
+                if (
+                    not upgraded
+                    and backend_name == LOCAL_KEY_FALLBACK_BACKEND
+                ):
+                    self._upgrade_local_key_to_machine(token, metadata)
+            if include_native and backend_name == FALLBACK_BACKEND:
+                self._remove_unused_local_key()
             return token
         if backend_name == "native":
             expected = {"version", "backend", "provider", "service", "account"}
@@ -585,7 +770,9 @@ class CredentialStore:
                 raise NativeStoreUnavailable(
                     "the configured native credential provider is unavailable"
                 )
-            return backend.get()
+            token = backend.get()
+            self._remove_unused_local_key()
+            return token
         raise CredentialCorrupt("credential backend is unsupported")
 
     def _native_metadata(self, backend):
@@ -688,6 +875,33 @@ class CredentialStore:
                 "previous credential metadata could not be restored"
             )
 
+    def _persist_fallback_metadata(self, token, metadata, existing_metadata):
+        try:
+            self._write_metadata(metadata)
+            persisted_metadata = self._read_metadata()
+            if persisted_metadata != metadata:
+                raise CredentialStoreError(
+                    "encrypted credential metadata failed verification"
+                )
+            persisted_token = self._decrypt_fallback(persisted_metadata)
+            if not hmac.compare_digest(persisted_token, token):
+                raise CredentialStoreError(
+                    "the encrypted GitHub credential failed verification"
+                )
+        except Exception as exc:
+            try:
+                self._restore_primary_metadata(existing_metadata)
+            except Exception as rollback_exc:
+                raise CredentialStoreError(
+                    "encrypted credential metadata failed and the previous "
+                    "state could not be restored"
+                ) from rollback_exc
+            if isinstance(exc, CredentialStoreError):
+                raise
+            raise CredentialStoreError(
+                "encrypted credential metadata could not be persisted"
+            ) from exc
+
     def _store_native_transaction(
         self,
         backend,
@@ -765,13 +979,61 @@ class CredentialStore:
             )
         except NativeRollbackError:
             raise
-        except CredentialStoreError:
+        except CredentialStoreError as exc:
             # The authenticated fallback remains authoritative until every
             # native write and metadata step succeeds.
+            try:
+                pending_metadata = self._read_pending_document()
+            except CredentialStoreError as pending_exc:
+                raise NativeRollbackError(
+                    "native credential transaction status is uncertain"
+                ) from pending_exc
+            if pending_metadata is not None:
+                raise NativeRollbackError(
+                    "native credential transaction status is uncertain"
+                ) from exc
             return False
+        self._remove_unused_local_key()
         return True
 
-    def store(self, token, *, before_fallback=None):
+    def _upgrade_local_key_to_machine(self, token, existing_metadata):
+        try:
+            machine_id = self._validated_machine_id()
+        except NativeStoreUnavailable:
+            return False
+        metadata = self._fallback_metadata(
+            token,
+            backend=FALLBACK_BACKEND,
+            machine_id=machine_id,
+        )
+        try:
+            self._persist_fallback_metadata(
+                token,
+                metadata,
+                existing_metadata,
+            )
+        except CredentialStoreError as exc:
+            try:
+                restored_metadata = self._read_metadata()
+                restored_token = self._decrypt_fallback(restored_metadata)
+            except Exception:
+                raise exc
+            if (
+                restored_metadata == existing_metadata
+                and hmac.compare_digest(restored_token, token)
+            ):
+                return False
+            raise exc
+        self._remove_unused_local_key()
+        return True
+
+    def store(
+        self,
+        token,
+        *,
+        before_fallback=None,
+        before_local_fallback=None,
+    ):
         if not isinstance(token, str) or not token:
             raise CredentialStoreError("the GitHub credential is empty")
         if len(token.encode("utf-8")) > MAX_TOKEN_SIZE:
@@ -781,7 +1043,7 @@ class CredentialStore:
         existing_metadata = self._read_metadata()
         if existing_metadata is not None:
             existing_backend = existing_metadata.get("backend")
-            if existing_backend == FALLBACK_BACKEND:
+            if existing_backend in FALLBACK_BACKENDS:
                 self._decrypt_fallback(existing_metadata)
                 if existing_metadata["native_cleanup_pending"]:
                     raise NativeRollbackError(
@@ -797,24 +1059,41 @@ class CredentialStore:
         except NativeStoreUnavailable:
             if (
                 existing_metadata is not None
-                and existing_metadata.get("backend") != FALLBACK_BACKEND
+                and existing_metadata.get("backend") not in FALLBACK_BACKENDS
             ):
                 raise
+            if existing_metadata is None:
+                fallback_backend, machine_id = (
+                    self._select_new_fallback_backend()
+                )
+            elif existing_metadata["backend"] == LOCAL_KEY_FALLBACK_BACKEND:
+                fallback_backend, machine_id = (
+                    self._select_new_fallback_backend()
+                )
+            else:
+                fallback_backend = existing_metadata["backend"]
+                machine_id = None
             if before_fallback is not None:
                 before_fallback()
-            metadata = self._fallback_metadata(token)
-            try:
-                self._write_metadata(metadata)
-            except Exception as exc:
-                raise CredentialStoreError(
-                    "encrypted credential metadata could not be persisted"
-                ) from exc
-            if not hmac.compare_digest(self._decrypt_fallback(metadata), token):
-                raise CredentialStoreError(
-                    "the encrypted GitHub credential failed verification"
-                )
+            if (
+                fallback_backend == LOCAL_KEY_FALLBACK_BACKEND
+                and before_local_fallback is not None
+            ):
+                before_local_fallback()
+            metadata = self._fallback_metadata(
+                token,
+                backend=fallback_backend,
+                machine_id=machine_id,
+            )
+            self._persist_fallback_metadata(
+                token,
+                metadata,
+                existing_metadata,
+            )
+            if fallback_backend != LOCAL_KEY_FALLBACK_BACKEND:
+                self._remove_unused_local_key()
             return StoreResult(
-                backend=FALLBACK_BACKEND,
+                backend=fallback_backend,
                 degraded=True,
                 location=str(self.path),
             )
@@ -836,6 +1115,7 @@ class CredentialStore:
             previous_token,
             existing_metadata,
         )
+        self._remove_unused_local_key()
         return StoreResult(
             backend=backend.name,
             degraded=False,
@@ -870,18 +1150,27 @@ class CredentialStore:
                     f"{backend.name} did not verify GitHub credential deletion"
                 )
             marker_removed = self._remove_metadata()
+            key_removed = self._remove_local_key()
             pending_removed = self._remove_pending_metadata()
-            return native_removed or marker_removed or pending_removed
+            return (
+                native_removed
+                or marker_removed
+                or key_removed
+                or pending_removed
+            )
         try:
             metadata = self._read_metadata()
         except CredentialCorrupt:
             return self._delete_unusable_metadata()
         if metadata is None:
+            native_removed = False
             try:
-                return self._native_backend_factory().delete()
+                native_removed = self._native_backend_factory().delete()
             except NativeStoreUnavailable:
-                return False
-        if metadata.get("backend") == FALLBACK_BACKEND:
+                pass
+            key_removed = self._remove_local_key()
+            return native_removed or key_removed
+        if metadata.get("backend") in FALLBACK_BACKENDS:
             try:
                 self._decrypt_fallback(metadata)
             except CredentialCorrupt:
@@ -895,7 +1184,8 @@ class CredentialStore:
                     )
                 native_removed = False
             marker_removed = self._remove_metadata()
-            return native_removed or marker_removed
+            key_removed = self._remove_local_key()
+            return native_removed or marker_removed or key_removed
         expected = {"version", "backend", "provider", "service", "account"}
         if (
             metadata.get("backend") != "native"
@@ -914,7 +1204,8 @@ class CredentialStore:
             return self._delete_unusable_metadata(backend=backend)
         removed = backend.delete()
         marker_removed = self._remove_metadata()
-        return removed or marker_removed
+        key_removed = self._remove_local_key()
+        return removed or marker_removed or key_removed
 
     def _delete_corrupt_pending(self, metadata, marker_error):
         """Reset a damaged transaction marker only after verified cleanup."""
@@ -947,13 +1238,19 @@ class CredentialStore:
             ) from exc
         try:
             marker_removed = self._remove_metadata()
+            key_removed = self._remove_local_key()
             pending_removed = self._remove_pending_metadata()
         except CredentialStoreError as exc:
             raise CredentialCorrupt(
                 "native credential cleanup succeeded, but damaged transaction "
                 "metadata could not be reset"
             ) from exc
-        return native_removed or marker_removed or pending_removed
+        return (
+            native_removed
+            or marker_removed
+            or key_removed
+            or pending_removed
+        )
 
     def _delete_unusable_metadata(self, *, backend=None):
         """Reset unreadable metadata while best-effort cleaning fixed native state."""
@@ -970,9 +1267,10 @@ class CredentialStore:
             cleanup_error = exc
 
         marker_removed = self._remove_metadata()
+        key_removed = self._remove_local_key()
         if cleanup_error is not None:
             raise CredentialCorrupt(
                 "credential metadata was reset, but native cleanup could not "
                 "be verified"
             ) from cleanup_error
-        return native_removed or marker_removed
+        return native_removed or marker_removed or key_removed

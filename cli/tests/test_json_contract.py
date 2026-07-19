@@ -582,6 +582,39 @@ class JsonContractTests(unittest.TestCase):
         self.assertNotIn("token", abk.load_config())
         self.assertEqual("", stderr)
 
+    def test_json_local_key_fallback_reports_its_threat_boundary(self):
+        abk.save_config({"token": "legacy-token"})
+        client = ContractClient()
+        client.authentication_error = None
+
+        def native_unavailable():
+            raise abk.credential_store.NativeStoreUnavailable("not available")
+
+        store = abk.credential_store.CredentialStore(
+            abk.CONFIG_DIR,
+            native_backend_factory=native_unavailable,
+            machine_id_provider=lambda: b"",
+        )
+        with (
+            mock.patch.object(abk, "_credential_store", return_value=store),
+            mock.patch.object(abk, "make_client", return_value=client),
+        ):
+            exit_code, payload, stderr = self._run_main([
+                "abk", "--json", "whoami",
+            ])
+
+        self.assertEqual(0, exit_code)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(
+            {
+                "degraded_credential_storage",
+                "local_key_credential_storage",
+            },
+            {warning["code"] for warning in payload["warnings"]},
+        )
+        self.assertTrue(store.key_path.exists())
+        self.assertEqual("", stderr)
+
     def test_json_corrupt_credential_is_an_explicit_storage_error(self):
         store = abk._credential_store()
         store.directory.mkdir(parents=True)

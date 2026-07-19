@@ -524,6 +524,14 @@ def _warn_credential_fallback(args=None):
     print(f"{t('warning_prefix')} {message}", file=sys.stderr)
 
 
+def _warn_credential_local_key_fallback(args=None):
+    message = t("credential_local_key_warning")
+    if args is not None and getattr(args, "json", False) is True:
+        _add_runtime_warning(args, "local_key_credential_storage", message)
+        return
+    print(f"{t('warning_prefix')} {message}", file=sys.stderr)
+
+
 def _verify_legacy_credential_removed():
     if not CONFIG_FILE.exists():
         return
@@ -545,6 +553,7 @@ def _store_persisted_token(token, *, args=None):
         result = store.store(
             token,
             before_fallback=lambda: _warn_credential_fallback(args),
+            before_local_fallback=lambda: _warn_credential_local_key_fallback(args),
         )
         persisted = store.read(include_native=not result.degraded)
         if (

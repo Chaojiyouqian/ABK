@@ -1326,7 +1326,12 @@ class SecurityRegressionTests(unittest.TestCase):
                 self.token = None
                 return False
 
-            def store(self, token, before_fallback=None):
+            def store(
+                self,
+                token,
+                before_fallback=None,
+                before_local_fallback=None,
+            ):
                 store_started.set()
                 self.token = token
                 return abk.credential_store.StoreResult(
