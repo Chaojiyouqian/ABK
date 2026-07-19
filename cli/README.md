@@ -26,12 +26,13 @@ export PATH="$HOME/.local/bin:$PATH"
 sudo ln -sfn "$HOME/ABK/cli/abk.py" /usr/local/bin/abk
 ```
 
-产物签名与验证需要 `PyNaCl` 和一个 RSA 后端。推荐安装 `cryptography`；
-CLI 也兼容 `pycryptodome` / `pycryptodomex`：
+产物签名与验证需要 `PyNaCl` 和一个 RSA 后端，系统凭据集成需要
+`keyring`。推荐安装 `cryptography`；CLI 也兼容
+`pycryptodome` / `pycryptodomex`：
 
 ```bash
 python3 -m pip install -r ~/ABK/cli/requirements.txt
-# 或：python3 -m pip install pycryptodome PyNaCl certifi
+# 或：python3 -m pip install pycryptodome PyNaCl certifi keyring
 ```
 
 ## 配置 / Configuration
@@ -44,8 +45,20 @@ python3 -m pip install -r ~/ABK/cli/requirements.txt
 abk login
 ```
 
-会自动打开浏览器进行授权。Linux 默认保存到 `~/.config/abk/config.json`
-（遵循 `XDG_CONFIG_HOME`），Windows 保存到 `%APPDATA%\abk\config.json`。
+会自动打开浏览器进行授权。GitHub token 不会写入明文 `config.json`：
+
+- Windows 优先使用 Credential Manager；
+- macOS 优先使用 Keychain；
+- Linux 优先使用 Secret Service；
+- 系统凭据服务不可用时，CLI 会明确警告并使用机器绑定的 AES-256-GCM
+  降级存储。Linux/macOS 默认文件为 `~/.config/abk/credentials.json`
+  （遵循 `XDG_CONFIG_HOME`），Windows 为 `%APPDATA%\abk\credentials.json`。
+
+降级文件包含随机 seed 和密文，密钥由 seed 与本机稳定标识通过 HKDF
+派生。它不会保护拥有同一用户权限的本地攻击者，也不能直接迁移到另一台
+机器；恢复备份或机器标识变化后，请运行 `abk logout`，再重新登录。旧版
+`config.json` 中的明文 token 会在首次读取时自动迁移。环境变量和
+`--token` 仅用于当前进程，不会被持久化。
 
 首次构建会复用或初始化与 Android App 相同的 fork 签名 Secret、Release tag
 和公钥资产；CLI 本地只按仓库保存公钥，不保存 RSA 私钥。
