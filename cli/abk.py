@@ -595,6 +595,23 @@ def _read_persisted_token(
                         t("credential_migration_failed", error=exc)
                     ) from exc
                 return latest_token
+    credential_paths = (
+        CONFIG_DIR / credential_store.CREDENTIAL_FILE_NAME,
+        CONFIG_DIR / credential_store.CREDENTIAL_PENDING_FILE_NAME,
+    )
+    for credential_path in credential_paths:
+        try:
+            credential_path.lstat()
+            break
+        except FileNotFoundError:
+            continue
+        except OSError:
+            # Let the normal locked read report inaccessible state.
+            break
+    else:
+        # A logged-out, stateless invocation has no credential transaction to
+        # serialize. Avoid creating a lock directory just to return None.
+        return None
     if not migrate_legacy and not include_native:
         # Secret collection is best-effort and must not create or wait on the
         # config lock merely to render an error. Metadata writes are atomic,

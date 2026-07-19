@@ -213,6 +213,21 @@ class JsonContractTests(unittest.TestCase):
         self.assertEqual("whoami", payload["command"])
         self.assertEqual("", stderr)
 
+    def test_logged_out_whoami_does_not_create_a_config_lock(self):
+        with mock.patch.object(
+            abk,
+            "_config_process_lock",
+            side_effect=AssertionError("logged-out reads must remain stateless"),
+        ):
+            exit_code, payload, stderr = self._run_main([
+                "abk", "--json", "whoami",
+            ])
+
+        self.assertEqual(0, exit_code)
+        self.assertTrue(payload["ok"])
+        self.assertFalse(payload["loggedIn"])
+        self.assertEqual("", stderr)
+
     def test_explicit_repo_whoami_preserves_user_identity_for_user_token(self):
         client = mock.Mock()
         client.authentication_error = None
@@ -571,6 +586,21 @@ class JsonContractTests(unittest.TestCase):
         store = abk._credential_store()
         store.directory.mkdir(parents=True)
         store.path.write_text('{"version": 999}', encoding="utf-8")
+
+        exit_code, payload, stderr = self._run_main([
+            "abk", "--json", "whoami",
+        ])
+
+        self.assertEqual(1, exit_code)
+        self.assertFalse(payload["ok"])
+        self.assertEqual("credential_storage_failed", payload["errorCode"])
+        self.assertIn("abk logout", payload["error"])
+        self.assertEqual("", stderr)
+
+    def test_json_pending_only_credential_is_not_reported_as_logged_out(self):
+        store = abk._credential_store()
+        store.directory.mkdir(parents=True)
+        store.pending_path.write_text('{"version": 999}', encoding="utf-8")
 
         exit_code, payload, stderr = self._run_main([
             "abk", "--json", "whoami",
