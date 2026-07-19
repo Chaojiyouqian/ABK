@@ -1108,6 +1108,197 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(malformed_config, self.config_file.read_bytes())
 
+    def test_legacy_cleanup_failure_removes_new_secure_credential(self):
+        abk.save_config({"token": "legacy-token", "download_dir": "/tmp/out"})
+        with (
+            mock.patch.object(
+                abk,
+                "_native_credential_backend",
+                side_effect=abk.credential_store.NativeStoreUnavailable(
+                    "test backend unavailable"
+                ),
+            ),
+            mock.patch.object(
+                abk,
+                "save_config",
+                side_effect=OSError("read-only config"),
+            ),
+            contextlib.redirect_stderr(io.StringIO()),
+            self.assertRaisesRegex(
+                abk.credential_store.CredentialStoreError,
+                "legacy plaintext credential could not be removed",
+            ),
+        ):
+            abk._store_persisted_token("fresh-token")
+
+        store = abk._credential_store()
+        self.assertIsNone(store.read(include_native=False))
+        self.assertFalse(store.path.exists())
+        self.assertFalse(store.key_path.exists())
+        self.assertEqual("legacy-token", abk.load_config()["token"])
+
+    def test_legacy_cleanup_failure_restores_previous_secure_credential(self):
+        abk.save_config({"token": "legacy-token"})
+
+        class MemoryStore:
+            def __init__(self):
+                self.token = "previous-token"
+
+            def read(self, include_native=True):
+                return self.token
+
+            def store(self, token, **kwargs):
+                self.token = token
+                return abk.credential_store.StoreResult(
+                    backend="test-native",
+                    degraded=False,
+                    location="test-native",
+                )
+
+            def delete(self):
+                self.token = None
+                return True
+
+        store = MemoryStore()
+        with (
+            mock.patch.object(abk, "_credential_store", return_value=store),
+            mock.patch.object(
+                abk,
+                "save_config",
+                side_effect=OSError("read-only config"),
+            ),
+            self.assertRaises(abk.credential_store.CredentialStoreError),
+        ):
+            abk._store_persisted_token("fresh-token")
+
+        self.assertEqual("previous-token", store.token)
+        self.assertEqual("legacy-token", abk.load_config()["token"])
+
+    def test_lost_cleanup_response_restores_both_credential_states(self):
+        abk.save_config({"token": "legacy-token", "download_dir": "/tmp/out"})
+
+        class MemoryStore:
+            def __init__(self):
+                self.token = None
+
+            def read(self, include_native=True):
+                return self.token
+
+            def store(self, token, **kwargs):
+                self.token = token
+                return abk.credential_store.StoreResult(
+                    backend="test-native",
+                    degraded=False,
+                    location="test-native",
+                )
+
+            def delete(self):
+                self.token = None
+                return True
+
+        store = MemoryStore()
+        real_save_config = abk.save_config
+
+        def save_then_lose_response(config):
+            real_save_config(config)
+            raise OSError("lost save response")
+
+        with (
+            mock.patch.object(abk, "_credential_store", return_value=store),
+            mock.patch.object(
+                abk,
+                "save_config",
+                side_effect=save_then_lose_response,
+            ),
+            self.assertRaises(abk.credential_store.CredentialStoreError),
+        ):
+            abk._store_persisted_token("fresh-token")
+
+        self.assertIsNone(store.token)
+        self.assertEqual(
+            {"token": "legacy-token", "download_dir": "/tmp/out"},
+            abk.load_config(),
+        )
+
+    def test_config_rollback_failure_keeps_verified_secure_credential(self):
+        abk.save_config({"token": "legacy-token", "download_dir": "/tmp/out"})
+
+        class MemoryStore:
+            def __init__(self):
+                self.token = None
+
+            def read(self, include_native=True):
+                return self.token
+
+            def store(self, token, **kwargs):
+                self.token = token
+                return abk.credential_store.StoreResult(
+                    backend="test-native",
+                    degraded=False,
+                    location="test-native",
+                )
+
+            def delete(self):
+                self.token = None
+                return True
+
+        store = MemoryStore()
+        real_save_config = abk.save_config
+        save_calls = 0
+
+        def lose_cleanup_then_fail_rollback(config):
+            nonlocal save_calls
+            save_calls += 1
+            if save_calls == 1:
+                real_save_config(config)
+                raise OSError("lost cleanup response")
+            raise OSError("config rollback failed")
+
+        with (
+            mock.patch.object(abk, "_credential_store", return_value=store),
+            mock.patch.object(
+                abk,
+                "save_config",
+                side_effect=lose_cleanup_then_fail_rollback,
+            ),
+            self.assertRaisesRegex(
+                abk.credential_store.CredentialStoreError,
+                "legacy config rollback failed",
+            ),
+        ):
+            abk._store_persisted_token("fresh-token")
+
+        self.assertEqual("fresh-token", store.token)
+        self.assertNotIn("token", abk.load_config())
+
+    def test_legacy_cleanup_and_rollback_failures_are_combined(self):
+        abk.save_config({"token": "legacy-token"})
+        store = mock.Mock()
+        store.read.side_effect = [None, "fresh-token"]
+        store.store.return_value = abk.credential_store.StoreResult(
+            backend="test-native",
+            degraded=False,
+            location="test-native",
+        )
+        store.delete.side_effect = abk.credential_store.NativeStoreError(
+            "rollback backend unavailable"
+        )
+
+        with (
+            mock.patch.object(abk, "_credential_store", return_value=store),
+            mock.patch.object(
+                abk,
+                "save_config",
+                side_effect=OSError("read-only config"),
+            ),
+            self.assertRaisesRegex(
+                abk.credential_store.CredentialStoreError,
+                "legacy plaintext credential could not be removed; secure "
+                "credential rollback failed: rollback backend unavailable",
+            ),
+        ):
+            abk._store_persisted_token("fresh-token")
+
     def test_signing_metadata_rejects_invalid_environment_and_config_keys(self):
         config = {
             abk.SIGNING_STATE_CONFIG_KEY: {

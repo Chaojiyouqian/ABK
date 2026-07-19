@@ -535,6 +535,7 @@ class JsonContractTests(unittest.TestCase):
     def test_failed_legacy_migration_keeps_the_only_credential(self):
         abk.save_config({"token": "legacy-token", "download_dir": "/tmp/out"})
         failing_store = mock.Mock()
+        failing_store.read.return_value = None
         failing_store.store.side_effect = abk.credential_store.NativeStoreError(
             "credential store locked"
         )

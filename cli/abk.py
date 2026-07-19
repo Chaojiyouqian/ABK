@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import ssl
+import stat
 import sys
 import tempfile
 import threading
@@ -547,33 +548,150 @@ def _verify_legacy_credential_removed():
         )
 
 
+def _load_config_for_credential_cleanup():
+    try:
+        file_status = CONFIG_FILE.lstat()
+    except FileNotFoundError:
+        return {}
+    except OSError as exc:
+        raise credential_store.CredentialStoreError(
+            "legacy credential configuration could not be inspected"
+        ) from exc
+    if not stat.S_ISREG(file_status.st_mode):
+        raise credential_store.CredentialStoreError(
+            "legacy credential configuration is not a regular file"
+        )
+    try:
+        config = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise credential_store.CredentialStoreError(
+            "legacy credential configuration is unreadable or malformed"
+        ) from exc
+    if not isinstance(config, dict):
+        raise credential_store.CredentialStoreError(
+            "legacy credential configuration is invalid"
+        )
+    return config
+
+
+def _restore_legacy_config(original_config):
+    try:
+        if _load_config_for_credential_cleanup() == original_config:
+            return
+    except credential_store.CredentialStoreError:
+        pass
+
+    save_error = None
+    try:
+        save_config(original_config)
+    except OSError as exc:
+        save_error = exc
+    try:
+        restored = _load_config_for_credential_cleanup()
+    except credential_store.CredentialStoreError as exc:
+        raise credential_store.CredentialStoreError(
+            "legacy credential configuration rollback could not be verified"
+        ) from (save_error or exc)
+    if restored != original_config:
+        raise credential_store.CredentialStoreError(
+            "legacy credential configuration rollback did not restore its "
+            "previous value"
+        ) from save_error
+
+
+def _rollback_secure_credential(store, previous_token, *, args=None):
+    try:
+        if previous_token is None:
+            store.delete()
+            restored = store.read()
+            if restored is not None:
+                raise credential_store.CredentialStoreError(
+                    "the newly stored secure credential is still present"
+                )
+            return
+
+        result = store.store(
+            previous_token,
+            before_fallback=lambda: _warn_credential_fallback(args),
+            before_local_fallback=lambda: _warn_credential_local_key_fallback(args),
+            allow_recovery=True,
+        )
+        restored = store.read(include_native=not result.degraded)
+        if (
+            not isinstance(restored, str)
+            or not hmac.compare_digest(restored, previous_token)
+        ):
+            raise credential_store.CredentialStoreError(
+                "the previous secure credential failed restoration verification"
+            )
+    except credential_store.CredentialStoreError:
+        raise
+    except Exception as exc:
+        raise credential_store.CredentialStoreError(
+            "the secure credential rollback could not be completed"
+        ) from exc
+
+
 def _store_persisted_token(token, *, args=None, allow_recovery=False):
     with _config_process_lock():
+        config = load_config()
+        legacy_token_present = "token" in config
+        if legacy_token_present:
+            config = _load_config_for_credential_cleanup()
+        original_config = dict(config)
         store = _credential_store()
+        previous_token = None
+        if legacy_token_present:
+            previous_token = store.read()
+            if previous_token is not None and not isinstance(previous_token, str):
+                raise credential_store.CredentialStoreError(
+                    "the previous secure credential is invalid"
+                )
         result = store.store(
             token,
             before_fallback=lambda: _warn_credential_fallback(args),
             before_local_fallback=lambda: _warn_credential_local_key_fallback(args),
             allow_recovery=allow_recovery,
         )
-        persisted = store.read(include_native=not result.degraded)
-        if (
-            not isinstance(persisted, str)
-            or not hmac.compare_digest(persisted, token)
-        ):
-            raise credential_store.CredentialStoreError(
-                "the stored GitHub credential failed disk verification"
-            )
-        config = load_config()
-        if "token" in config:
-            config.pop("token", None)
-            try:
-                save_config(config)
-            except OSError as exc:
+        try:
+            persisted = store.read(include_native=not result.degraded)
+            if (
+                not isinstance(persisted, str)
+                or not hmac.compare_digest(persisted, token)
+            ):
                 raise credential_store.CredentialStoreError(
-                    "legacy plaintext credential could not be removed"
-                ) from exc
-            _verify_legacy_credential_removed()
+                    "the stored GitHub credential failed disk verification"
+                )
+            if legacy_token_present:
+                config.pop("token", None)
+                try:
+                    save_config(config)
+                except OSError as exc:
+                    raise credential_store.CredentialStoreError(
+                        "legacy plaintext credential could not be removed"
+                    ) from exc
+                _verify_legacy_credential_removed()
+        except credential_store.CredentialStoreError as operation_error:
+            if legacy_token_present:
+                try:
+                    _restore_legacy_config(original_config)
+                except credential_store.CredentialStoreError as config_error:
+                    raise credential_store.CredentialStoreError(
+                        f"{operation_error}; legacy config rollback failed: "
+                        f"{config_error}"
+                    ) from operation_error
+                try:
+                    _rollback_secure_credential(
+                        store,
+                        previous_token,
+                        args=args,
+                    )
+                except credential_store.CredentialStoreError as rollback_error:
+                    raise credential_store.CredentialStoreError(
+                        f"{operation_error}; secure credential rollback failed: "
+                        f"{rollback_error}"
+                    ) from operation_error
+            raise
         return result
 
 
