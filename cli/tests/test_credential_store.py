@@ -59,6 +59,59 @@ class CredentialStoreTests(unittest.TestCase):
             machine_id_provider=machine_id_provider or (lambda: b""),
         )
 
+    def _write_legacy_machine_fixture(self, store):
+        store.directory.mkdir(parents=True, exist_ok=True)
+        store.path.write_text(
+            json.dumps({
+                "version": 1,
+                "backend": "machine-bound-aes-gcm",
+                "native_cleanup_pending": False,
+                "kdf": "hkdf-sha256",
+                "cipher": "aes-256-gcm",
+                "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+                "nonce": "AAECAwQFBgcICQoL",
+                "ciphertext": "8hJW3Sq/1FkVlvOSjDjitQ==",
+                "tag": "G+EVrGVUymc/VoyYuvLGQw==",
+            }),
+            encoding="utf-8",
+        )
+
+    def _write_legacy_local_key_fixture(self, store):
+        store._write_json_file(
+            store.key_path,
+            {
+                "version": 1,
+                "kind": "local-credential-master-key",
+                "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+            },
+            prefix=".credential-key-",
+        )
+        store._write_metadata({
+            "version": 1,
+            "backend": "local-key-aes-gcm",
+            "native_cleanup_pending": False,
+            "kdf": "hkdf-sha256",
+            "cipher": "aes-256-gcm",
+            "seed": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=",
+            "nonce": "AAECAwQFBgcICQoL",
+            "ciphertext": "4JTmQokAnSHLIB5Fv1GcVT3M",
+            "tag": "cdV5GPM/FQ/eEazChb0RjA==",
+        })
+
+    def _write_legacy_pending_machine_fixture(self, store):
+        store._write_metadata({
+            "version": 1,
+            "backend": "machine-bound-aes-gcm",
+            "native_cleanup_pending": True,
+            "native_cleanup_provider": "test-native",
+            "kdf": "hkdf-sha256",
+            "cipher": "aes-256-gcm",
+            "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+            "nonce": "AAECAwQFBgcICQoL",
+            "ciphertext": "7gVUkSqumEcXnbqPjTSqr0od+gY=",
+            "tag": "iAJG2lP9vOvUr8LtZBi8Rw==",
+        })
+
     def test_native_backend_is_preferred_and_verified(self):
         backend = FakeNativeBackend()
         store = credential_store.CredentialStore(
@@ -92,7 +145,7 @@ class CredentialStoreTests(unittest.TestCase):
 
         self.assertTrue(store.key_path.exists())
 
-    def test_machine_bound_fallback_round_trips_without_plaintext(self):
+    def test_machine_bound_v2_requires_a_separate_secret_key(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")
         store = self._fallback_store()
@@ -105,37 +158,145 @@ class CredentialStoreTests(unittest.TestCase):
         raw = store.path.read_text(encoding="utf-8")
         self.assertNotIn("github-token", raw)
         metadata = json.loads(raw)
+        self.assertEqual(
+            credential_store.CREDENTIAL_FALLBACK_FORMAT_VERSION,
+            metadata["version"],
+        )
         self.assertFalse(metadata["native_cleanup_pending"])
         self.assertEqual(32, len(base64.b64decode(metadata["seed"])))
         self.assertEqual(12, len(base64.b64decode(metadata["nonce"])))
         self.assertEqual(16, len(base64.b64decode(metadata["tag"])))
+        self.assertTrue(store.key_path.exists())
+        self.assertNotIn(
+            "github-token",
+            store.key_path.read_text(encoding="utf-8"),
+        )
         if os.name != "nt":
             self.assertEqual(0o700, self.directory.stat().st_mode & 0o777)
             self.assertEqual(0o600, store.path.stat().st_mode & 0o777)
-        self.assertFalse(store.key_path.exists())
+            self.assertEqual(0o600, store.key_path.stat().st_mode & 0o777)
+
+        copied = credential_store.CredentialStore(
+            Path(self.temp_dir.name) / "copied-config",
+            native_backend_factory=self._unavailable,
+            machine_id_provider=lambda: self.machine_id,
+        )
+        copied._write_metadata(metadata)
+
+        with self.assertRaises(credential_store.CredentialCorrupt):
+            copied.read(include_native=False)
 
     def test_prechange_machine_bound_v1_fixture_remains_readable(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")
         store = self._fallback_store(b"linux:compat-machine-id")
-        store.directory.mkdir(parents=True)
-        store.path.write_text(
-            json.dumps({
-                "version": 1,
-                "backend": "machine-bound-aes-gcm",
-                "native_cleanup_pending": False,
-                "kdf": "hkdf-sha256",
-                "cipher": "aes-256-gcm",
-                "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
-                "nonce": "AAECAwQFBgcICQoL",
-                "ciphertext": "8hJW3Sq/1FkVlvOSjDjitQ==",
-                "tag": "G+EVrGVUymc/VoyYuvLGQw==",
-            }),
-            encoding="utf-8",
-        )
+        self._write_legacy_machine_fixture(store)
 
         self.assertEqual("pre-change-token", store.read(include_native=False))
         self.assertFalse(store.key_path.exists())
+
+    def test_legacy_machine_v1_migrates_to_secret_backed_v2(self):
+        if credential_store._AES_BACKEND is None:
+            self.skipTest("AES-GCM backend unavailable")
+        store = self._fallback_store(b"linux:compat-machine-id")
+        self._write_legacy_machine_fixture(store)
+
+        self.assertEqual("pre-change-token", store.read())
+
+        metadata = json.loads(store.path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            credential_store.CREDENTIAL_FALLBACK_FORMAT_VERSION,
+            metadata["version"],
+        )
+        self.assertEqual(credential_store.FALLBACK_BACKEND, metadata["backend"])
+        self.assertTrue(store.key_path.exists())
+        self.assertEqual("pre-change-token", store.read(include_native=False))
+
+    def test_provider_bound_legacy_machine_v1_migrates_without_native_access(self):
+        if credential_store._AES_BACKEND is None:
+            self.skipTest("AES-GCM backend unavailable")
+        backend_factory = mock.Mock(
+            side_effect=AssertionError("migration must not access native storage")
+        )
+        store = credential_store.CredentialStore(
+            self.directory,
+            native_backend_factory=backend_factory,
+            machine_id_provider=lambda: b"linux:compat-machine-id",
+        )
+        self._write_legacy_pending_machine_fixture(store)
+
+        self.assertEqual("legacy-pending-token", store.read())
+
+        backend_factory.assert_not_called()
+        metadata = json.loads(store.path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            credential_store.CREDENTIAL_FALLBACK_FORMAT_VERSION,
+            metadata["version"],
+        )
+        self.assertTrue(metadata["native_cleanup_pending"])
+        self.assertEqual("test-native", metadata["native_cleanup_provider"])
+        self.assertTrue(store.key_path.exists())
+        self.assertEqual(
+            "legacy-pending-token",
+            store.read(include_native=False),
+        )
+
+    def test_failed_legacy_machine_migration_preserves_v1_record(self):
+        if credential_store._AES_BACKEND is None:
+            self.skipTest("AES-GCM backend unavailable")
+        store = self._fallback_store(b"linux:compat-machine-id")
+        self._write_legacy_machine_fixture(store)
+        metadata_before = store.path.read_bytes()
+
+        with mock.patch.object(
+            store,
+            "_write_metadata",
+            side_effect=OSError("read-only filesystem"),
+        ):
+            self.assertEqual("pre-change-token", store.read())
+
+        self.assertEqual(metadata_before, store.path.read_bytes())
+        self.assertFalse(store.key_path.exists())
+        self.assertEqual(
+            "pre-change-token",
+            store.read(include_native=False),
+        )
+
+    def test_legacy_local_key_v1_fixture_remains_readable(self):
+        if credential_store._AES_BACKEND is None:
+            self.skipTest("AES-GCM backend unavailable")
+        store = self._local_fallback_store()
+        self._write_legacy_local_key_fixture(store)
+
+        self.assertEqual(
+            "legacy-local-token",
+            store.read(include_native=False),
+        )
+
+    def test_legacy_local_key_v1_migrates_to_machine_bound_v2(self):
+        if credential_store._AES_BACKEND is None:
+            self.skipTest("AES-GCM backend unavailable")
+        store = credential_store.CredentialStore(
+            self.directory,
+            native_backend_factory=self._unavailable,
+            machine_id_provider=lambda: self.machine_id,
+        )
+        self._write_legacy_local_key_fixture(store)
+        key_before = store.key_path.read_bytes()
+
+        self.assertEqual("legacy-local-token", store.read())
+
+        metadata = json.loads(store.path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            credential_store.CREDENTIAL_FALLBACK_FORMAT_VERSION,
+            metadata["version"],
+        )
+        self.assertEqual(credential_store.FALLBACK_BACKEND, metadata["backend"])
+        self.assertEqual(key_before, store.key_path.read_bytes())
+        self.assertEqual(
+            "legacy-local-token",
+            store.read(include_native=False),
+        )
 
     @unittest.skipIf(os.name == "nt", "POSIX permissions only")
     def test_read_repairs_restored_fallback_permissions(self):
@@ -145,11 +306,13 @@ class CredentialStoreTests(unittest.TestCase):
         store.store("github-token")
         self.directory.chmod(0o755)
         store.path.chmod(0o644)
+        store.key_path.chmod(0o644)
 
         self.assertEqual("github-token", store.read())
 
         self.assertEqual(0o700, self.directory.stat().st_mode & 0o777)
         self.assertEqual(0o600, store.path.stat().st_mode & 0o777)
+        self.assertEqual(0o600, store.key_path.stat().st_mode & 0o777)
 
     def test_fallback_notice_runs_before_persistence(self):
         if credential_store._AES_BACKEND is None:
@@ -170,12 +333,14 @@ class CredentialStoreTests(unittest.TestCase):
         store = self._fallback_store()
         store.store("first-token")
         first = json.loads(store.path.read_text(encoding="utf-8"))
+        master_key = store.key_path.read_bytes()
 
         store.store("second-token")
         second = json.loads(store.path.read_text(encoding="utf-8"))
 
         self.assertNotEqual(first["seed"], second["seed"])
         self.assertNotEqual(first["nonce"], second["nonce"])
+        self.assertEqual(master_key, store.key_path.read_bytes())
         self.assertEqual("second-token", store.read())
 
     def test_machine_identifier_change_fails_closed(self):
@@ -324,6 +489,11 @@ class CredentialStoreTests(unittest.TestCase):
         key_document = store.key_path.read_text(encoding="utf-8")
         self.assertNotIn("github-token", credential_document + key_document)
         key_metadata = json.loads(key_document)
+        metadata = json.loads(credential_document)
+        self.assertEqual(
+            credential_store.CREDENTIAL_FALLBACK_FORMAT_VERSION,
+            metadata["version"],
+        )
         self.assertEqual({"version", "kind", "key"}, set(key_metadata))
         self.assertEqual(
             32,
@@ -405,6 +575,81 @@ class CredentialStoreTests(unittest.TestCase):
 
         self.assertEqual(metadata_before, store.path.read_bytes())
         self.assertEqual(wrong_key, store.key_path.read_bytes())
+
+    def test_machine_v2_missing_key_cannot_use_verified_recovery(self):
+        if credential_store._AES_BACKEND is None:
+            self.skipTest("AES-GCM backend unavailable")
+        store = self._fallback_store()
+        store.store("github-token")
+        metadata_before = store.path.read_bytes()
+        store.key_path.unlink()
+        store._machine_id_provider = lambda: b""
+
+        with self.assertRaises(credential_store.CredentialCorrupt):
+            store.read(include_native=False)
+        with self.assertRaises(credential_store.CredentialCorrupt):
+            store.store("verified-token", allow_recovery=True)
+
+        self.assertEqual(metadata_before, store.path.read_bytes())
+        self.assertFalse(store.key_path.exists())
+
+    def test_machine_v2_wrong_key_cannot_use_verified_recovery(self):
+        if credential_store._AES_BACKEND is None:
+            self.skipTest("AES-GCM backend unavailable")
+        store = self._fallback_store()
+        store.store("github-token")
+        metadata_before = store.path.read_bytes()
+        key_metadata = json.loads(store.key_path.read_text(encoding="utf-8"))
+        key_metadata["key"] = base64.b64encode(os.urandom(32)).decode("ascii")
+        store.key_path.write_text(json.dumps(key_metadata), encoding="utf-8")
+        wrong_key = store.key_path.read_bytes()
+        store._machine_id_provider = lambda: b""
+
+        with self.assertRaises(credential_store.CredentialCorrupt):
+            store.read(include_native=False)
+        with self.assertRaises(credential_store.CredentialCorrupt):
+            store.store("verified-token", allow_recovery=True)
+
+        self.assertEqual(metadata_before, store.path.read_bytes())
+        self.assertEqual(wrong_key, store.key_path.read_bytes())
+
+    def test_machine_v2_master_key_identifier_is_authenticated(self):
+        if credential_store._AES_BACKEND is None:
+            self.skipTest("AES-GCM backend unavailable")
+        store = self._fallback_store()
+        store.store("github-token")
+        metadata = json.loads(store.path.read_text(encoding="utf-8"))
+        metadata["key_id"] = base64.b64encode(os.urandom(32)).decode("ascii")
+        store.path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        with self.assertRaises(credential_store.CredentialCorrupt):
+            store.read(include_native=False)
+
+    def test_v2_records_cannot_be_downgraded_to_v1(self):
+        if credential_store._AES_BACKEND is None:
+            self.skipTest("AES-GCM backend unavailable")
+        cases = (
+            ("machine", lambda: self.machine_id),
+            ("local", lambda: b""),
+        )
+        for name, machine_id_provider in cases:
+            with self.subTest(backend=name):
+                directory = Path(self.temp_dir.name) / f"downgrade-{name}"
+                store = credential_store.CredentialStore(
+                    directory,
+                    native_backend_factory=self._unavailable,
+                    machine_id_provider=machine_id_provider,
+                )
+                store.store("github-token")
+                metadata = json.loads(
+                    store.path.read_text(encoding="utf-8")
+                )
+                metadata["version"] = credential_store.CREDENTIAL_FORMAT_VERSION
+                metadata.pop("key_id")
+                store.path.write_text(json.dumps(metadata), encoding="utf-8")
+
+                with self.assertRaises(credential_store.CredentialCorrupt):
+                    store.read(include_native=False)
 
     def test_local_backend_field_tampering_is_authenticated(self):
         if credential_store._AES_BACKEND is None:
@@ -521,7 +766,7 @@ class CredentialStoreTests(unittest.TestCase):
         self.assertEqual(key_before, store.key_path.read_bytes())
         self.assertEqual("old-token", store.read())
 
-    def test_local_fallback_upgrades_when_machine_identifier_appears(self):
+    def test_local_fallback_adds_machine_binding_without_dropping_secret(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")
         machine_id = None
@@ -534,16 +779,21 @@ class CredentialStoreTests(unittest.TestCase):
         store = self._local_fallback_store(machine_id_provider)
         store.store("github-token")
         self.assertTrue(store.key_path.exists())
+        key_before = store.key_path.read_bytes()
         machine_id = self.machine_id
 
         self.assertEqual("github-token", store.read())
 
         metadata = json.loads(store.path.read_text(encoding="utf-8"))
         self.assertEqual(credential_store.FALLBACK_BACKEND, metadata["backend"])
-        self.assertFalse(store.key_path.exists())
+        self.assertEqual(
+            credential_store.CREDENTIAL_FALLBACK_FORMAT_VERSION,
+            metadata["version"],
+        )
+        self.assertEqual(key_before, store.key_path.read_bytes())
         self.assertEqual("github-token", store.read())
 
-    def test_machine_read_retries_orphan_key_cleanup_after_upgrade(self):
+    def test_machine_binding_upgrade_never_removes_required_secret(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")
         machine_id = None
@@ -560,20 +810,19 @@ class CredentialStoreTests(unittest.TestCase):
         with mock.patch.object(
             store,
             "_remove_local_key",
-            side_effect=credential_store.CredentialStoreError(
-                "temporary cleanup failure"
-            ),
-        ):
+            side_effect=AssertionError("required key must not be removed"),
+        ) as remove_key:
             self.assertEqual("github-token", store.read())
 
         metadata = json.loads(store.path.read_text(encoding="utf-8"))
         self.assertEqual(credential_store.FALLBACK_BACKEND, metadata["backend"])
         self.assertTrue(store.key_path.exists())
+        remove_key.assert_not_called()
 
         self.assertEqual("github-token", store.read())
-        self.assertFalse(store.key_path.exists())
+        self.assertTrue(store.key_path.exists())
 
-    def test_stateless_machine_read_never_cleans_an_orphan_key(self):
+    def test_machine_fallback_read_never_removes_required_secret(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")
         store = self._fallback_store()
@@ -584,7 +833,7 @@ class CredentialStoreTests(unittest.TestCase):
         self.assertTrue(store.key_path.exists())
 
         self.assertEqual("github-token", store.read())
-        self.assertFalse(store.key_path.exists())
+        self.assertTrue(store.key_path.exists())
 
     def test_local_fallback_upgrades_when_native_storage_appears(self):
         if credential_store._AES_BACKEND is None:
@@ -810,7 +1059,7 @@ class CredentialStoreTests(unittest.TestCase):
             store.store("replacement-token")
 
         self.assertEqual(metadata_before, store.path.read_bytes())
-        self.assertFalse(store.key_path.exists())
+        self.assertTrue(store.key_path.exists())
 
         with self.assertRaises(credential_store.CredentialCorrupt):
             store.delete()
@@ -872,7 +1121,7 @@ class CredentialStoreTests(unittest.TestCase):
             store.store("fresh-token", allow_recovery=True)
 
         self.assertEqual(metadata_before, store.path.read_bytes())
-        self.assertFalse(store.key_path.exists())
+        self.assertTrue(store.key_path.exists())
 
     def test_failed_machine_recovery_preserves_old_record_for_retry(self):
         if credential_store._AES_BACKEND is None:
@@ -1101,6 +1350,7 @@ class CredentialStoreTests(unittest.TestCase):
         self.assertIsNone(backend.token)
         metadata = json.loads(store.path.read_text(encoding="utf-8"))
         self.assertEqual(credential_store.FALLBACK_BACKEND, metadata["backend"])
+        self.assertTrue(store.key_path.exists())
 
     def test_failed_native_rollback_leaves_write_ahead_cleanup_state(self):
         class RollbackFailureBackend(FakeNativeBackend):
@@ -1522,6 +1772,7 @@ class CredentialStoreTests(unittest.TestCase):
         metadata = json.loads(store.path.read_text(encoding="utf-8"))
         self.assertEqual("native", metadata["backend"])
         self.assertEqual("github-token", backend.token)
+        self.assertFalse(store.key_path.exists())
 
     def test_clean_fallback_delete_does_not_guess_native_provider(self):
         if credential_store._AES_BACKEND is None:
@@ -1537,6 +1788,50 @@ class CredentialStoreTests(unittest.TestCase):
         backend_factory.assert_not_called()
         self.assertEqual("stale-native-token", backend.token)
         self.assertFalse(backend.deleted)
+        self.assertFalse(store.path.exists())
+
+    def test_clean_legacy_machine_logout_does_not_guess_native_provider(self):
+        backend = FakeNativeBackend("unrelated-token")
+        backend_factory = mock.Mock(return_value=backend)
+        store = credential_store.CredentialStore(
+            self.directory,
+            native_backend_factory=backend_factory,
+            machine_id_provider=lambda: b"linux:compat-machine-id",
+        )
+        self._write_legacy_machine_fixture(store)
+
+        self.assertTrue(store.delete())
+
+        backend_factory.assert_not_called()
+        self.assertEqual("unrelated-token", backend.token)
+        self.assertFalse(backend.deleted)
+        self.assertFalse(store.path.exists())
+
+    def test_legacy_deferred_logout_requires_the_recorded_native_provider(self):
+        recorded_backend = FakeNativeBackend("stale-native-token")
+
+        class DifferentBackend(FakeNativeBackend):
+            name = "different-native"
+
+        different_backend = DifferentBackend("unrelated-token")
+        store = credential_store.CredentialStore(
+            self.directory,
+            native_backend_factory=lambda: different_backend,
+            machine_id_provider=lambda: b"linux:compat-machine-id",
+        )
+        self._write_legacy_pending_machine_fixture(store)
+
+        with self.assertRaises(credential_store.NativeStoreUnavailable):
+            store.delete()
+
+        self.assertEqual("unrelated-token", different_backend.token)
+        self.assertFalse(different_backend.deleted)
+        self.assertEqual("stale-native-token", recorded_backend.token)
+        self.assertTrue(store.path.exists())
+
+        store._native_backend_factory = lambda: recorded_backend
+        self.assertTrue(store.delete())
+        self.assertIsNone(recorded_backend.token)
         self.assertFalse(store.path.exists())
 
     def test_delete_without_marker_only_removes_orphaned_local_key(self):
@@ -1687,6 +1982,7 @@ class CredentialStoreTests(unittest.TestCase):
             backend.name,
             metadata["native_cleanup_provider"],
         )
+        self.assertTrue(store.key_path.exists())
         self.assertEqual("fresh-token", store.read(include_native=False))
         self.assertEqual("fresh-token", store.read())
 
@@ -1712,6 +2008,7 @@ class CredentialStoreTests(unittest.TestCase):
         self.assertEqual("newest-token", store.read())
         metadata = json.loads(store.path.read_text(encoding="utf-8"))
         self.assertEqual("native", metadata["backend"])
+        self.assertFalse(store.key_path.exists())
 
     def test_verified_login_uses_local_fallback_for_deferred_native_cleanup(self):
         if credential_store._AES_BACKEND is None:
@@ -1781,7 +2078,7 @@ class CredentialStoreTests(unittest.TestCase):
 
         self.assertEqual(metadata_before, store.path.read_bytes())
         self.assertEqual("old-token", backend.token)
-        self.assertFalse(store.key_path.exists())
+        self.assertTrue(store.key_path.exists())
 
     def test_deferred_cleanup_never_touches_a_different_native_provider(self):
         if credential_store._AES_BACKEND is None:
@@ -2004,6 +2301,43 @@ class CredentialStoreTests(unittest.TestCase):
         )
         self.assertNotEqual(first, second)
 
+        master_key = bytes(range(32))
+        seed = bytes(range(32, 64))
+        machine_key = credential_store._machine_key_hkdf_sha256(
+            master_key,
+            seed,
+            b"linux:test-machine-id",
+        )
+        local_key = credential_store._local_key_v2_hkdf_sha256(
+            master_key,
+            seed,
+        )
+        self.assertEqual(
+            "5db4e371a81e1383d05be12148f919c77b1eff53dca9212f1c64fc2e4058b606",
+            machine_key.hex(),
+        )
+        self.assertEqual(
+            "a9d0b7068a628bdb4b440bb6d5caeb7dc66b718c21b084128d5dfabe930a6102",
+            local_key.hex(),
+        )
+        self.assertNotEqual(machine_key, local_key)
+        self.assertNotEqual(
+            machine_key,
+            credential_store._machine_key_hkdf_sha256(
+                master_key,
+                seed,
+                b"linux:different-machine-id",
+            ),
+        )
+        self.assertNotEqual(
+            machine_key,
+            credential_store._machine_key_hkdf_sha256(
+                bytes(reversed(master_key)),
+                seed,
+                b"linux:test-machine-id",
+            ),
+        )
+
     def test_aes_gcm_self_test_exercises_selected_backend(self):
         if credential_store._AES_BACKEND is None:
             with self.assertRaises(credential_store.CredentialStoreError):
@@ -2014,7 +2348,7 @@ class CredentialStoreTests(unittest.TestCase):
                 credential_store.aes_gcm_self_test(),
             )
 
-    def test_pycryptodome_aes_gcm_fallback_round_trips(self):
+    def test_v2_fallback_is_cross_compatible_with_pycryptodome(self):
         try:
             from Cryptodome.Cipher import AES as fallback_aes
             backend_name = "pycryptodomex"
@@ -2025,13 +2359,44 @@ class CredentialStoreTests(unittest.TestCase):
             except ImportError:
                 self.skipTest("PyCryptodome unavailable")
         store = self._fallback_store()
+        store.store("default-backend-token")
 
         with (
             mock.patch.object(credential_store, "_AES_BACKEND", backend_name),
             mock.patch.object(credential_store, "_PYAES", fallback_aes),
         ):
-            store.store("github-token")
-            self.assertEqual("github-token", store.read())
+            self.assertEqual(
+                "default-backend-token",
+                store.read(include_native=False),
+            )
+            store.store("pycryptodome-token")
+
+        self.assertEqual(
+            "pycryptodome-token",
+            store.read(include_native=False),
+        )
+
+    def test_pycryptodome_reads_legacy_machine_v1_fixture(self):
+        try:
+            from Cryptodome.Cipher import AES as fallback_aes
+            backend_name = "pycryptodomex"
+        except ImportError:
+            try:
+                from Crypto.Cipher import AES as fallback_aes
+                backend_name = "pycryptodome"
+            except ImportError:
+                self.skipTest("PyCryptodome unavailable")
+        store = self._fallback_store(b"linux:compat-machine-id")
+        self._write_legacy_machine_fixture(store)
+
+        with (
+            mock.patch.object(credential_store, "_AES_BACKEND", backend_name),
+            mock.patch.object(credential_store, "_PYAES", fallback_aes),
+        ):
+            self.assertEqual(
+                "pre-change-token",
+                store.read(include_native=False),
+            )
 
     def test_pycryptodome_local_key_fallback_round_trips(self):
         try:

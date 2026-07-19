@@ -44,6 +44,7 @@ CREDENTIAL_FILE_NAME = "credentials.json"
 CREDENTIAL_PENDING_FILE_NAME = "credentials.pending.json"
 CREDENTIAL_KEY_FILE_NAME = "credentials.key"
 CREDENTIAL_FORMAT_VERSION = 1
+CREDENTIAL_FALLBACK_FORMAT_VERSION = 2
 CREDENTIAL_KEY_FORMAT_VERSION = 1
 CREDENTIAL_SERVICE = "ABK CLI"
 CREDENTIAL_ACCOUNT = "github.com"
@@ -62,9 +63,19 @@ _NONCE_SIZE = 12
 _TAG_SIZE = 16
 _HKDF_INFO = b"abk-cli/github-token/key/v1"
 _LOCAL_KEY_HKDF_INFO = b"abk-cli/github-token/local-key/v1"
+_MACHINE_KEY_HKDF_INFO = b"abk-cli/github-token/machine-local-key/v2"
+_LOCAL_KEY_V2_HKDF_INFO = b"abk-cli/github-token/local-key/v2"
+_MASTER_KEY_ID_CONTEXT = b"abk-cli/github-token/master-key-id/v2"
 _AAD = b"abk-cli|github.com|credential|v1|hkdf-sha256|aes-256-gcm"
 _LOCAL_KEY_AAD = (
     b"abk-cli|github.com|credential|local-key|v1|hkdf-sha256|aes-256-gcm"
+)
+_MACHINE_KEY_AAD = (
+    b"abk-cli|github.com|credential|machine-local-key|v2|"
+    b"hkdf-sha256|aes-256-gcm"
+)
+_LOCAL_KEY_V2_AAD = (
+    b"abk-cli|github.com|credential|local-key|v2|hkdf-sha256|aes-256-gcm"
 )
 
 
@@ -277,7 +288,7 @@ def _hkdf_sha256(seed, machine_id, length=32):
 
 
 def _local_key_hkdf_sha256(master_key, seed, length=32):
-    """Derive a record key from a separately stored random master key."""
+    """Derive a legacy v1 record key from a separate random master key."""
     salt = hashlib.sha256(b"abk-cli/local-key/v1\0" + seed).digest()
     pseudorandom_key = hmac.new(salt, master_key, hashlib.sha256).digest()
     output = b""
@@ -292,6 +303,53 @@ def _local_key_hkdf_sha256(master_key, seed, length=32):
         output += previous
         counter += 1
     return output[:length]
+
+
+def _machine_key_hkdf_sha256(master_key, seed, machine_id, length=32):
+    """Derive a v2 record key from a secret master and machine binding."""
+    salt = hashlib.sha256(
+        b"abk-cli/machine-local-key/v2\0" + machine_id + b"\0" + seed
+    ).digest()
+    pseudorandom_key = hmac.new(salt, master_key, hashlib.sha256).digest()
+    output = b""
+    previous = b""
+    counter = 1
+    while len(output) < length:
+        previous = hmac.new(
+            pseudorandom_key,
+            previous + _MACHINE_KEY_HKDF_INFO + bytes((counter,)),
+            hashlib.sha256,
+        ).digest()
+        output += previous
+        counter += 1
+    return output[:length]
+
+
+def _local_key_v2_hkdf_sha256(master_key, seed, length=32):
+    """Derive a v2 record key without a machine identifier."""
+    salt = hashlib.sha256(b"abk-cli/local-key/v2\0" + seed).digest()
+    pseudorandom_key = hmac.new(salt, master_key, hashlib.sha256).digest()
+    output = b""
+    previous = b""
+    counter = 1
+    while len(output) < length:
+        previous = hmac.new(
+            pseudorandom_key,
+            previous + _LOCAL_KEY_V2_HKDF_INFO + bytes((counter,)),
+            hashlib.sha256,
+        ).digest()
+        output += previous
+        counter += 1
+    return output[:length]
+
+
+def _master_key_id(master_key):
+    """Return a public commitment to a uniformly random local master key."""
+    return hmac.new(
+        master_key,
+        _MASTER_KEY_ID_CONTEXT,
+        hashlib.sha256,
+    ).digest()
 
 
 def _valid_native_provider(value):
@@ -334,6 +392,30 @@ def _local_key_credential_aad(
 ):
     return _fallback_aad(
         _LOCAL_KEY_AAD,
+        native_cleanup_pending,
+        native_cleanup_provider,
+    )
+
+
+def _machine_key_credential_aad(
+    key_id,
+    native_cleanup_pending=False,
+    native_cleanup_provider=None,
+):
+    return _fallback_aad(
+        _MACHINE_KEY_AAD + b"|master-key-id=" + key_id,
+        native_cleanup_pending,
+        native_cleanup_provider,
+    )
+
+
+def _local_key_v2_credential_aad(
+    key_id,
+    native_cleanup_pending=False,
+    native_cleanup_provider=None,
+):
+    return _fallback_aad(
+        _LOCAL_KEY_V2_AAD + b"|master-key-id=" + key_id,
         native_cleanup_pending,
         native_cleanup_provider,
     )
@@ -444,7 +526,12 @@ class CredentialStore:
             raise CredentialCorrupt("credential metadata is unreadable") from exc
         if not isinstance(metadata, dict):
             raise CredentialCorrupt("credential metadata is invalid")
-        if metadata.get("version") != CREDENTIAL_FORMAT_VERSION:
+        version = metadata.get("version")
+        supported_fallback = (
+            version == CREDENTIAL_FALLBACK_FORMAT_VERSION
+            and metadata.get("backend") in FALLBACK_BACKENDS
+        )
+        if version != CREDENTIAL_FORMAT_VERSION and not supported_fallback:
             raise CredentialCorrupt("credential metadata version is unsupported")
         return metadata
 
@@ -710,16 +797,25 @@ class CredentialStore:
         seed = secrets.token_bytes(_SEED_SIZE)
         nonce = secrets.token_bytes(_NONCE_SIZE)
         if backend == FALLBACK_BACKEND:
+            master_key = self._load_or_create_local_key()
+            key_id = _master_key_id(master_key)
             machine_id = machine_id or self._validated_machine_id()
-            key = _hkdf_sha256(seed, machine_id)
-            aad = _credential_aad(
+            key = _machine_key_hkdf_sha256(
+                master_key,
+                seed,
+                machine_id,
+            )
+            aad = _machine_key_credential_aad(
+                key_id,
                 native_cleanup_pending,
                 native_cleanup_provider,
             )
         elif backend == LOCAL_KEY_FALLBACK_BACKEND:
             master_key = self._load_or_create_local_key()
-            key = _local_key_hkdf_sha256(master_key, seed)
-            aad = _local_key_credential_aad(
+            key_id = _master_key_id(master_key)
+            key = _local_key_v2_hkdf_sha256(master_key, seed)
+            aad = _local_key_v2_credential_aad(
+                key_id,
                 native_cleanup_pending,
                 native_cleanup_provider,
             )
@@ -732,7 +828,7 @@ class CredentialStore:
             aad,
         )
         metadata = {
-            "version": CREDENTIAL_FORMAT_VERSION,
+            "version": CREDENTIAL_FALLBACK_FORMAT_VERSION,
             "backend": backend,
             "native_cleanup_pending": native_cleanup_pending,
             "kdf": "hkdf-sha256",
@@ -741,6 +837,7 @@ class CredentialStore:
             "nonce": _encode(nonce),
             "ciphertext": _encode(ciphertext),
             "tag": _encode(tag),
+            "key_id": _encode(key_id),
         }
         if native_cleanup_pending:
             metadata["native_cleanup_provider"] = native_cleanup_provider
@@ -761,6 +858,8 @@ class CredentialStore:
         native_cleanup_pending = metadata.get("native_cleanup_pending")
         if native_cleanup_pending is True:
             expected.add("native_cleanup_provider")
+        if metadata.get("version") == CREDENTIAL_FALLBACK_FORMAT_VERSION:
+            expected.add("key_id")
         if set(metadata) != expected:
             raise CredentialCorrupt("credential metadata fields are invalid")
         backend = metadata.get("backend")
@@ -788,7 +887,16 @@ class CredentialStore:
             maximum_size=MAX_TOKEN_SIZE,
         )
         tag = _decode(metadata["tag"], name="tag", expected_size=_TAG_SIZE)
-        if backend == FALLBACK_BACKEND:
+        version = metadata.get("version")
+        if version not in {
+            CREDENTIAL_FORMAT_VERSION,
+            CREDENTIAL_FALLBACK_FORMAT_VERSION,
+        }:
+            raise CredentialCorrupt("credential metadata version is unsupported")
+        if (
+            version == CREDENTIAL_FORMAT_VERSION
+            and backend == FALLBACK_BACKEND
+        ):
             try:
                 machine_id = self._validated_machine_id()
             except NativeStoreUnavailable as exc:
@@ -800,10 +908,59 @@ class CredentialStore:
                 native_cleanup_pending,
                 native_cleanup_provider,
             )
-        else:
+        elif (
+            version == CREDENTIAL_FORMAT_VERSION
+            and backend == LOCAL_KEY_FALLBACK_BACKEND
+        ):
             master_key = self._read_local_key()
             key = _local_key_hkdf_sha256(master_key, seed)
             aad = _local_key_credential_aad(
+                native_cleanup_pending,
+                native_cleanup_provider,
+            )
+        elif backend == FALLBACK_BACKEND:
+            # Read the secret first so a missing or damaged key can never be
+            # misclassified as the recoverable machine-identifier case.
+            master_key = self._read_local_key()
+            key_id = _decode(
+                metadata["key_id"],
+                name="master key identifier",
+                expected_size=hashlib.sha256().digest_size,
+            )
+            if not hmac.compare_digest(key_id, _master_key_id(master_key)):
+                raise CredentialCorrupt(
+                    "the local credential encryption key does not match"
+                )
+            try:
+                machine_id = self._validated_machine_id()
+            except NativeStoreUnavailable as exc:
+                raise _MachineIdentifierUnavailable(
+                    "the machine identifier is unavailable"
+                ) from exc
+            key = _machine_key_hkdf_sha256(
+                master_key,
+                seed,
+                machine_id,
+            )
+            aad = _machine_key_credential_aad(
+                key_id,
+                native_cleanup_pending,
+                native_cleanup_provider,
+            )
+        else:
+            master_key = self._read_local_key()
+            key_id = _decode(
+                metadata["key_id"],
+                name="master key identifier",
+                expected_size=hashlib.sha256().digest_size,
+            )
+            if not hmac.compare_digest(key_id, _master_key_id(master_key)):
+                raise CredentialCorrupt(
+                    "the local credential encryption key does not match"
+                )
+            key = _local_key_v2_hkdf_sha256(master_key, seed)
+            aad = _local_key_v2_credential_aad(
+                key_id,
                 native_cleanup_pending,
                 native_cleanup_provider,
             )
@@ -834,16 +991,36 @@ class CredentialStore:
             if metadata["native_cleanup_pending"]:
                 # This authenticated fallback is authoritative. The recorded
                 # provider is retained solely for exact stale-native cleanup.
+                if (
+                    include_native
+                    and metadata["version"] == CREDENTIAL_FORMAT_VERSION
+                ):
+                    migrated = self._upgrade_fallback_to_machine_key(
+                        token,
+                        metadata,
+                    )
+                    if not migrated and backend_name == FALLBACK_BACKEND:
+                        self._remove_unused_local_key()
                 return token
             if include_native:
                 upgraded = self._upgrade_fallback_to_native(token)
                 if (
                     not upgraded
-                    and backend_name == LOCAL_KEY_FALLBACK_BACKEND
+                    and (
+                        backend_name == LOCAL_KEY_FALLBACK_BACKEND
+                        or metadata["version"] == CREDENTIAL_FORMAT_VERSION
+                    )
                 ):
-                    self._upgrade_local_key_to_machine(token, metadata)
-            if include_native and backend_name == FALLBACK_BACKEND:
-                self._remove_unused_local_key()
+                    migrated = self._upgrade_fallback_to_machine_key(
+                        token,
+                        metadata,
+                    )
+                    if (
+                        not migrated
+                        and backend_name == FALLBACK_BACKEND
+                        and metadata["version"] == CREDENTIAL_FORMAT_VERSION
+                    ):
+                        self._remove_unused_local_key()
             return token
         if backend_name == "native":
             expected = {"version", "backend", "provider", "service", "account"}
@@ -1092,17 +1269,24 @@ class CredentialStore:
         self._remove_unused_local_key()
         return True
 
-    def _upgrade_local_key_to_machine(self, token, existing_metadata):
+    def _upgrade_fallback_to_machine_key(self, token, existing_metadata):
         try:
             machine_id = self._validated_machine_id()
         except NativeStoreUnavailable:
             return False
-        metadata = self._fallback_metadata(
-            token,
-            backend=FALLBACK_BACKEND,
-            machine_id=machine_id,
-        )
         try:
+            native_cleanup_pending = existing_metadata[
+                "native_cleanup_pending"
+            ]
+            metadata = self._fallback_metadata(
+                token,
+                backend=FALLBACK_BACKEND,
+                machine_id=machine_id,
+                native_cleanup_pending=native_cleanup_pending,
+                native_cleanup_provider=existing_metadata.get(
+                    "native_cleanup_provider"
+                ),
+            )
             self._persist_fallback_metadata(
                 token,
                 metadata,
@@ -1120,7 +1304,6 @@ class CredentialStore:
             ):
                 return False
             raise exc
-        self._remove_unused_local_key()
         return True
 
     def _store_fallback_credential(
@@ -1157,8 +1340,6 @@ class CredentialStore:
             metadata,
             existing_metadata,
         )
-        if fallback_backend != LOCAL_KEY_FALLBACK_BACKEND:
-            self._remove_unused_local_key()
         return StoreResult(
             backend=fallback_backend,
             degraded=True,
