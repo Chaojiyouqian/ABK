@@ -1254,7 +1254,12 @@ class CredentialStore:
             )
         return removed
 
-    def _ensure_pending_primary_compatible(self, pending_metadata):
+    def _ensure_pending_primary_compatible(
+        self,
+        pending_metadata,
+        *,
+        require_provider_binding=False,
+    ):
         try:
             primary_metadata = self._read_metadata()
         except CredentialCorrupt as exc:
@@ -1263,17 +1268,26 @@ class CredentialStore:
                 "pending native cleanup"
             ) from exc
         if primary_metadata is None:
+            if require_provider_binding:
+                raise CredentialCorrupt(
+                    "damaged native cleanup metadata has no matching primary"
+                )
             return
         primary_backend = primary_metadata.get("backend")
         if primary_backend in FALLBACK_BACKENDS:
             self._decrypt_fallback(primary_metadata)
-            if (
-                primary_metadata["native_cleanup_pending"]
-                and primary_metadata["native_cleanup_provider"]
-                != pending_metadata["provider"]
-            ):
-                raise NativeStoreUnavailable(
-                    "pending native cleanup conflicts with the deferred provider"
+            if primary_metadata["native_cleanup_pending"]:
+                if (
+                    primary_metadata["native_cleanup_provider"]
+                    != pending_metadata["provider"]
+                ):
+                    raise NativeStoreUnavailable(
+                        "pending native cleanup conflicts with the deferred provider"
+                    )
+                return
+            if require_provider_binding:
+                raise CredentialCorrupt(
+                    "primary credential metadata does not bind a native provider"
                 )
             return
         expected = {"version", "backend", "provider", "service", "account"}
@@ -1333,14 +1347,10 @@ class CredentialStore:
         except CredentialCorrupt as exc:
             return self._delete_unusable_metadata(exc)
         if metadata is None:
-            try:
-                backend = self._native_backend_factory()
-            except NativeStoreUnavailable:
-                native_removed = False
-            else:
-                native_removed = self._delete_native_and_verify(backend)
+            # No provider-bound local state exists, so never guess which
+            # native backend may own an otherwise orphaned credential.
             key_removed = self._remove_local_key()
-            return native_removed or key_removed
+            return key_removed
         if metadata.get("backend") in FALLBACK_BACKENDS:
             try:
                 self._decrypt_fallback(metadata)
@@ -1349,19 +1359,15 @@ class CredentialStore:
             cleanup_provider = None
             if metadata["native_cleanup_pending"]:
                 cleanup_provider = metadata["native_cleanup_provider"]
-            try:
-                backend = self._native_backend_factory()
-            except NativeStoreUnavailable:
-                if cleanup_provider is not None:
+            native_removed = False
+            if cleanup_provider is not None:
+                try:
+                    backend = self._native_backend_factory()
+                except NativeStoreUnavailable:
                     raise NativeStoreUnavailable(
                         "native credential cleanup is still pending"
                     )
-                native_removed = False
-            else:
-                if (
-                    cleanup_provider is not None
-                    and backend.name != cleanup_provider
-                ):
+                if backend.name != cleanup_provider:
                     raise NativeStoreUnavailable(
                         "the deferred native credential provider is unavailable"
                     )
@@ -1408,7 +1414,10 @@ class CredentialStore:
                 "provider safely"
             ) from marker_error
         try:
-            self._ensure_pending_primary_compatible(metadata)
+            self._ensure_pending_primary_compatible(
+                metadata,
+                require_provider_binding=True,
+            )
             backend = self._native_backend_factory()
             if metadata["provider"] != backend.name:
                 raise NativeStoreUnavailable(
@@ -1418,12 +1427,15 @@ class CredentialStore:
         except CredentialStoreError as exc:
             raise CredentialCorrupt(
                 "native credential transaction metadata is damaged and cleanup "
-                "could not be verified"
+                "could not be verified; manual native cleanup is required"
             ) from exc
         try:
+            # Discard the damaged WAL while the provider-bound primary still
+            # exists. If a later local cleanup step fails, logout can safely
+            # retry from that primary instead of losing its provider proof.
+            pending_removed = self._remove_pending_metadata()
             marker_removed = self._remove_metadata()
             key_removed = self._remove_local_key()
-            pending_removed = self._remove_pending_metadata()
         except CredentialStoreError as exc:
             raise CredentialCorrupt(
                 "native credential cleanup succeeded, but damaged transaction "

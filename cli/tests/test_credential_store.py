@@ -1231,7 +1231,7 @@ class CredentialStoreTests(unittest.TestCase):
             native_backend_factory=lambda: backend,
             machine_id_provider=lambda: self.machine_id,
         )
-        store.directory.mkdir(parents=True)
+        store._write_metadata(store._native_metadata(backend))
         store.pending_path.write_text(
             json.dumps({
                 "version": 1,
@@ -1249,10 +1249,12 @@ class CredentialStoreTests(unittest.TestCase):
         self.assertFalse(store.path.exists())
         self.assertFalse(store.pending_path.exists())
 
-    def test_logout_retains_corrupt_pending_marker_without_native_cleanup(self):
+    def test_logout_retains_corrupt_pending_without_provider_bound_primary(self):
+        backend = FakeNativeBackend("unrelated-token")
+        backend_factory = mock.Mock(return_value=backend)
         store = credential_store.CredentialStore(
             self.directory,
-            native_backend_factory=self._unavailable,
+            native_backend_factory=backend_factory,
             machine_id_provider=lambda: self.machine_id,
         )
         store.directory.mkdir(parents=True)
@@ -1267,19 +1269,24 @@ class CredentialStoreTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        with self.assertRaises(credential_store.CredentialCorrupt):
+        with self.assertRaises(credential_store.CredentialCorrupt) as raised:
             store.delete()
 
+        self.assertIn("manual native cleanup", str(raised.exception))
+        backend_factory.assert_not_called()
+        self.assertEqual("unrelated-token", backend.token)
+        self.assertFalse(backend.deleted)
         self.assertTrue(store.pending_path.exists())
 
     def test_logout_retains_corrupt_pending_marker_for_other_provider(self):
         backend = FakeNativeBackend("current-provider-token")
+        backend_factory = mock.Mock(return_value=backend)
         store = credential_store.CredentialStore(
             self.directory,
-            native_backend_factory=lambda: backend,
+            native_backend_factory=backend_factory,
             machine_id_provider=lambda: self.machine_id,
         )
-        store.directory.mkdir(parents=True)
+        store._write_metadata(store._native_metadata(backend))
         store.pending_path.write_text(
             json.dumps({
                 "version": 1,
@@ -1294,8 +1301,112 @@ class CredentialStoreTests(unittest.TestCase):
         with self.assertRaises(credential_store.CredentialCorrupt):
             store.delete()
 
+        backend_factory.assert_not_called()
         self.assertEqual("current-provider-token", backend.token)
+        self.assertTrue(store.path.exists())
         self.assertTrue(store.pending_path.exists())
+
+    def test_corrupt_pending_rejects_clean_authenticated_fallback_primary(self):
+        if credential_store._AES_BACKEND is None:
+            self.skipTest("AES-GCM backend unavailable")
+        backend = FakeNativeBackend("unrelated-token")
+        backend_factory = mock.Mock(return_value=backend)
+        store = self._fallback_store()
+        store.store("fallback-token")
+        primary_before = store.path.read_bytes()
+        store._native_backend_factory = backend_factory
+        store._write_pending_metadata({
+            "version": credential_store.CREDENTIAL_FORMAT_VERSION,
+            "provider": backend.name,
+            "service": credential_store.CREDENTIAL_SERVICE,
+            "account": credential_store.CREDENTIAL_ACCOUNT,
+            "unexpected": True,
+        })
+
+        with self.assertRaises(credential_store.CredentialCorrupt):
+            store.delete()
+
+        backend_factory.assert_not_called()
+        self.assertEqual("unrelated-token", backend.token)
+        self.assertEqual(primary_before, store.path.read_bytes())
+        self.assertTrue(store.pending_path.exists())
+
+    def test_corrupt_pending_accepts_authenticated_deferred_provider(self):
+        if credential_store._AES_BACKEND is None:
+            self.skipTest("AES-GCM backend unavailable")
+        backend = FakeNativeBackend("stale-native-token")
+        store = credential_store.CredentialStore(
+            self.directory,
+            native_backend_factory=lambda: backend,
+            machine_id_provider=lambda: self.machine_id,
+        )
+        store._write_metadata(store._fallback_metadata(
+            "fresh-token",
+            native_cleanup_pending=True,
+            native_cleanup_provider=backend.name,
+        ))
+        store._write_pending_metadata({
+            "version": credential_store.CREDENTIAL_FORMAT_VERSION,
+            "provider": backend.name,
+            "service": credential_store.CREDENTIAL_SERVICE,
+            "account": credential_store.CREDENTIAL_ACCOUNT,
+            "unexpected": True,
+        })
+
+        self.assertTrue(store.delete())
+
+        self.assertIsNone(backend.token)
+        self.assertFalse(store.path.exists())
+        self.assertFalse(store.pending_path.exists())
+
+    def test_corrupt_pending_cleanup_retries_with_provider_primary_intact(self):
+        backend = FakeNativeBackend("uncertain-token")
+        store = credential_store.CredentialStore(
+            self.directory,
+            native_backend_factory=lambda: backend,
+            machine_id_provider=lambda: self.machine_id,
+        )
+        store._write_metadata(store._native_metadata(backend))
+        store._write_pending_metadata({
+            "version": credential_store.CREDENTIAL_FORMAT_VERSION,
+            "provider": backend.name,
+            "service": credential_store.CREDENTIAL_SERVICE,
+            "account": credential_store.CREDENTIAL_ACCOUNT,
+            "unexpected": True,
+        })
+
+        with (
+            mock.patch.object(
+                store,
+                "_remove_pending_metadata",
+                side_effect=credential_store.CredentialStoreError("disk full"),
+            ),
+            self.assertRaises(credential_store.CredentialCorrupt),
+        ):
+            store.delete()
+
+        self.assertIsNone(backend.token)
+        self.assertTrue(store.path.exists())
+        self.assertTrue(store.pending_path.exists())
+
+        self.assertTrue(store.delete())
+        self.assertFalse(store.path.exists())
+        self.assertFalse(store.pending_path.exists())
+
+    def test_valid_write_ahead_marker_can_cleanup_without_primary(self):
+        backend = FakeNativeBackend("uncertain-token")
+        store = credential_store.CredentialStore(
+            self.directory,
+            native_backend_factory=lambda: backend,
+            machine_id_provider=lambda: self.machine_id,
+        )
+        store._write_pending_metadata(store._native_transaction_metadata(backend))
+
+        self.assertTrue(store.delete())
+
+        self.assertIsNone(backend.token)
+        self.assertFalse(store.path.exists())
+        self.assertFalse(store.pending_path.exists())
 
     def test_pending_cleanup_retains_conflicting_native_primary(self):
         backend = FakeNativeBackend("pending-provider-token")
@@ -1412,42 +1523,39 @@ class CredentialStoreTests(unittest.TestCase):
         self.assertEqual("native", metadata["backend"])
         self.assertEqual("github-token", backend.token)
 
-    def test_fallback_delete_also_removes_stale_native_credential(self):
+    def test_clean_fallback_delete_does_not_guess_native_provider(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")
         backend = FakeNativeBackend("stale-native-token")
-        native_available = False
+        backend_factory = mock.Mock(return_value=backend)
+        store = self._fallback_store()
+        store.store("fallback-token")
+        store._native_backend_factory = backend_factory
 
-        def backend_factory():
-            if not native_available:
-                raise credential_store.NativeStoreUnavailable("not available")
-            return backend
+        self.assertTrue(store.delete())
 
+        backend_factory.assert_not_called()
+        self.assertEqual("stale-native-token", backend.token)
+        self.assertFalse(backend.deleted)
+        self.assertFalse(store.path.exists())
+
+    def test_delete_without_marker_only_removes_orphaned_local_key(self):
+        backend = FakeNativeBackend("orphaned-token")
+        backend_factory = mock.Mock(return_value=backend)
         store = credential_store.CredentialStore(
             self.directory,
             native_backend_factory=backend_factory,
             machine_id_provider=lambda: self.machine_id,
         )
-        store.store("fallback-token")
-        native_available = True
+        store._load_or_create_local_key()
 
         self.assertTrue(store.delete())
 
-        self.assertIsNone(backend.token)
+        backend_factory.assert_not_called()
+        self.assertEqual("orphaned-token", backend.token)
+        self.assertFalse(backend.deleted)
         self.assertFalse(store.path.exists())
-
-    def test_delete_without_marker_recovers_orphaned_native_credential(self):
-        backend = FakeNativeBackend("orphaned-token")
-        store = credential_store.CredentialStore(
-            self.directory,
-            native_backend_factory=lambda: backend,
-            machine_id_provider=lambda: self.machine_id,
-        )
-
-        self.assertTrue(store.delete())
-
-        self.assertIsNone(backend.token)
-        self.assertFalse(store.path.exists())
+        self.assertFalse(store.key_path.exists())
 
     def test_failed_native_delete_keeps_valid_marker_for_retry(self):
         class DeleteFailureBackend(FakeNativeBackend):
