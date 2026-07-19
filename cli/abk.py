@@ -573,7 +573,7 @@ def _store_persisted_token(token, *, args=None, allow_recovery=False):
                 raise credential_store.CredentialStoreError(
                     "legacy plaintext credential could not be removed"
                 ) from exc
-        _verify_legacy_credential_removed()
+            _verify_legacy_credential_removed()
         return result
 
 
@@ -662,24 +662,22 @@ def _delete_persisted_token():
 
         if CONFIG_FILE.exists():
             config = load_config()
-            legacy_token_present = "token" in config
-            try:
-                if legacy_token_present:
+            if "token" in config:
+                try:
                     config.pop("token", None)
                     save_config(config)
-                _verify_legacy_credential_removed()
-                if legacy_token_present:
+                    _verify_legacy_credential_removed()
                     removed = True
-            except (OSError, credential_store.CredentialStoreError):
-                cleanup_error = credential_store.CredentialStoreError(
-                    "legacy plaintext credential could not be removed"
-                )
-                if error is None:
-                    error = cleanup_error
-                else:
-                    error = credential_store.CredentialStoreError(
-                        f"{error}; {cleanup_error}"
+                except (OSError, credential_store.CredentialStoreError):
+                    cleanup_error = credential_store.CredentialStoreError(
+                        "legacy plaintext credential could not be removed"
                     )
+                    if error is None:
+                        error = cleanup_error
+                    else:
+                        error = credential_store.CredentialStoreError(
+                            f"{error}; {cleanup_error}"
+                        )
     return removed, error
 
 

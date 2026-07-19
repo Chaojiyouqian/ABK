@@ -1060,6 +1060,54 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertFalse(key_path.exists())
 
+    def test_successful_store_ignores_unrelated_malformed_config(self):
+        self.config_dir.mkdir(parents=True)
+        malformed_config = (
+            b'{"note":"literal \\"token\\": text","download_dir":'
+        )
+        self.config_file.write_bytes(malformed_config)
+        store = mock.Mock()
+        store.store.return_value = abk.credential_store.StoreResult(
+            backend="test-native",
+            degraded=False,
+            location="test-native",
+        )
+        store.read.return_value = "fresh-token"
+
+        with (
+            mock.patch.object(abk, "_credential_store", return_value=store),
+            mock.patch.object(
+                abk,
+                "_verify_legacy_credential_removed",
+                side_effect=AssertionError("no legacy token was removed"),
+            ),
+        ):
+            result = abk._store_persisted_token("fresh-token")
+
+        self.assertFalse(result.degraded)
+        self.assertEqual(malformed_config, self.config_file.read_bytes())
+
+    def test_successful_logout_ignores_unrelated_malformed_config(self):
+        self.config_dir.mkdir(parents=True)
+        malformed_config = b'{"download_dir":'
+        self.config_file.write_bytes(malformed_config)
+        store = mock.Mock()
+        store.delete.return_value = True
+
+        with (
+            mock.patch.object(abk, "_credential_store", return_value=store),
+            mock.patch.object(
+                abk,
+                "_verify_legacy_credential_removed",
+                side_effect=AssertionError("no legacy token was removed"),
+            ),
+        ):
+            removed, error = abk._delete_persisted_token()
+
+        self.assertTrue(removed)
+        self.assertIsNone(error)
+        self.assertEqual(malformed_config, self.config_file.read_bytes())
+
     def test_signing_metadata_rejects_invalid_environment_and_config_keys(self):
         config = {
             abk.SIGNING_STATE_CONFIG_KEY: {
