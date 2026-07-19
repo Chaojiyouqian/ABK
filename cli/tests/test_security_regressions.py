@@ -1800,9 +1800,21 @@ print(json.dumps({"started": started, "finished": finished}))
             )
             for _ in range(2)
         ]
+        try:
+            outputs = [
+                process.communicate(timeout=10)
+                for process in processes
+            ]
+        except BaseException:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+            for process in processes:
+                process.communicate()
+            raise
+
         intervals = []
-        for process in processes:
-            stdout, stderr = process.communicate(timeout=10)
+        for process, (stdout, stderr) in zip(processes, outputs):
             self.assertEqual(0, process.returncode, stderr)
             intervals.append(json.loads(stdout))
 
@@ -1810,6 +1822,68 @@ print(json.dumps({"started": started, "finished": finished}))
         self.assertGreaterEqual(
             intervals[1]["started"],
             intervals[0]["finished"] - 0.01,
+        )
+
+    def test_windows_config_lock_initializes_byte_after_acquisition(self):
+        events = []
+
+        class FakeStream:
+            def __init__(self):
+                self.position = 0
+                self.size = 0
+
+            def fileno(self):
+                return 123
+
+            def seek(self, offset, whence=0):
+                if whence == os.SEEK_END:
+                    self.position = self.size + offset
+                else:
+                    self.position = offset
+
+            def tell(self):
+                return self.position
+
+            def write(self, value):
+                events.append("write")
+                if not FakeMsvcrt.locked:
+                    raise AssertionError("lock byte was written before locking")
+                self.position += len(value)
+                self.size = max(self.size, self.position)
+
+            def close(self):
+                events.append("close")
+
+        class FakeMsvcrt:
+            LK_NBLCK = 1
+            LK_UNLCK = 2
+            locked = False
+
+            @classmethod
+            def locking(cls, fd, mode, length):
+                self.assertEqual((123, 1), (fd, length))
+                if mode == cls.LK_NBLCK:
+                    events.append("lock")
+                    cls.locked = True
+                elif mode == cls.LK_UNLCK:
+                    events.append("unlock")
+                    cls.locked = False
+                else:
+                    self.fail(f"unexpected lock mode: {mode}")
+
+        stream = FakeStream()
+        with (
+            mock.patch.object(abk.os, "name", "nt"),
+            mock.patch.object(abk.os, "open", return_value=123),
+            mock.patch.object(abk.os, "fdopen", return_value=stream),
+            mock.patch.dict(sys.modules, {"msvcrt": FakeMsvcrt}),
+        ):
+            with abk._config_process_lock(timeout=0):
+                events.append("yield")
+
+        self.assertEqual(
+            ["lock", "write", "yield", "unlock", "close"],
+            events,
         )
 
     @unittest.skipIf(os.name == "nt", "POSIX flock-specific regression")

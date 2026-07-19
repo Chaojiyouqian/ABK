@@ -2109,9 +2109,6 @@ def _config_process_lock(timeout=120):
         try:
             if os.name != "nt":
                 os.fchmod(stream.fileno(), 0o600)
-            stream.seek(0, os.SEEK_END)
-            if stream.tell() == 0:
-                stream.write(b"\0")
             deadline = time.monotonic() + timeout
             contention_errnos = {errno.EACCES, errno.EAGAIN}
             if os.name == "nt" and hasattr(errno, "EDEADLK"):
@@ -2137,6 +2134,12 @@ def _config_process_lock(timeout=120):
                             "timed out waiting for the ABK config lock"
                         ) from exc
                     time.sleep(0.1)
+            # Windows byte-range locks may extend beyond EOF. Initialize the
+            # lock byte only after acquiring it so two first-time processes
+            # cannot race an unprotected write against a mandatory lock.
+            stream.seek(0, os.SEEK_END)
+            if stream.tell() == 0:
+                stream.write(b"\0")
             _CONFIG_LOCK_STATE.depth = 1
             try:
                 yield
