@@ -325,6 +325,7 @@ class WorkflowContractTests(unittest.TestCase):
             4,
         )
         self.assertIn('result["schemaVersion"] == 1', workflow)
+        self.assertIn('result["credentialAesGcm"] is True', workflow)
         self.assertIn('result["tlsContext"] is True', workflow)
         self.assertIn('"LICENSE"', workflow)
         for dependency in abk.WORKFLOW_RUNTIME_NAMES:
@@ -332,6 +333,24 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("raw.githubusercontent.com", workflow)
         self.assertIn("cp LICENSE dist/abk/LICENSE", workflow)
         self.assertIn('Copy-Item -LiteralPath "LICENSE"', workflow)
+
+        native_dependencies = workflow.split(
+            "- name: Run CLI regression tests",
+            maxsplit=1,
+        )[0]
+        self.assertIn(
+            'if [[ "$RUNNER_OS" == "macOS" || '
+            '"$cryptography_available" == "true" ]]; then',
+            native_dependencies,
+        )
+        self.assertIn(
+            'if ($LASTEXITCODE -ne 0) {\n'
+            '            Write-Warning "cryptography unavailable, using '
+            'pycryptodome instead"\n'
+            '          }\n'
+            '          python -m pip install keyring',
+            native_dependencies,
+        )
 
     def test_cross_packaging_uses_fast_compatible_crypto_fallback(self):
         workflow = (
@@ -352,6 +371,9 @@ class WorkflowContractTests(unittest.TestCase):
                 'assert abk._CRYPTO_BACKEND == \\\"pycryptodome\\\"'
             ),
         )
+        self.assertEqual(2, cross_workflow.count("Crypto.Cipher.AES"))
+        self.assertEqual(2, cross_workflow.count("Crypto.Cipher._mode_gcm"))
+        self.assertNotIn("python -m pip install keyring", cross_workflow)
         self.assertEqual(
             2,
             cross_workflow.count('$pip_cache:/root/.cache/pip'),

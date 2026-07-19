@@ -149,7 +149,15 @@ jobs:
           set -euo pipefail
           python -m pip install --upgrade pip
           python -m pip install pyinstaller certifi pycryptodome pynacl
-          python -m pip install cryptography 2>/dev/null || echo "::warning::cryptography unavailable, using pycryptodome"
+          cryptography_available=false
+          if python -m pip install cryptography 2>/dev/null; then
+            cryptography_available=true
+          else
+            echo "::warning::cryptography unavailable, using pycryptodome"
+          fi
+          if [[ "$RUNNER_OS" == "macOS" || "$cryptography_available" == "true" ]]; then
+            python -m pip install keyring
+          fi
 
       - name: Install Rust (cryptography build dependency)
         if: runner.os == 'Windows'
@@ -172,7 +180,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install setuptools-rust wheel pycryptodome pynacl
           python -m pip install cryptography 2>&1 | Out-Null
-          if (-not $?) { Write-Warning "cryptography unavailable, using pycryptodome instead" }
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning "cryptography unavailable, using pycryptodome instead"
+          }
+          python -m pip install keyring
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           python -m pip install pyinstaller certifi
 
       - name: Run CLI regression tests
@@ -206,6 +218,7 @@ jobs:
             --hidden-import cryptography.hazmat.primitives.asymmetric \
             --hidden-import cryptography.hazmat.primitives.asymmetric.padding \
             --hidden-import cryptography.hazmat.primitives.hashes \
+            --hidden-import cryptography.hazmat.primitives.ciphers.aead \
             --hidden-import cryptography.hazmat.backends.openssl \
             --add-data "cli/i18n:i18n" \
             cli/abk.py
@@ -226,6 +239,7 @@ jobs:
             --hidden-import cryptography.hazmat.primitives.asymmetric `
             --hidden-import cryptography.hazmat.primitives.asymmetric.padding `
             --hidden-import cryptography.hazmat.primitives.hashes `
+            --hidden-import cryptography.hazmat.primitives.ciphers.aead `
             --hidden-import cryptography.hazmat.backends.openssl `
             --add-data "cli/i18n;i18n" `
             cli/abk.py
@@ -309,6 +323,8 @@ jobs:
                 --hidden-import nacl.bindings \
                 --hidden-import Crypto \
                 --hidden-import Crypto.PublicKey \
+                --hidden-import Crypto.Cipher.AES \
+                --hidden-import Crypto.Cipher._mode_gcm \
                 --hidden-import Crypto.Signature \
                 --hidden-import Crypto.Hash \
                 --add-data "cli/i18n:i18n" \
@@ -356,6 +372,8 @@ jobs:
                 --hidden-import nacl.bindings \
                 --hidden-import Crypto \
                 --hidden-import Crypto.PublicKey \
+                --hidden-import Crypto.Cipher.AES \
+                --hidden-import Crypto.Cipher._mode_gcm \
                 --hidden-import Crypto.Signature \
                 --hidden-import Crypto.Hash \
                 --add-data "cli/i18n:i18n" \
@@ -426,7 +444,7 @@ jobs:
         run: |
           set -euo pipefail
           ./dist/abk/abk --help > /dev/null
-          ./dist/abk/abk --json self-test | python -c 'import json, sys; result = json.load(sys.stdin); assert result["schemaVersion"] == 1 and result["ok"] is True and result["command"] == "self-test" and result["cryptoBackend"] and result["pynacl"] is True and result["caBundle"] is True and result["tlsContext"] is True'
+          ./dist/abk/abk --json self-test | python -c 'import json, sys; result = json.load(sys.stdin); assert result["schemaVersion"] == 1 and result["ok"] is True and result["command"] == "self-test" and result["cryptoBackend"] and result["credentialAesBackend"] and result["credentialAesGcm"] is True and result["pynacl"] is True and result["caBundle"] is True and result["tlsContext"] is True'
           ./dist/abk/abk --json build --dry-run --matrix a14 --ksu Official | python -c 'import json, sys; result = json.load(sys.stdin); assert result["schemaVersion"] == 1 and result["ok"] is True and result["dispatches"][0]["workflowName"] == "内核构建 - Android 14 (6.1)"'
 
       - name: Smoke test linux-armhf
@@ -435,7 +453,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm --platform linux/arm/v7 -v "$PWD/dist:/work/dist" debian:bookworm-slim /work/dist/abk/abk --help > /dev/null
-          docker run --rm --platform linux/arm/v7 -v "$PWD/dist:/work/dist" debian:bookworm-slim /work/dist/abk/abk --json self-test | python -c 'import json, sys; result = json.load(sys.stdin); assert result["schemaVersion"] == 1 and result["ok"] is True and result["command"] == "self-test" and result["cryptoBackend"] and result["pynacl"] is True and result["caBundle"] is True and result["tlsContext"] is True'
+          docker run --rm --platform linux/arm/v7 -v "$PWD/dist:/work/dist" debian:bookworm-slim /work/dist/abk/abk --json self-test | python -c 'import json, sys; result = json.load(sys.stdin); assert result["schemaVersion"] == 1 and result["ok"] is True and result["command"] == "self-test" and result["cryptoBackend"] and result["credentialAesBackend"] and result["credentialAesGcm"] is True and result["pynacl"] is True and result["caBundle"] is True and result["tlsContext"] is True'
           docker run --rm --platform linux/arm/v7 -v "$PWD/dist:/work/dist" debian:bookworm-slim /work/dist/abk/abk --json build --dry-run --matrix a14 --ksu Official | python -c 'import json, sys; result = json.load(sys.stdin); assert result["schemaVersion"] == 1 and result["ok"] is True and result["dispatches"][0]["workflowName"] == "内核构建 - Android 14 (6.1)"'
 
       - name: Smoke test linux-x86
@@ -444,7 +462,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm --platform linux/386 -v "$PWD/dist:/work/dist" debian:bookworm-slim /work/dist/abk/abk --help > /dev/null
-          docker run --rm --platform linux/386 -v "$PWD/dist:/work/dist" debian:bookworm-slim /work/dist/abk/abk --json self-test | python -c 'import json, sys; result = json.load(sys.stdin); assert result["schemaVersion"] == 1 and result["ok"] is True and result["command"] == "self-test" and result["cryptoBackend"] and result["pynacl"] is True and result["caBundle"] is True and result["tlsContext"] is True'
+          docker run --rm --platform linux/386 -v "$PWD/dist:/work/dist" debian:bookworm-slim /work/dist/abk/abk --json self-test | python -c 'import json, sys; result = json.load(sys.stdin); assert result["schemaVersion"] == 1 and result["ok"] is True and result["command"] == "self-test" and result["cryptoBackend"] and result["credentialAesBackend"] and result["credentialAesGcm"] is True and result["pynacl"] is True and result["caBundle"] is True and result["tlsContext"] is True'
           docker run --rm --platform linux/386 -v "$PWD/dist:/work/dist" debian:bookworm-slim /work/dist/abk/abk --json build --dry-run --matrix a14 --ksu Official | python -c 'import json, sys; result = json.load(sys.stdin); assert result["schemaVersion"] == 1 and result["ok"] is True and result["dispatches"][0]["workflowName"] == "内核构建 - Android 14 (6.1)"'
 
       - name: Smoke test Windows
@@ -455,7 +473,7 @@ jobs:
           $selfTest = & .\dist\abk\abk.exe --json self-test
           if ($LASTEXITCODE -ne 0) { throw "Frozen CLI self-test failed" }
           $result = $selfTest | ConvertFrom-Json
-          if ($result.schemaVersion -ne 1 -or $result.ok -ne $true -or $result.command -ne "self-test" -or -not $result.cryptoBackend -or $result.pynacl -ne $true -or $result.caBundle -ne $true -or $result.tlsContext -ne $true) {
+          if ($result.schemaVersion -ne 1 -or $result.ok -ne $true -or $result.command -ne "self-test" -or -not $result.cryptoBackend -or -not $result.credentialAesBackend -or $result.credentialAesGcm -ne $true -or $result.pynacl -ne $true -or $result.caBundle -ne $true -or $result.tlsContext -ne $true) {
             throw "Unexpected frozen CLI self-test result"
           }
           $dryRun = & .\dist\abk\abk.exe --json build --dry-run --matrix a14 --ksu Official
