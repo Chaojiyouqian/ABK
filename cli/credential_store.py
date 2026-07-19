@@ -1005,22 +1005,18 @@ class CredentialStore:
         backend_name = metadata.get("backend")
         if backend_name in FALLBACK_BACKENDS:
             token = self._decrypt_fallback(metadata)
-            if metadata["native_cleanup_pending"]:
-                # This authenticated fallback is authoritative. The recorded
-                # provider is retained solely for exact stale-native cleanup.
-                if (
-                    include_native
-                    and metadata["version"] == CREDENTIAL_FORMAT_VERSION
-                ):
-                    migrated = self._upgrade_fallback_to_machine_key(
-                        token,
-                        metadata,
-                    )
-                    if not migrated and backend_name == FALLBACK_BACKEND:
-                        self._remove_unused_local_key()
-                return token
             if include_native:
-                upgraded = self._upgrade_fallback_to_native(token)
+                required_native_provider = None
+                if metadata["native_cleanup_pending"]:
+                    # Only the provider authenticated in the fallback record
+                    # may replace its stale native credential.
+                    required_native_provider = metadata[
+                        "native_cleanup_provider"
+                    ]
+                upgraded = self._upgrade_fallback_to_native(
+                    token,
+                    required_native_provider=required_native_provider,
+                )
                 if (
                     not upgraded
                     and (
@@ -1251,10 +1247,20 @@ class CredentialStore:
                 "could not be cleared"
             ) from exc
 
-    def _upgrade_fallback_to_native(self, token):
+    def _upgrade_fallback_to_native(
+        self,
+        token,
+        *,
+        required_native_provider=None,
+    ):
         existing_metadata = self._read_metadata()
         try:
             backend = self._native_backend_factory()
+            if (
+                required_native_provider is not None
+                and backend.name != required_native_provider
+            ):
+                return False
             previous_token = backend.get()
         except CredentialStoreError:
             return False
