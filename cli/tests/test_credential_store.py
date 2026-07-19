@@ -473,7 +473,16 @@ class CredentialStoreTests(unittest.TestCase):
             machine_id_provider=lambda: self.machine_id,
         )
         store.directory.mkdir(parents=True)
-        store.pending_path.write_text('{"version": 1}', encoding="utf-8")
+        store.pending_path.write_text(
+            json.dumps({
+                "version": 1,
+                "provider": backend.name,
+                "service": credential_store.CREDENTIAL_SERVICE,
+                "account": credential_store.CREDENTIAL_ACCOUNT,
+                "unexpected": True,
+            }),
+            encoding="utf-8",
+        )
 
         self.assertTrue(store.delete())
 
@@ -488,11 +497,45 @@ class CredentialStoreTests(unittest.TestCase):
             machine_id_provider=lambda: self.machine_id,
         )
         store.directory.mkdir(parents=True)
-        store.pending_path.write_text('{"version": 1}', encoding="utf-8")
+        store.pending_path.write_text(
+            json.dumps({
+                "version": 1,
+                "provider": "test-native",
+                "service": credential_store.CREDENTIAL_SERVICE,
+                "account": credential_store.CREDENTIAL_ACCOUNT,
+                "unexpected": True,
+            }),
+            encoding="utf-8",
+        )
 
         with self.assertRaises(credential_store.CredentialCorrupt):
             store.delete()
 
+        self.assertTrue(store.pending_path.exists())
+
+    def test_logout_retains_corrupt_pending_marker_for_other_provider(self):
+        backend = FakeNativeBackend("current-provider-token")
+        store = credential_store.CredentialStore(
+            self.directory,
+            native_backend_factory=lambda: backend,
+            machine_id_provider=lambda: self.machine_id,
+        )
+        store.directory.mkdir(parents=True)
+        store.pending_path.write_text(
+            json.dumps({
+                "version": 1,
+                "provider": "different-native-provider",
+                "service": credential_store.CREDENTIAL_SERVICE,
+                "account": credential_store.CREDENTIAL_ACCOUNT,
+                "unexpected": True,
+            }),
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(credential_store.CredentialCorrupt):
+            store.delete()
+
+        self.assertEqual("current-provider-token", backend.token)
         self.assertTrue(store.pending_path.exists())
 
     def test_uncertain_fallback_upgrade_retains_cleanup_retry_state(self):

@@ -372,7 +372,7 @@ class CredentialStore:
             raise CredentialCorrupt("credential metadata version is unsupported")
         return metadata
 
-    def _read_pending_metadata(self):
+    def _read_pending_document(self):
         try:
             try:
                 file_status = self.pending_path.lstat()
@@ -398,7 +398,12 @@ class CredentialStore:
             raise CredentialCorrupt(
                 "native credential transaction marker is unreadable"
             ) from exc
-        self._validate_native_transaction(metadata)
+        return metadata
+
+    def _read_pending_metadata(self):
+        metadata = self._read_pending_document()
+        if metadata is not None:
+            self._validate_native_transaction(metadata)
         return metadata
 
     def _write_json_file(self, path, metadata, *, prefix):
@@ -839,10 +844,16 @@ class CredentialStore:
 
     def delete(self):
         try:
-            pending_metadata = self._read_pending_metadata()
+            pending_metadata = self._read_pending_document()
         except CredentialCorrupt as exc:
-            return self._delete_corrupt_pending(exc)
+            raise CredentialCorrupt(
+                "native credential transaction metadata cannot be safely reset"
+            ) from exc
         if pending_metadata is not None:
+            try:
+                self._validate_native_transaction(pending_metadata)
+            except CredentialCorrupt as exc:
+                return self._delete_corrupt_pending(pending_metadata, exc)
             try:
                 backend = self._native_backend_factory()
             except NativeStoreUnavailable:
@@ -905,10 +916,25 @@ class CredentialStore:
         marker_removed = self._remove_metadata()
         return removed or marker_removed
 
-    def _delete_corrupt_pending(self, _marker_error):
+    def _delete_corrupt_pending(self, metadata, marker_error):
         """Reset a damaged transaction marker only after verified cleanup."""
+        if (
+            not isinstance(metadata, dict)
+            or not isinstance(metadata.get("provider"), str)
+            or not metadata["provider"]
+            or metadata.get("service") != CREDENTIAL_SERVICE
+            or metadata.get("account") != CREDENTIAL_ACCOUNT
+        ):
+            raise CredentialCorrupt(
+                "native credential transaction metadata cannot identify its "
+                "provider safely"
+            ) from marker_error
         try:
             backend = self._native_backend_factory()
+            if metadata["provider"] != backend.name:
+                raise NativeStoreUnavailable(
+                    "the damaged native credential provider is unavailable"
+                )
             native_removed = backend.delete()
             if backend.get() is not None:
                 raise NativeStoreError(
