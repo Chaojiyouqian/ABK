@@ -50,15 +50,25 @@ abk login
 - Windows 优先使用 Credential Manager；
 - macOS 优先使用 Keychain；
 - Linux 优先使用 Secret Service；
-- 系统凭据服务不可用时，CLI 会明确警告并使用机器绑定的 AES-256-GCM
-  降级存储。Linux/macOS 默认文件为 `~/.config/abk/credentials.json`
+- 系统凭据服务不可用时，CLI 会明确警告并使用 AES-256-GCM 加密文件降级
+  存储。Linux/macOS 默认元数据文件为 `~/.config/abk/credentials.json`
   （遵循 `XDG_CONFIG_HOME`），Windows 为 `%APPDATA%\abk\credentials.json`。
 
-降级文件包含随机 seed 和密文，密钥由 seed 与本机稳定标识通过 HKDF
-派生。它不会保护拥有同一用户权限的本地攻击者，也不能直接迁移到另一台
-机器；恢复备份或机器标识变化后，请运行 `abk logout`，再重新登录。旧版
-`config.json` 中的明文 token 会在首次读取时自动迁移。环境变量和
-`--token` 仅用于当前进程，不会被持久化。
+降级存储优先使用稳定机器标识和随机 seed 通过 HKDF 派生密钥。若系统无法
+提供稳定机器标识，CLI 会再次警告，并在同一配置目录的 `credentials.key`
+中保存独立的 32 字节随机主密钥；主密钥与每次写入的新 seed 通过独立 HKDF
+域派生记录密钥。POSIX 系统会把目录和文件权限分别收紧为 `0700` 和
+`0600`；Windows 依赖用户配置目录的访问控制。token 不会以明文写入。
+
+机器绑定模式无法直接迁移到另一台机器；机器标识变化后，请运行
+`abk logout` 再重新登录。本地主密钥模式仅能防止单个密文文件意外泄露：
+任何能读取整个配置目录（包括 `credentials.json` 和 `credentials.key`）的
+人都能解密 token，也无法防范拥有同一用户权限或 root 权限的本地攻击者。
+系统凭据服务或稳定机器标识恢复后，CLI 会在成功写入并验证更强存储后自动
+升级，再删除不再使用的本地主密钥；若删除遇到瞬时文件错误，后续读取或
+登出会重试清理。`abk logout` 会同时清理密文和本地主密钥。旧版
+`config.json` 中的明文 token 会在首次读取时自动迁移。环境变量和 `--token`
+仅用于当前进程，不会被持久化。
 
 首次构建会复用或初始化与 Android App 相同的 fork 签名 Secret、Release tag
 和公钥资产；CLI 本地只按仓库保存公钥，不保存 RSA 私钥。
