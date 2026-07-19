@@ -722,6 +722,89 @@ class CredentialStoreTests(unittest.TestCase):
 
         self.assertEqual(2, sync_directory.call_count)
 
+    def test_credential_file_removals_sync_directory_entries(self):
+        if credential_store._AES_BACKEND is None:
+            self.skipTest("AES-GCM backend unavailable")
+        store = self._fallback_store()
+        store.store("github-token")
+        store._write_pending_metadata(
+            store._native_transaction_metadata(FakeNativeBackend())
+        )
+
+        with mock.patch.object(
+            store,
+            "_fsync_directory",
+            wraps=store._fsync_directory,
+        ) as sync_directory:
+            self.assertTrue(store._remove_metadata())
+            self.assertTrue(store._remove_pending_metadata())
+            self.assertTrue(store._remove_local_key())
+
+        self.assertEqual(3, sync_directory.call_count)
+
+    def test_failed_removal_sync_never_reports_success(self):
+        if credential_store._AES_BACKEND is None:
+            self.skipTest("AES-GCM backend unavailable")
+        store = self._fallback_store()
+        store.store("github-token")
+        store._write_pending_metadata(
+            store._native_transaction_metadata(FakeNativeBackend())
+        )
+        removals = (
+            (store._remove_metadata, store.path),
+            (store._remove_pending_metadata, store.pending_path),
+            (store._remove_local_key, store.key_path),
+        )
+
+        for remove, path in removals:
+            with (
+                self.subTest(path=path.name),
+                mock.patch.object(
+                    store,
+                    "_fsync_directory",
+                    side_effect=OSError("sync failed"),
+                ),
+                self.assertRaises(credential_store.CredentialStoreError),
+            ):
+                remove()
+            self.assertFalse(path.exists())
+
+            with mock.patch.object(
+                store,
+                "_fsync_directory",
+                wraps=store._fsync_directory,
+            ) as sync_directory:
+                self.assertFalse(remove())
+            sync_directory.assert_called_once_with()
+
+    def test_absent_credential_entry_still_requires_directory_sync(self):
+        store = self._fallback_store()
+        store.directory.mkdir(parents=True)
+        removals = (
+            store._remove_metadata,
+            store._remove_pending_metadata,
+            store._remove_local_key,
+        )
+
+        for remove in removals:
+            with (
+                self.subTest(remove=remove.__name__),
+                mock.patch.object(
+                    store,
+                    "_fsync_directory",
+                    side_effect=OSError("sync failed"),
+                ),
+                self.assertRaises(credential_store.CredentialStoreError),
+            ):
+                remove()
+
+    def test_removal_from_a_stateless_store_is_a_noop(self):
+        store = self._fallback_store()
+
+        self.assertFalse(store.delete())
+
+        self.assertFalse(store.directory.exists())
+
     def test_first_local_metadata_failure_leaves_only_an_orphan_key(self):
         if credential_store._AES_BACKEND is None:
             self.skipTest("AES-GCM backend unavailable")

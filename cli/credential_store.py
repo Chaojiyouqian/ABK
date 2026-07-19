@@ -640,27 +640,43 @@ class CredentialStore:
             prefix=".credential-pending-",
         )
 
-    def _remove_metadata(self):
+    def _remove_file(self, path, *, remove_error, sync_error):
+        removed = True
         try:
-            self.path.unlink()
-            return True
+            path.unlink()
         except FileNotFoundError:
-            return False
+            removed = False
         except OSError as exc:
-            raise CredentialStoreError(
-                "credential metadata could not be removed"
-            ) from exc
+            raise CredentialStoreError(remove_error) from exc
+        try:
+            self._fsync_directory()
+        except OSError as exc:
+            if not removed and isinstance(exc, FileNotFoundError):
+                # A stateless store has no directory entry to make durable.
+                return False
+            raise CredentialStoreError(sync_error) from exc
+        return removed
+
+    def _remove_metadata(self):
+        return self._remove_file(
+            self.path,
+            remove_error="credential metadata could not be removed",
+            sync_error=(
+                "credential metadata removal could not be synchronized"
+            ),
+        )
 
     def _remove_pending_metadata(self):
-        try:
-            self.pending_path.unlink()
-            return True
-        except FileNotFoundError:
-            return False
-        except OSError as exc:
-            raise CredentialStoreError(
+        return self._remove_file(
+            self.pending_path,
+            remove_error=(
                 "native credential transaction marker could not be removed"
-            ) from exc
+            ),
+            sync_error=(
+                "native credential transaction marker removal could not be "
+                "synchronized"
+            ),
+        )
 
     def _read_local_key(self, *, required=True):
         try:
@@ -737,15 +753,16 @@ class CredentialStore:
         return persisted_key
 
     def _remove_local_key(self):
-        try:
-            self.key_path.unlink()
-            return True
-        except FileNotFoundError:
-            return False
-        except OSError as exc:
-            raise CredentialStoreError(
+        return self._remove_file(
+            self.key_path,
+            remove_error=(
                 "the local credential encryption key could not be removed"
-            ) from exc
+            ),
+            sync_error=(
+                "the local credential encryption key removal could not be "
+                "synchronized"
+            ),
+        )
 
     def _remove_unused_local_key(self):
         try:
