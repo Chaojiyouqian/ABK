@@ -1087,26 +1087,102 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertFalse(result.degraded)
         self.assertEqual(malformed_config, self.config_file.read_bytes())
 
-    def test_successful_logout_ignores_unrelated_malformed_config(self):
+    def test_logout_rejects_invalid_config_before_secure_delete(self):
         self.config_dir.mkdir(parents=True)
-        malformed_config = b'{"download_dir":'
-        self.config_file.write_bytes(malformed_config)
+        cases = (
+            b'{"download_dir":',
+            b'["not", "a", "config", "object"]',
+        )
+        for invalid_config in cases:
+            with self.subTest(invalid_config=invalid_config):
+                self.config_file.write_bytes(invalid_config)
+                store = mock.Mock()
+                with mock.patch.object(
+                    abk,
+                    "_credential_store",
+                    return_value=store,
+                ):
+                    removed, error = abk._delete_persisted_token()
+
+                self.assertFalse(removed)
+                self.assertIsInstance(
+                    error,
+                    abk.credential_store.CredentialStoreError,
+                )
+                store.delete.assert_not_called()
+                self.assertEqual(invalid_config, self.config_file.read_bytes())
+
+    def test_logout_rejects_unreadable_config_before_secure_delete(self):
+        self.config_dir.mkdir(parents=True)
+        self.config_file.write_text("{}", encoding="utf-8")
         store = mock.Mock()
-        store.delete.return_value = True
 
         with (
             mock.patch.object(abk, "_credential_store", return_value=store),
             mock.patch.object(
-                abk,
-                "_verify_legacy_credential_removed",
-                side_effect=AssertionError("no legacy token was removed"),
+                Path,
+                "read_text",
+                side_effect=PermissionError("unreadable config"),
             ),
         ):
             removed, error = abk._delete_persisted_token()
 
+        self.assertFalse(removed)
+        self.assertIsInstance(error, abk.credential_store.CredentialStoreError)
+        store.delete.assert_not_called()
+
+    def test_logout_rejects_symlinked_config_without_leaking_target_token(self):
+        self.config_dir.mkdir(parents=True)
+        target = Path(self.temp_dir.name) / "legacy-config.json"
+        target.write_text('{"token":"legacy-secret"}', encoding="utf-8")
+        try:
+            self.config_file.symlink_to(target)
+        except OSError as exc:
+            self.skipTest(f"config symlinks are unavailable: {exc}")
+        store = mock.Mock()
+
+        with mock.patch.object(abk, "_credential_store", return_value=store):
+            removed, error = abk._delete_persisted_token()
+
+        self.assertFalse(removed)
+        self.assertIsInstance(error, abk.credential_store.CredentialStoreError)
+        store.delete.assert_not_called()
+        self.assertTrue(self.config_file.is_symlink())
+        self.assertIn("legacy-secret", target.read_text(encoding="utf-8"))
+
+    def test_logout_rejects_hardlinked_config_without_leaking_other_link(self):
+        self.config_dir.mkdir(parents=True)
+        self.config_file.write_text(
+            '{"token":"legacy-secret"}',
+            encoding="utf-8",
+        )
+        other_link = Path(self.temp_dir.name) / "legacy-config-copy.json"
+        try:
+            os.link(self.config_file, other_link)
+        except OSError as exc:
+            self.skipTest(f"config hard links are unavailable: {exc}")
+        store = mock.Mock()
+
+        with mock.patch.object(abk, "_credential_store", return_value=store):
+            removed, error = abk._delete_persisted_token()
+
+        self.assertFalse(removed)
+        self.assertIsInstance(error, abk.credential_store.CredentialStoreError)
+        store.delete.assert_not_called()
+        self.assertIn("legacy-secret", self.config_file.read_text(encoding="utf-8"))
+        self.assertIn("legacy-secret", other_link.read_text(encoding="utf-8"))
+
+    def test_logout_with_valid_token_free_config_still_deletes_secure_state(self):
+        abk.save_config({"download_dir": "/tmp/out"})
+        store = mock.Mock()
+        store.delete.return_value = True
+
+        with mock.patch.object(abk, "_credential_store", return_value=store):
+            removed, error = abk._delete_persisted_token()
+
         self.assertTrue(removed)
         self.assertIsNone(error)
-        self.assertEqual(malformed_config, self.config_file.read_bytes())
+        store.delete.assert_called_once_with()
 
     def test_legacy_cleanup_failure_removes_new_secure_credential(self):
         abk.save_config({"token": "legacy-token", "download_dir": "/tmp/out"})

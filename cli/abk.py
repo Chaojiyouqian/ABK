@@ -561,6 +561,10 @@ def _load_config_for_credential_cleanup():
         raise credential_store.CredentialStoreError(
             "legacy credential configuration is not a regular file"
         )
+    if file_status.st_nlink != 1:
+        raise credential_store.CredentialStoreError(
+            "legacy credential configuration has multiple hard links"
+        )
     try:
         config = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -771,6 +775,10 @@ def _delete_persisted_token():
         return False, None
 
     with _config_process_lock():
+        try:
+            config = _load_config_for_credential_cleanup()
+        except credential_store.CredentialStoreError as exc:
+            return False, exc
         removed = False
         error = None
         try:
@@ -778,24 +786,22 @@ def _delete_persisted_token():
         except credential_store.CredentialStoreError as exc:
             error = exc
 
-        if CONFIG_FILE.exists():
-            config = load_config()
-            if "token" in config:
-                try:
-                    config.pop("token", None)
-                    save_config(config)
-                    _verify_legacy_credential_removed()
-                    removed = True
-                except (OSError, credential_store.CredentialStoreError):
-                    cleanup_error = credential_store.CredentialStoreError(
-                        "legacy plaintext credential could not be removed"
+        if "token" in config:
+            try:
+                config.pop("token", None)
+                save_config(config)
+                _verify_legacy_credential_removed()
+                removed = True
+            except (OSError, credential_store.CredentialStoreError):
+                cleanup_error = credential_store.CredentialStoreError(
+                    "legacy plaintext credential could not be removed"
+                )
+                if error is None:
+                    error = cleanup_error
+                else:
+                    error = credential_store.CredentialStoreError(
+                        f"{error}; {cleanup_error}"
                     )
-                    if error is None:
-                        error = cleanup_error
-                    else:
-                        error = credential_store.CredentialStoreError(
-                            f"{error}; {cleanup_error}"
-                        )
     return removed, error
 
 
