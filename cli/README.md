@@ -27,12 +27,14 @@ sudo ln -sfn "$HOME/ABK/cli/abk.py" /usr/local/bin/abk
 ```
 
 产物签名与验证需要 `PyNaCl` 和一个 RSA 后端，系统凭据集成需要
-`keyring`。推荐安装 `cryptography`；CLI 也兼容
+`keyring`；Linux Secret Service 还需要 `SecretStorage` 和
+`cryptography`。其他环境也推荐使用 `cryptography`，CLI 同时兼容
 `pycryptodome` / `pycryptodomex`：
 
 ```bash
 python3 -m pip install -r ~/ABK/cli/requirements.txt
-# 或：python3 -m pip install pycryptodome PyNaCl certifi keyring
+# 或（Linux）：python3 -m pip install cryptography PyNaCl certifi keyring SecretStorage
+# 或（macOS/Windows）：python3 -m pip install pycryptodome PyNaCl certifi keyring
 ```
 
 ## 配置 / Configuration

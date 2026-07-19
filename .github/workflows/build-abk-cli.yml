@@ -158,6 +158,9 @@ jobs:
             echo "::warning::cryptography unavailable, using pycryptodome"
           fi
           python -m pip install keyring
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            python -m pip install "SecretStorage>=3.5"
+          fi
 
       - name: Install Rust (cryptography build dependency)
         if: runner.os == 'Windows'

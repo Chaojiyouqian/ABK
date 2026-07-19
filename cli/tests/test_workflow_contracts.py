@@ -348,6 +348,12 @@ class WorkflowContractTests(unittest.TestCase):
             maxsplit=1,
         )[0]
         self.assertIn("python -m pip install keyring", non_windows_dependencies)
+        self.assertIn(
+            'if [[ "$RUNNER_OS" == "Linux" ]]; then\n'
+            '            python -m pip install "SecretStorage>=3.5"\n'
+            "          fi",
+            non_windows_dependencies,
+        )
         self.assertNotIn("cryptography_available", non_windows_dependencies)
         self.assertIn(
             "cryptography is required for Linux Secret Service support",
@@ -365,6 +371,20 @@ class WorkflowContractTests(unittest.TestCase):
             '          python -m pip install keyring',
             native_dependencies,
         )
+
+    def test_source_install_includes_linux_secret_service_dependency(self):
+        requirements = (
+            REPO_ROOT / "cli" / "requirements.txt"
+        ).read_text(encoding="utf-8").splitlines()
+        readme = (REPO_ROOT / "cli" / "README.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            'SecretStorage>=3.5; sys_platform == "linux"',
+            requirements,
+        )
+        self.assertIn("keyring SecretStorage", readme)
 
     def test_cross_packaging_includes_native_credential_backend(self):
         workflow = (
