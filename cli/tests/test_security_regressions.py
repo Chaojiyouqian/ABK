@@ -1008,17 +1008,27 @@ class SecurityRegressionTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "requires cryptography"):
                 abk.generate_signing_keypair()
 
-    def test_logout_without_config_has_no_filesystem_side_effect(self):
-        args = mock.Mock(json=False)
+    def test_logout_without_config_creates_only_the_serialization_lock(self):
+        args = mock.Mock(json=False, token=None, kpm_password=None)
         with (
-            mock.patch.object(abk, "_config_process_lock") as process_lock,
+            mock.patch.object(
+                abk,
+                "_native_credential_backend",
+                side_effect=abk.credential_store.NativeStoreUnavailable(
+                    "test backend unavailable"
+                ),
+            ),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             result = abk.cmd_logout(args)
 
         self.assertEqual(0, result)
-        process_lock.assert_not_called()
-        self.assertFalse(self.config_dir.exists())
+        self.assertTrue(self.config_dir.is_dir())
+        self.assertFalse(self.config_file.exists())
+        self.assertEqual(
+            {abk.CONFIG_LOCK_FILE},
+            {path.name for path in self.config_dir.iterdir()},
+        )
 
     def test_signing_metadata_rejects_invalid_environment_and_config_keys(self):
         config = {
@@ -1286,7 +1296,7 @@ class SecurityRegressionTests(unittest.TestCase):
 
         class ConcurrentConfigClient(SigningClient):
             def get_published_signing_key(self):
-                abk.save_config({"token": "fresh-token", "download_dir": "/fresh"})
+                abk.save_config({"session_marker": "fresh", "download_dir": "/fresh"})
                 return self.published_key
 
         client = ConcurrentConfigClient(
@@ -1296,9 +1306,54 @@ class SecurityRegressionTests(unittest.TestCase):
         abk.ensure_signing_key(client)
 
         config = abk.load_config()
-        self.assertEqual("fresh-token", config["token"])
+        self.assertEqual("fresh", config["session_marker"])
         self.assertEqual("/fresh", config["download_dir"])
         self.assertIn("alice/abk", config[abk.SIGNING_STATE_CONFIG_KEY])
+
+    def test_login_and_logout_serialize_the_entire_credential_transaction(self):
+        delete_started = threading.Event()
+        allow_delete = threading.Event()
+        store_started = threading.Event()
+
+        class BlockingCredentialStore:
+            def __init__(self):
+                self.token = None
+
+            def delete(self):
+                delete_started.set()
+                if not allow_delete.wait(timeout=5):
+                    raise RuntimeError("test timed out waiting to release logout")
+                self.token = None
+                return False
+
+            def store(self, token, before_fallback=None):
+                store_started.set()
+                self.token = token
+                return abk.credential_store.StoreResult(
+                    backend="test-native",
+                    degraded=False,
+                    location="test-native",
+                )
+
+            def read(self, include_native=True):
+                return self.token
+
+        store = BlockingCredentialStore()
+        with (
+            mock.patch.object(abk, "_credential_store", return_value=store),
+            ThreadPoolExecutor(max_workers=2) as executor,
+        ):
+            logout = executor.submit(abk._delete_persisted_token)
+            self.assertTrue(delete_started.wait(timeout=2))
+            login = executor.submit(abk._store_persisted_token, "new-token")
+
+            self.assertFalse(store_started.wait(timeout=0.2))
+            allow_delete.set()
+            self.assertEqual((False, None), logout.result(timeout=5))
+            result = login.result(timeout=5)
+
+        self.assertEqual("test-native", result.backend)
+        self.assertEqual("new-token", store.token)
 
     def test_concurrent_signing_initialization_publishes_one_matching_pair(self):
         if not abk._CRYPTO_BACKEND:
