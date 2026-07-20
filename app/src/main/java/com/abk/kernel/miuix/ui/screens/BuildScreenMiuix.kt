@@ -5,10 +5,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandIn
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -20,8 +16,6 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -99,7 +93,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -111,9 +104,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
@@ -155,7 +145,6 @@ import com.abk.kernel.viewmodel.MainViewModel
 import com.abk.kernel.ui.navigation3.LocalNavigator
 import com.abk.kernel.ui.navigation3.Route
 import com.abk.kernel.miuix.component.MiuixTextInputDialog
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -167,6 +156,7 @@ import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
@@ -2435,152 +2425,106 @@ private fun BuildPlanToolsCardMiuix(
     onImport: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        BasicComponent(
+            title = stringResource(R.string.build_plan_tools_title),
+            summary = currentSummary,
+            startAction = {
                 top.yukonga.miuix.kmp.basic.Icon(
                     imageVector = Icons.Default.FolderOpen,
                     contentDescription = null,
                     tint = MiuixTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(24.dp),
                 )
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    top.yukonga.miuix.kmp.basic.Text(
-                        text = stringResource(R.string.build_plan_tools_title),
-                        style = MiuixTheme.textStyles.subtitle,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    top.yukonga.miuix.kmp.basic.Text(
-                        text = currentSummary,
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        maxLines = if (expanded) 3 else 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                top.yukonga.miuix.kmp.basic.IconButton(onClick = { onExpandedChange(!expanded) }) {
-                    top.yukonga.miuix.kmp.basic.Icon(
-                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = if (expanded) stringResource(R.string.build_collapse_plan_tools) else stringResource(R.string.build_expand_plan_tools),
-                        tint = MiuixTheme.colorScheme.onSurfaceSecondary
-                    )
-                }
-            }
+            },
+            endActions = {
+                top.yukonga.miuix.kmp.basic.Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) {
+                        stringResource(R.string.build_collapse_plan_tools)
+                    } else {
+                        stringResource(R.string.build_expand_plan_tools)
+                    },
+                    tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                    modifier = Modifier.size(20.dp),
+                )
+            },
+            onClick = { onExpandedChange(!expanded) },
+        )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                BuildPlanMetricPillMiuix(
-                    text = if (plansCount > 0) {
+        AnimatedVisibility(
+            visible = expanded,
+            enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
+            exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top),
+        ) {
+            Column {
+                HorizontalDivider()
+                ArrowPreference(
+                    title = stringResource(R.string.build_library),
+                    summary = if (plansCount > 0) {
                         stringResource(R.string.build_saved_plans_count, plansCount)
                     } else {
                         stringResource(R.string.build_no_saved_plans)
                     },
-                    highlighted = plansCount > 0,
-                    modifier = Modifier.weight(1f)
+                    startAction = {
+                        top.yukonga.miuix.kmp.basic.Icon(
+                            imageVector = Icons.Default.FolderOpen,
+                            contentDescription = null,
+                            tint = MiuixTheme.colorScheme.onSurfaceSecondary,
+                        )
+                    },
+                    onClick = onLibrary,
                 )
-                BuildPlanMetricPillMiuix(
-                    text = if (activeQueueCount > 0) {
+                ArrowPreference(
+                    title = stringResource(R.string.build_queue_short),
+                    summary = if (activeQueueCount > 0) {
                         stringResource(R.string.build_queue_summary, activeQueueCount, pendingQueueCount)
                     } else {
                         stringResource(R.string.build_queue_empty)
                     },
-                    highlighted = activeQueueCount > 0,
-                    modifier = Modifier.weight(1f)
+                    startAction = {
+                        top.yukonga.miuix.kmp.basic.Icon(
+                            imageVector = Icons.Default.Queue,
+                            contentDescription = null,
+                            tint = MiuixTheme.colorScheme.onSurfaceSecondary,
+                        )
+                    },
+                    onClick = onQueue,
+                )
+                BasicComponent(
+                    title = stringResource(R.string.build_save),
+                    startAction = {
+                        top.yukonga.miuix.kmp.basic.Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            tint = MiuixTheme.colorScheme.onSurfaceSecondary,
+                        )
+                    },
+                    onClick = onSave,
+                )
+                BasicComponent(
+                    title = stringResource(R.string.build_share),
+                    startAction = {
+                        top.yukonga.miuix.kmp.basic.Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = null,
+                            tint = MiuixTheme.colorScheme.onSurfaceSecondary,
+                        )
+                    },
+                    onClick = onShare,
+                )
+                BasicComponent(
+                    title = stringResource(R.string.build_import),
+                    startAction = {
+                        top.yukonga.miuix.kmp.basic.Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = null,
+                            tint = MiuixTheme.colorScheme.onSurfaceSecondary,
+                        )
+                    },
+                    onClick = onImport,
                 )
             }
-
-            AnimatedVisibility(
-                visible = expanded,
-                enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
-                exit = fadeOut() + shrinkVertically() + shrinkVertically(shrinkTowards = Alignment.Top)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        top.yukonga.miuix.kmp.basic.TextButton(
-                            text = stringResource(R.string.build_save),
-                            modifier = Modifier.weight(1f),
-                            onClick = onSave
-                        )
-                        top.yukonga.miuix.kmp.basic.TextButton(
-                            text = stringResource(R.string.build_library),
-                            modifier = Modifier.weight(1f),
-                            onClick = onLibrary
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        top.yukonga.miuix.kmp.basic.TextButton(
-                            text = stringResource(R.string.build_queue_short),
-                            modifier = Modifier.weight(1f),
-                            onClick = onQueue
-                        )
-                        top.yukonga.miuix.kmp.basic.TextButton(
-                            text = stringResource(R.string.build_share),
-                            modifier = Modifier.weight(1f),
-                            colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary(),
-                            onClick = onShare
-                        )
-                    }
-                    top.yukonga.miuix.kmp.basic.TextButton(
-                        text = stringResource(R.string.build_import),
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = onImport
-                    )
-                    top.yukonga.miuix.kmp.basic.Text(
-                        text = buildString {
-                            append(
-                                if (plansCount > 0) stringResource(R.string.build_saved_plans_count, plansCount)
-                                else stringResource(R.string.build_no_saved_plans)
-                            )
-                            append(" · ")
-                            append(
-                                if (activeQueueCount > 0) stringResource(R.string.build_queue_summary, activeQueueCount, pendingQueueCount)
-                                else stringResource(R.string.build_queue_empty)
-                            )
-                        },
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                    )
-                }
-            }
         }
-    }
-}
-
-@Composable
-private fun BuildPlanMetricPillMiuix(
-    text: String,
-    highlighted: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val bgColor = if (highlighted) {
-        MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.20f)
-    } else {
-        MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)
-    }
-    val contentColor = if (highlighted) {
-        MiuixTheme.colorScheme.primary
-    } else {
-        MiuixTheme.colorScheme.onSurfaceSecondary
-    }
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(bgColor)
-            .padding(horizontal = 10.dp, vertical = 7.dp)
-    ) {
-        top.yukonga.miuix.kmp.basic.Text(
-            text = text,
-            style = MiuixTheme.textStyles.body2,
-            color = contentColor,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 
@@ -2590,102 +2534,18 @@ private fun BuildTargetSelectorMiuix(
     onSelect: (String) -> Unit,
 ) {
     val targets = listOf(BUILD_TARGET_GKI, BUILD_TARGET_ONEPLUS)
+    val targetLabels = listOf(
+        buildTargetLabel(BUILD_TARGET_GKI),
+        buildTargetLabel(BUILD_TARGET_ONEPLUS),
+    )
     val selectedIndex = targets.indexOf(selected).coerceAtLeast(0)
-
-    var rowWidthPx by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
-    val gapPx = with(density) { 8.dp.roundToPx() }
-    val buttonWidthPx = if (rowWidthPx > gapPx) (rowWidthPx - gapPx) / 2 else rowWidthPx / 2
-    val pillWidthDp = with(density) { buttonWidthPx.toDp() }
-
-    val pillTargetOffsetPx = if (selectedIndex == 0) 0f else (buttonWidthPx + gapPx).toFloat()
-    val pillOffsetX by animateFloatAsState(
-        targetValue = pillTargetOffsetPx,
-        animationSpec = spring(dampingRatio = 0.7f, stiffness = 300f),
-        label = "pillSlide"
+    TabRow(
+        tabs = targetLabels,
+        selectedTabIndex = selectedIndex,
+        onTabSelected = { index -> onSelect(targets[index]) },
+        modifier = Modifier.fillMaxWidth(),
+        height = 48.dp,
     )
-
-    val selectedBgColor by animateColorAsState(
-        targetValue = MiuixTheme.colorScheme.primary,
-        animationSpec = tween(300),
-        label = "selectedBg"
-    )
-
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(MiuixTheme.colorScheme.surfaceVariant)
-            )
-
-            Box(
-                modifier = Modifier
-                    .offset { IntOffset(pillOffsetX.roundToInt(), 0) }
-                    .width(pillWidthDp)
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(selectedBgColor)
-            )
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onSizeChanged { rowWidthPx = it.width },
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                targets.forEach { target ->
-                    val isSelected = selected == target
-                    val contentColor by animateColorAsState(
-                        targetValue = if (isSelected) MiuixTheme.colorScheme.onPrimary
-                        else MiuixTheme.colorScheme.onSurface,
-                        animationSpec = tween(300),
-                        label = "contentColor_${target}"
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = { onSelect(target) }
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp)
-                        ) {
-                            top.yukonga.miuix.kmp.basic.Icon(
-                                imageVector = if (target == BUILD_TARGET_ONEPLUS)
-                                    Icons.Default.PhoneAndroid
-                                else
-                                    Icons.Default.Memory,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = contentColor
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            top.yukonga.miuix.kmp.basic.Text(
-                                text = buildTargetLabel(target),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                color = contentColor
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable
