@@ -568,6 +568,11 @@ private fun AbkMainScaffold(
         }
     }
     val activeTab = if (selectedTab in visibleTabs) selectedTab else visibleTabs.first()
+    LaunchedEffect(openColorAppearanceRequest) {
+        if (openColorAppearanceRequest != 0) {
+            selectedTab = AbkTab.Settings
+        }
+    }
     val motionScheme = MaterialTheme.motionScheme
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
