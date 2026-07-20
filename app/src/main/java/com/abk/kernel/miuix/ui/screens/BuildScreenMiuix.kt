@@ -158,6 +158,8 @@ import com.abk.kernel.ui.navigation3.Route
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
@@ -1948,7 +1950,8 @@ fun BuildPlanLibraryScreenMiuix(vm: MainViewModel) {
                             value = renamePlanName,
                             onValueChange = { renamePlanName = it },
                             label = stringResource(R.string.build_plan_name),
-                            placeholder = ""
+                            placeholder = "",
+                            editInDialog = false,
                         )
                     }
                 }
@@ -2716,6 +2719,102 @@ private fun BuildTextFieldItem(
     onValueChange: (String) -> Unit,
     label: String,
     placeholder: String,
+    editInDialog: Boolean = true,
+) {
+    if (!editInDialog) {
+        InlineBuildTextFieldItem(
+            value = value,
+            onValueChange = onValueChange,
+            label = label,
+            placeholder = placeholder,
+        )
+        return
+    }
+
+    var showEditor by remember { mutableStateOf(false) }
+    var draftValue by rememberSaveable { mutableStateOf(value) }
+
+    LaunchedEffect(value, showEditor) {
+        if (!showEditor) {
+            draftValue = value
+        }
+    }
+
+    val hasValue = value.isNotBlank()
+    val summary = when {
+        hasValue -> value
+        placeholder.isNotBlank() -> placeholder
+        else -> null
+    }
+
+    BasicComponent(
+        title = label,
+        summary = summary,
+        summaryColor = BasicComponentDefaults.summaryColor(
+            color = if (hasValue) {
+                MiuixTheme.colorScheme.onSurfaceSecondary
+            } else {
+                MiuixTheme.colorScheme.onSurfaceVariantSummary
+            }
+        ),
+        endActions = {
+            top.yukonga.miuix.kmp.basic.Icon(
+                imageVector = Icons.Default.Edit,
+                contentDescription = null,
+                tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                modifier = Modifier.size(20.dp)
+            )
+        },
+        onClick = {
+            draftValue = value
+            showEditor = true
+        }
+    )
+
+    if (showEditor) {
+        WindowDialog(
+            show = true,
+            title = label,
+            onDismissRequest = { showEditor = false },
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                InlineBuildTextFieldItem(
+                    value = draftValue,
+                    onValueChange = { draftValue = it },
+                    label = label,
+                    placeholder = placeholder,
+                )
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = { showEditor = false },
+                        text = stringResource(R.string.cancel)
+                    )
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            onValueChange(draftValue)
+                            showEditor = false
+                        },
+                        text = stringResource(R.string.confirm),
+                        colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary()
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InlineBuildTextFieldItem(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    placeholder: String,
 ) {
     Column(
         modifier = Modifier
@@ -2747,6 +2846,7 @@ private fun BuildTextFieldItem(
                 onValueChange = onValueChange,
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
+                keyboardOptions = KeyboardOptions.Default,
                 textStyle = MiuixTheme.textStyles.body1.copy(
                     color = MiuixTheme.colorScheme.onSurface
                 ),
@@ -3101,7 +3201,8 @@ private fun SaveBuildPlanDialog(
                 value = name,
                 onValueChange = onNameChange,
                 label = stringResource(R.string.build_plan_name),
-                placeholder = ""
+                placeholder = "",
+                editInDialog = false,
             )
             Spacer(modifier = Modifier.height(12.dp))
             Row(
@@ -3147,7 +3248,8 @@ private fun ImportBuildPlanDialog(
                         value = code,
                         onValueChange = onCodeChange,
                         label = stringResource(R.string.build_abkp2_code),
-                        placeholder = stringResource(R.string.build_abkp2_placeholder)
+                        placeholder = stringResource(R.string.build_abkp2_placeholder),
+                        editInDialog = false,
                     )
                     error?.let {
                         Spacer(Modifier.height(8.dp))
