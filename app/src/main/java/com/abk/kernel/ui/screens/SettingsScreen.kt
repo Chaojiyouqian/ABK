@@ -375,7 +375,7 @@ fun SettingsScreen(
                     containerColor = Color.Transparent,
                     topBar = {
                         ExpressiveTopBar(
-                            title = stringResource(R.string.settings_theme),
+                            title = stringResource(R.string.settings_color_appearance),
                             navigationIcon = {
                                 IconButton(onClick = childPageBack::requestDismiss) {
                                     Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.settings_back))
