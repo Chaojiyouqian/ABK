@@ -122,7 +122,7 @@ fun AppProfileTemplatesScreenMiuix(vm: MainViewModel) {
                     .overScrollVertical()
                     .scrollEndHaptic(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 24.dp)
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp)
             ) {
                 // ── Card 1: 本地模板 ──
                 item(key = "template_list") {
@@ -271,6 +271,9 @@ fun AppProfileTemplatesScreenMiuix(vm: MainViewModel) {
                     }
                 }
 
+                item(key = "bottom_spacer") {
+                    Spacer(Modifier.height(60.dp))
+                }
             }
         }
     }

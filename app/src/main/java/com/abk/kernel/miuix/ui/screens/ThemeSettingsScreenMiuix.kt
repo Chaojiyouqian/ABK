@@ -280,7 +280,7 @@ fun ThemeSettingsScreenMiuix(
                 )
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(60.dp))
         }
     }
 }

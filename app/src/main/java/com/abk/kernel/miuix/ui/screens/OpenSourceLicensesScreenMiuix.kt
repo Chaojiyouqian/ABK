@@ -117,8 +117,7 @@ fun OpenSourceLicensesScreenMiuix(vm: MainViewModel) {
                 contentPadding = PaddingValues(
                     top = padding.calculateTopPadding(),
                     start = 20.dp,
-                    end = 20.dp,
-                    bottom = 24.dp
+                    end = 20.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 overscrollEffect = null
@@ -169,6 +168,7 @@ fun OpenSourceLicensesScreenMiuix(vm: MainViewModel) {
                 }
             }
 
+            item { Spacer(Modifier.height(60.dp)) }
         }
     }
     }
