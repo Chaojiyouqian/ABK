@@ -98,6 +98,7 @@ import kotlin.text.Charsets
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.Alignment
 import com.abk.kernel.data.repository.Result
+import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text as MiuixText
@@ -773,7 +774,7 @@ fun SettingsScreenMiuix(
                 // ═══════════════════════════════════════════════════════════
                 SectionTitle(stringResource(R.string.settings_about))
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    ArrowPreference(
+                    BasicComponent(
                         title = stringResource(R.string.app_full_name),
                         summary = "${stringResource(R.string.app_full_name)} v${BuildConfig.VERSION_NAME}",
                         startAction = { Icon(Icons.Default.Info, contentDescription = null, tint = iconTint) }
