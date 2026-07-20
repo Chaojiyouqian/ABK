@@ -395,13 +395,6 @@ private fun AbkMiuixMainScaffold(
             } else 0f
         }
     }
-    val childPageSceneSettled by remember {
-        derivedStateOf {
-            childPageVisible &&
-                predictiveBackProgress <= 0f &&
-                barSlideOffset.value <= -0.999f
-        }
-    }
     val tabIcon: @Composable (AbkTab) -> ImageVector = { tab ->
         when (tab) {
             AbkTab.Status -> if (state.runtimeNavigationEnabled) Icons.Default.Memory else Icons.Default.Home
@@ -813,7 +806,7 @@ private fun AbkMiuixMainScaffold(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .zIndex(if (childPageSceneSettled) 0f else 2f)
+                    .zIndex(2f)
                     .graphicsLayer {
                         if (!hasRail) {
                             translationX = size.width * MIUIX_PARENT_SCENE_EXIT_FRACTION * barSlideOffset.value
@@ -867,7 +860,7 @@ private fun AbkMiuixMainScaffold(
                     }
                 }
             }
-            if (bottomBarHeightPx > 0 && childPageVisible && !childPageSceneSettled) {
+            if (bottomBarHeightPx > 0) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
