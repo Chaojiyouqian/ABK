@@ -1,7 +1,6 @@
 package com.abk.kernel.miuix.ui.screens
 
 import android.content.Context
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -84,7 +83,7 @@ fun BuildModuleRepoSettingsScreenMiuix(vm: MainViewModel) {
                 vm.addBuildModuleRepository(url.trim())
                 repositoryUrl = ""
                 showAddRepositoryDialog = false
-                Toast.makeText(context, context.getString(R.string.add), Toast.LENGTH_SHORT).show()
+                vm.showSnackbar(context.getString(R.string.add))
             },
         )
     }

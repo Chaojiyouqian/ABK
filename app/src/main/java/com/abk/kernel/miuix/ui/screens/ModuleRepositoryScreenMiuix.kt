@@ -3,7 +3,6 @@ package com.abk.kernel.miuix.ui.screens
 import android.content.Context
 import android.os.VibrationEffect
 import android.os.Vibrator
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -368,11 +367,7 @@ private fun BuildModuleRepositoryScreenMiuix(
                             pendingModuleSetMetadata = null
                             selectedModuleSetChildren = emptyList()
                             moduleSetStageSelections = emptyMap()
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.module_repo_added_to_build),
-                                Toast.LENGTH_SHORT
-                            ).show()
+                            vm.showSnackbar(context.getString(R.string.module_repo_added_to_build))
                         }
                     }
                 )
@@ -408,11 +403,7 @@ private fun BuildModuleRepositoryScreenMiuix(
                 if (vm.addCustomExternalModulesFromUrl(module.repoUrl, selectedStages)) {
                     pendingCatalogModule = null
                     selectedCatalogModuleStages = emptyList()
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.module_repo_added_to_build),
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    vm.showSnackbar(context.getString(R.string.module_repo_added_to_build))
                 }
             },
             onAddAll = {
@@ -420,11 +411,7 @@ private fun BuildModuleRepositoryScreenMiuix(
                 if (vm.addCustomExternalModulesFromUrl(module.repoUrl, remainingStages)) {
                     pendingCatalogModule = null
                     selectedCatalogModuleStages = emptyList()
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.module_repo_added_to_build),
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    vm.showSnackbar(context.getString(R.string.module_repo_added_to_build))
                 }
             }
         )
@@ -534,11 +521,7 @@ private fun BuildModuleRepositoryScreenMiuix(
                                     val url = module.homepage.ifBlank { module.repoUrl }
                                     runCatching { uriHandler.openUri(url) }
                                         .onFailure {
-                                            Toast.makeText(
-                                                context,
-                                                context.getString(R.string.module_repo_open_failed),
-                                                Toast.LENGTH_SHORT
-                                            ).show()
+                                            vm.showSnackbar(context.getString(R.string.module_repo_open_failed))
                                         }
                                 },
                                 onAdd = {
@@ -626,11 +609,7 @@ private fun BuildModuleRepositoryScreenMiuix(
                                         val url = module.homepage.ifBlank { module.repoUrl }
                                         runCatching { uriHandler.openUri(url) }
                                             .onFailure {
-                                                Toast.makeText(
-                                                    context,
-                                                    context.getString(R.string.module_repo_open_failed),
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
+                                                vm.showSnackbar(context.getString(R.string.module_repo_open_failed))
                                             }
                                     },
                                     onAdd = {
@@ -1404,29 +1383,17 @@ private fun RuntimeModuleRepositoryScreenMiuix(
                                 onOpen = {
                                     val url = merged.module.preferredOpenUrl()
                                     if (url.isBlank()) {
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(R.string.module_repo_open_failed),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
+                                        vm.showSnackbar(context.getString(R.string.module_repo_open_failed))
                                     } else {
                                         runCatching { uriHandler.openUri(url) }
                                             .onFailure {
-                                                Toast.makeText(
-                                                    context,
-                                                    context.getString(R.string.module_repo_open_failed),
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
+                                                vm.showSnackbar(context.getString(R.string.module_repo_open_failed))
                                             }
                                     }
                                 },
                                 onInstall = {
                                     if (merged.module.zipUrl.isBlank()) {
-                                        Toast.makeText(
-                                            context,
-                                            runtimeRepoNoZipLabel(context),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
+                                        vm.showSnackbar(runtimeRepoNoZipLabel(context))
                                     } else {
                                         pendingInstallModule = merged
                                     }
@@ -1491,29 +1458,17 @@ private fun RuntimeModuleRepositoryScreenMiuix(
                                     onOpen = {
                                         val url = merged.module.preferredOpenUrl()
                                         if (url.isBlank()) {
-                                            Toast.makeText(
-                                                context,
-                                                context.getString(R.string.module_repo_open_failed),
-                                                Toast.LENGTH_SHORT
-                                            ).show()
+                                            vm.showSnackbar(context.getString(R.string.module_repo_open_failed))
                                         } else {
                                             runCatching { uriHandler.openUri(url) }
                                                 .onFailure {
-                                                    Toast.makeText(
-                                                        context,
-                                                        context.getString(R.string.module_repo_open_failed),
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
+                                                    vm.showSnackbar(context.getString(R.string.module_repo_open_failed))
                                                 }
                                         }
                                     },
                                     onInstall = {
                                         if (merged.module.zipUrl.isBlank()) {
-                                            Toast.makeText(
-                                                context,
-                                                runtimeRepoNoZipLabel(context),
-                                                Toast.LENGTH_SHORT
-                                            ).show()
+                                            vm.showSnackbar(runtimeRepoNoZipLabel(context))
                                         } else {
                                             pendingInstallModule = merged
                                         }

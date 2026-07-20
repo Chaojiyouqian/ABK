@@ -3,7 +3,6 @@ package com.abk.kernel.miuix.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -557,7 +556,7 @@ fun BuildScreenMiuix(
             onConfirm = {
                 vm.saveCurrentBuildPlan(savePlanName)
                 showSavePlanDialog = false
-                Toast.makeText(context, context.getString(R.string.build_plan_saved), Toast.LENGTH_SHORT).show()
+                vm.showSnackbar(context.getString(R.string.build_plan_saved))
             }
         )
     }
@@ -586,12 +585,12 @@ fun BuildScreenMiuix(
             onApply = { preview ->
                 vm.importBuildPlanToCurrentConfig(preview)
                 showImportPlanDialog = false
-                Toast.makeText(context, context.getString(R.string.build_plan_applied), Toast.LENGTH_SHORT).show()
+                vm.showSnackbar(context.getString(R.string.build_plan_applied))
             },
             onSave = { preview ->
                 vm.importBuildPlanToLibrary(preview)
                 showImportPlanDialog = false
-                Toast.makeText(context, context.getString(R.string.build_plan_saved_library), Toast.LENGTH_SHORT).show()
+                vm.showSnackbar(context.getString(R.string.build_plan_saved_library))
             },
             onDismiss = { showImportPlanDialog = false }
         )
@@ -608,7 +607,7 @@ fun BuildScreenMiuix(
                     text = vm.shareBuildPlanCode(plan.config, plan.name, scope)
                 )
                 sharePlanTarget = null
-                Toast.makeText(context, context.getString(R.string.build_plan_code_copied), Toast.LENGTH_SHORT).show()
+                vm.showSnackbar(context.getString(R.string.build_plan_code_copied))
             }
         )
     }
@@ -621,7 +620,7 @@ fun BuildScreenMiuix(
             onConfirm = {
                 vm.renameBuildPlan(plan.id, renamePlanName)
                 renamePlanTarget = null
-                Toast.makeText(context, context.getString(R.string.build_plan_renamed), Toast.LENGTH_SHORT).show()
+                vm.showSnackbar(context.getString(R.string.build_plan_renamed))
             }
         )
     }
@@ -633,7 +632,7 @@ fun BuildScreenMiuix(
             onConfirm = {
                 vm.deleteBuildPlan(plan.id)
                 deletePlanTarget = null
-                Toast.makeText(context, context.getString(R.string.build_plan_deleted), Toast.LENGTH_SHORT).show()
+                vm.showSnackbar(context.getString(R.string.build_plan_deleted))
             }
         )
     }
@@ -1933,7 +1932,7 @@ fun BuildPlanLibraryScreenMiuix(vm: MainViewModel) {
                     )
                 )
                 sharePlanTarget = null
-                Toast.makeText(context, context.getString(R.string.build_plan_code_copied), Toast.LENGTH_SHORT).show()
+                vm.showSnackbar(context.getString(R.string.build_plan_code_copied))
             }
         )
     }
@@ -1971,7 +1970,7 @@ fun BuildPlanLibraryScreenMiuix(vm: MainViewModel) {
                         onClick = {
                             vm.renameBuildPlan(plan.id, renamePlanName)
                             renamePlanTarget = null
-                            Toast.makeText(context, context.getString(R.string.build_plan_renamed), Toast.LENGTH_SHORT).show()
+                            vm.showSnackbar(context.getString(R.string.build_plan_renamed))
                         },
                         text = stringResource(R.string.build_save),
                         colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary()
@@ -2011,7 +2010,7 @@ fun BuildPlanLibraryScreenMiuix(vm: MainViewModel) {
                         onClick = {
                             vm.deleteBuildPlan(plan.id)
                             deletePlanTarget = null
-                            Toast.makeText(context, context.getString(R.string.build_plan_deleted), Toast.LENGTH_SHORT).show()
+                            vm.showSnackbar(context.getString(R.string.build_plan_deleted))
                         },
                         text = stringResource(R.string.delete),
                         colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColors(
@@ -2064,7 +2063,7 @@ fun BuildPlanLibraryScreenMiuix(vm: MainViewModel) {
                 onApply = {
                     vm.applyBuildPlan(it)
                     navigator.pop()
-                    Toast.makeText(context, context.getString(R.string.build_plan_applied_edit), Toast.LENGTH_SHORT).show()
+                    vm.showSnackbar(context.getString(R.string.build_plan_applied_edit))
                 },
                 onShare = { sharePlanTarget = it },
                 onRename = {
@@ -2131,7 +2130,7 @@ fun BuildQueueScreenMiuix(vm: MainViewModel) {
                 onApply = {
                     vm.updateBuildConfig(it.config)
                     navigator.pop()
-                    Toast.makeText(context, context.getString(R.string.build_queue_applied), Toast.LENGTH_SHORT).show()
+                    vm.showSnackbar(context.getString(R.string.build_queue_applied))
                 },
                 onRemove = { vm.removeBuildQueueItem(it.id) },
                 onRetry = { vm.retryBuildQueueItem(it.id) },

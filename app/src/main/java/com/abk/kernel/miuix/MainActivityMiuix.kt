@@ -1,6 +1,5 @@
 ﻿package com.abk.kernel.miuix
 
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -368,7 +367,7 @@ private fun AbkMiuixMainScaffold(
             context.findActivity()?.finish()
         } else {
             lastBackAt = now
-            Toast.makeText(context, pressAgainExitLabel, Toast.LENGTH_SHORT).show()
+            vm.showSnackbar(pressAgainExitLabel)
         }
     }
 
@@ -662,7 +661,12 @@ private fun AbkMiuixMainScaffold(
                                         OpenSourceLicensesScreenMiuix(vm = vm)
                                     }
                                     entry<Route.ExtensionManager> {
-                                        ExtensionManagerScreenMiuix(onBack = popBack)
+                                        ExtensionManagerScreenMiuix(
+                                            onBack = popBack,
+                                            onFeedback = { message, longDuration ->
+                                                vm.showSnackbar(message, longDuration)
+                                            },
+                                        )
                                     }
                                     entry<Route.BuildPlanLibrary> {
                                         BuildPlanLibraryScreenMiuix(vm = vm)
@@ -713,6 +717,9 @@ private fun AbkMiuixMainScaffold(
                                             backgroundUri = state.customBackgroundUri,
                                             backgroundImageEnabled = state.backgroundImageEnabled,
                                             onBack = popBack,
+                                            onFeedback = { message, longDuration ->
+                                                vm.showSnackbar(message, longDuration)
+                                            },
                                         )
                                     }
                                     entry<Route.SusfsControl> {
@@ -1038,7 +1045,12 @@ private fun AbkMiuixMainScaffold(
                                     OpenSourceLicensesScreenMiuix(vm = vm)
                                 }
                                 entry<Route.ExtensionManager> {
-                                    ExtensionManagerScreenMiuix(onBack = popBack)
+                                    ExtensionManagerScreenMiuix(
+                                        onBack = popBack,
+                                        onFeedback = { message, longDuration ->
+                                            vm.showSnackbar(message, longDuration)
+                                        },
+                                    )
                                 }
                                 entry<Route.BuildPlanLibrary> {
                                     BuildPlanLibraryScreenMiuix(vm = vm)
@@ -1089,6 +1101,9 @@ private fun AbkMiuixMainScaffold(
                                         backgroundUri = state.customBackgroundUri,
                                         backgroundImageEnabled = state.backgroundImageEnabled,
                                         onBack = popBack,
+                                        onFeedback = { message, longDuration ->
+                                            vm.showSnackbar(message, longDuration)
+                                        },
                                     )
                                 }
                                 entry<Route.SusfsControl> {

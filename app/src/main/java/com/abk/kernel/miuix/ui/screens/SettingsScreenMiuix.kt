@@ -7,7 +7,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -428,6 +427,7 @@ fun SettingsScreenMiuix(
                     DownloadDirectoryItem(
                         value = state.downloadDirectory,
                         onValueChange = { vm.setDownloadDirectory(it) },
+                        onFeedback = { vm.showSnackbar(it) },
                         leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null, tint = iconTint) }
                     )
                     // Mirror URL
@@ -832,6 +832,7 @@ private fun SectionTitle(title: String) {
 private fun DownloadDirectoryItem(
     value: String,
     onValueChange: (String) -> Unit,
+    onFeedback: (String) -> Unit,
     leadingIcon: @Composable (() -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -854,7 +855,7 @@ private fun DownloadDirectoryItem(
             }
             val selectedPath = DownloadDirectoryUtils.directoryPathFromTreeUri(uri)
             if (selectedPath == null) {
-                Toast.makeText(context, unsupportedTreeMessage, Toast.LENGTH_SHORT).show()
+                onFeedback(unsupportedTreeMessage)
             } else {
                 onValueChange(selectedPath)
                 showEditor = false
@@ -912,7 +913,7 @@ private fun DownloadDirectoryItem(
                         modifier = Modifier.weight(1f),
                         onClick = {
                             onValueChange(defaultDirectory)
-                            Toast.makeText(context, restoredMessage, Toast.LENGTH_SHORT).show()
+                            onFeedback(restoredMessage)
                         },
                     )
                 }

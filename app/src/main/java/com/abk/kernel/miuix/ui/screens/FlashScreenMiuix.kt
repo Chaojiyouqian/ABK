@@ -3,7 +3,6 @@ package com.abk.kernel.miuix.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -434,12 +433,12 @@ fun FlashScreenMiuix(
     fun copyDownloadedFilePath(item: DownloadedArtifact) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText(item.name, item.filePath))
-        Toast.makeText(context, context.getString(R.string.flash_copy_path_done), Toast.LENGTH_SHORT).show()
+        vm.showSnackbar(context.getString(R.string.flash_copy_path_done))
     }
 
     fun installManager(item: DownloadedArtifact) {
         if (!rootGranted) {
-            Toast.makeText(context, context.getString(R.string.flash_root_unauthorized), Toast.LENGTH_SHORT).show()
+            vm.showSnackbar(context.getString(R.string.flash_root_unauthorized))
             return
         }
         navigator.push(Route.FlashTerminalLog(FlashTerminalParams(
@@ -458,7 +457,7 @@ fun FlashScreenMiuix(
         allowHighRiskFallback: Boolean = false
     ) {
         if (!rootGranted) {
-            Toast.makeText(context, context.getString(R.string.flash_root_unauthorized), Toast.LENGTH_SHORT).show()
+            vm.showSnackbar(context.getString(R.string.flash_root_unauthorized))
             return
         }
         navigator.push(Route.FlashTerminalLog(FlashTerminalParams(
