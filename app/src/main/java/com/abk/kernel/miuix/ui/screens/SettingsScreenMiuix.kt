@@ -78,6 +78,7 @@ import com.abk.kernel.data.model.ManagerSettingKind
 import com.abk.kernel.data.model.normalizeAppUpdateLine
 import com.abk.kernel.data.model.normalizeAppUpdateStability
 import com.abk.kernel.data.repository.PreferencesRepository
+import com.abk.kernel.miuix.component.MiuixTextInputDialog
 import com.abk.kernel.miuix.util.BlurredBar
 import com.abk.kernel.miuix.util.rememberBlurBackdrop
 import com.abk.kernel.utils.DownloadDirectoryUtils
@@ -939,67 +940,38 @@ private fun MirrorUrlItem(
     onValueChange: (String) -> Unit,
     leadingIcon: @Composable (() -> Unit)? = null
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.Top
-        ) {
-            if (leadingIcon != null) leadingIcon()
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                top.yukonga.miuix.kmp.basic.Text(
-                    text = stringResource(R.string.settings_download_mirror),
-                    style = MiuixTheme.textStyles.main
-                )
-                top.yukonga.miuix.kmp.basic.Text(
-                    text = stringResource(R.string.settings_download_mirror_desc),
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                )
-            }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    color = MiuixTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(17.dp)
-                )
-                .border(
-                    width = 1.dp,
-                    color = MiuixTheme.colorScheme.primary,
-                    shape = RoundedCornerShape(17.dp)
-                )
-                .padding(horizontal = 20.dp, vertical = 14.dp)
-        ) {
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                textStyle = MiuixTheme.textStyles.body1.copy(
-                    color = MiuixTheme.colorScheme.onSurface
-                ),
-                cursorBrush = SolidColor(Color.White),
-                decorationBox = { innerTextField ->
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        if (value.isEmpty()) {
-                            top.yukonga.miuix.kmp.basic.Text(
-                                text = "https://hk.gh-proxy.org/",
-                                style = MiuixTheme.textStyles.body1,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                            )
-                        }
-                        innerTextField()
-                    }
-                }
-            )
-        }
+    var showEditor by remember { mutableStateOf(false) }
+    var draftValue by remember { mutableStateOf(value) }
+    val title = stringResource(R.string.settings_download_mirror)
+    val description = stringResource(R.string.settings_download_mirror_desc)
+
+    if (showEditor) {
+        MiuixTextInputDialog(
+            show = true,
+            title = title,
+            message = description,
+            label = title,
+            value = draftValue,
+            cancelText = stringResource(android.R.string.cancel),
+            confirmText = stringResource(R.string.confirm),
+            onValueChange = { draftValue = it },
+            onDismiss = { showEditor = false },
+            onConfirm = {
+                onValueChange(draftValue.trim())
+                showEditor = false
+            },
+        )
     }
+
+    ArrowPreference(
+        title = title,
+        summary = value.ifBlank { description },
+        startAction = leadingIcon,
+        onClick = {
+            draftValue = value
+            showEditor = true
+        },
+    )
 }
 
 
