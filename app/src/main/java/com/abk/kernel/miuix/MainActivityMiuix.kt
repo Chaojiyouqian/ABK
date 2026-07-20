@@ -216,7 +216,6 @@ private fun AbkMiuixMainScaffold(
     val hasRail = isTabletLayout && !state.miuixFloatingBottomBarEnabled
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     var bottomBarContainerWidthPx by remember { mutableIntStateOf(0) }
-    var floatingBottomBarWidthPx by remember { mutableIntStateOf(0) }
     val contentPadding = PaddingValues(
         bottom = with(density) { bottomBarHeightPx.toDp() },
     )
@@ -772,15 +771,7 @@ private fun AbkMiuixMainScaffold(
                     .graphicsLayer {
                         if (!hasRail) {
                             val containerWidth = bottomBarContainerWidthPx.takeIf { it > 0 } ?: size.width.toInt()
-                            val slideWidth = if (
-                                state.miuixFloatingBottomBarEnabled &&
-                                floatingBottomBarWidthPx > 0
-                            ) {
-                                (containerWidth + floatingBottomBarWidthPx) / 2f
-                            } else {
-                                containerWidth.toFloat()
-                            }
-                            translationX = slideWidth * barSlideOffset.value
+                            translationX = containerWidth * barSlideOffset.value
                         }
                     },
             ) {
@@ -794,8 +785,7 @@ private fun AbkMiuixMainScaffold(
                             state.miuixFloatingBottomBarEnabled -> {
                                 MiuixFloatingBottomBar(
                                     modifier = Modifier
-                                        .align(Alignment.Center)
-                                        .onSizeChanged { floatingBottomBarWidthPx = it.width },
+                                        .align(Alignment.Center),
                                     items = visibleTabs.map { tab ->
                                         FloatingTabItem(
                                             label = tabLabel(tab),
