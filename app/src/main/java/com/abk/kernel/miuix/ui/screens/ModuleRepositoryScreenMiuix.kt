@@ -190,7 +190,7 @@ private fun MiuixModuleTagChip(
                 color = MiuixTheme.colorScheme.outline.copy(alpha = if (primary) 0.08f else 0.14f),
                 shape = chipShape
             )
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
         Text(
             text = label,
@@ -508,8 +508,8 @@ private fun BuildModuleRepositoryScreenMiuix(
                         .scrollEndHaptic(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(
-                        start = 20.dp,
-                        end = 20.dp,
+                        start = 12.dp,
+                        end = 12.dp,
                         bottom = 80.dp + outerPadding.calculateBottomPadding()
                     ),
                     overscrollEffect = null
@@ -596,8 +596,8 @@ private fun BuildModuleRepositoryScreenMiuix(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         contentPadding = PaddingValues(
                             top = innerPadding.calculateTopPadding() + 6.dp,
-                            start = 20.dp,
-                            end = 20.dp,
+                            start = 12.dp,
+                            end = 12.dp,
                             bottom = 80.dp + outerPadding.calculateBottomPadding()
                         ),
                         overscrollEffect = null
@@ -732,8 +732,8 @@ private fun BuildModuleCardMiuix(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // Title row
             Row(
@@ -794,7 +794,7 @@ private fun BuildModuleCardMiuix(
             // Tag chips
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 MiuixModuleTagChip(
                     label = module.repoUrl.repoName(),
@@ -1383,8 +1383,8 @@ private fun RuntimeModuleRepositoryScreenMiuix(
                         .scrollEndHaptic(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(
-                        start = 20.dp,
-                        end = 20.dp,
+                        start = 12.dp,
+                        end = 12.dp,
                         bottom = 80.dp + outerPadding.calculateBottomPadding()
                     ),
                     overscrollEffect = null
@@ -1466,8 +1466,8 @@ private fun RuntimeModuleRepositoryScreenMiuix(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         contentPadding = PaddingValues(
                             top = innerPadding.calculateTopPadding() + 6.dp,
-                            start = 20.dp,
-                            end = 20.dp,
+                            start = 12.dp,
+                            end = 12.dp,
                             bottom = 80.dp + outerPadding.calculateBottomPadding()
                         ),
                         overscrollEffect = null
@@ -1595,8 +1595,8 @@ private fun RuntimeModuleCardMiuix(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // Title row
             Row(
@@ -1657,7 +1657,7 @@ private fun RuntimeModuleCardMiuix(
             // Tag chips
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 MiuixModuleTagChip(
                     label = module.id.ifBlank { module.name },
