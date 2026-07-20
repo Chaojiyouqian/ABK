@@ -4,7 +4,7 @@ use crate::local_build_paths::{
 use anyhow::{anyhow, Context, Result};
 use std::env;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,10 +55,39 @@ pub fn repo_root() -> PathBuf {
     {
         return PathBuf::from(path);
     }
+    if let Some(path) = resolve_bundled_app_root_from_current_exe() {
+        return path;
+    }
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("desktop lives under repo root")
         .to_path_buf()
+}
+
+fn resolve_bundled_app_root_from_current_exe() -> Option<PathBuf> {
+    let exe_path = env::current_exe().ok()?;
+    let exe_dir = exe_path.parent()?;
+    resolve_bundled_app_root_from_base(exe_dir)
+}
+
+fn resolve_bundled_app_root_from_base(base_dir: &Path) -> Option<PathBuf> {
+    for relative in [
+        PathBuf::from("resources").join("abk"),
+        PathBuf::from("..").join("resources").join("abk"),
+        PathBuf::from("..").join("share").join("abk"),
+    ] {
+        let candidate = base_dir.join(relative);
+        if looks_like_app_root(&candidate) {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn looks_like_app_root(path: &Path) -> bool {
+    path.is_dir()
+        && path.join("cli").join("abk.py").is_file()
+        && path.join("hmbird_patch.c").is_file()
 }
 
 pub fn local_build_root() -> PathBuf {
@@ -347,6 +376,7 @@ fn adb_prefix(serial: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[test]
     fn builds_cli_command() {
@@ -378,5 +408,20 @@ mod tests {
         assert_eq!(spec.args[2], "push");
         assert_eq!(spec.args[3], "/tmp/module.zip");
         assert_eq!(spec.args[4], "/data/local/tmp/module.zip");
+    }
+
+    #[test]
+    fn resolves_bundled_app_root_from_executable_directory() {
+        let temp_root = std::env::temp_dir().join(format!("abk-test-{}", Uuid::new_v4()));
+        let bundle_root = temp_root.join("ABK-windows-x64");
+        let app_root = bundle_root.join("resources").join("abk");
+        std::fs::create_dir_all(app_root.join("cli")).unwrap();
+        std::fs::write(app_root.join("cli").join("abk.py"), "print('ok')\n").unwrap();
+        std::fs::write(app_root.join("hmbird_patch.c"), "/* ok */\n").unwrap();
+
+        let resolved = resolve_bundled_app_root_from_base(&bundle_root).unwrap();
+        assert_eq!(resolved, app_root);
+
+        std::fs::remove_dir_all(temp_root).ok();
     }
 }

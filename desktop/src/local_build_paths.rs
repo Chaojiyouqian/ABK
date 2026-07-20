@@ -93,10 +93,17 @@ pub fn resolve_local_build_root(repo_root: &Path, settings: &LocalBuildPathSetti
     {
         return PathBuf::from(raw);
     }
-    repo_root
-        .parent()
-        .expect("repo root lives under kernelexp")
-        .join("new_test")
+    if looks_like_dev_checkout(repo_root) {
+        return repo_root
+            .parent()
+            .expect("repo root lives under kernelexp")
+            .join("new_test");
+    }
+    local_build_config_root(repo_root).join("local-build-root")
+}
+
+fn looks_like_dev_checkout(repo_root: &Path) -> bool {
+    repo_root.join("desktop").is_dir() && repo_root.join("cli").join("abk.py").is_file()
 }
 
 pub fn resolve_local_build_workspace_dir(
