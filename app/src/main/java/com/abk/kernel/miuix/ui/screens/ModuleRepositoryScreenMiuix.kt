@@ -6,7 +6,6 @@ import android.os.Vibrator
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -118,6 +117,7 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -167,30 +167,22 @@ private fun MiuixModuleTagChip(
     maxWidth: Dp = 140.dp
 ) {
     val isDark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
+    val secondaryColors = ButtonDefaults.buttonColors()
     val bgColor = if (primary) {
-        if (isDark) Color(0xFF15364F) else Color(0xFFDDF2FF)
+        if (isDark) Color(0xFF223452) else Color(0xFFE4F3FF)
     } else {
-        MiuixTheme.colorScheme.surfaceContainerHigh.copy(alpha = if (isDark) 0.58f else 0.72f)
+        secondaryColors.color
     }
     val contentColor = if (primary) {
-        if (isDark) Color(0xFF74C7FF) else Color(0xFF1689D8)
+        if (isDark) Color(0xFF66A9FF) else Color(0xFF1689D8)
     } else {
-        if (isDark) MiuixTheme.colorScheme.onSurfaceSecondary else MiuixTheme.colorScheme.onSurface
+        secondaryColors.contentColor
     }
-    val chipShape = RoundedCornerShape(50)
     Box(
         modifier = Modifier
             .widthIn(max = maxWidth)
-            .background(
-                color = bgColor,
-                shape = chipShape
-            )
-            .border(
-                width = 1.dp,
-                color = MiuixTheme.colorScheme.outline.copy(alpha = if (primary) 0.08f else 0.14f),
-                shape = chipShape
-            )
-            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .squircleSurface(color = bgColor, cornerRadius = ButtonDefaults.CornerRadius)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
         Text(
             text = label,
