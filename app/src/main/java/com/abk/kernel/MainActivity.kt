@@ -545,7 +545,12 @@ private fun AbkMainScaffold(
         vm.markMainUiEntered()
     }
 
-    var selectedTab by rememberSaveable { mutableStateOf(AbkTab.Status) }
+    val restoreColorAppearanceOnEntry = remember { openColorAppearanceRequest != 0 }
+    var selectedTab by rememberSaveable {
+        mutableStateOf(
+            if (restoreColorAppearanceOnEntry) AbkTab.Settings else AbkTab.Status
+        )
+    }
     var flashDetailPageVisible by rememberSaveable { mutableStateOf(false) }
     var settingsChildPageVisible by rememberSaveable { mutableStateOf(false) }
     var buildPlanPageVisible by rememberSaveable { mutableStateOf(false) }

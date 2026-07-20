@@ -114,7 +114,10 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     var showLogoutDialog by remember { mutableStateOf(false) }
     var exportingDiagnostics by remember { mutableStateOf(false) }
-    var showThemeSettings by rememberSaveable { mutableStateOf(false) }
+    val restoreThemeSettingsOnEntry = remember { openThemeSettingsRequest != 0 }
+    var showThemeSettings by rememberSaveable {
+        mutableStateOf(restoreThemeSettingsOnEntry)
+    }
     var showAppProfileTemplates by rememberSaveable { mutableStateOf(false) }
     var showManagerTools by rememberSaveable { mutableStateOf(false) }
     var showSusfsControl by rememberSaveable { mutableStateOf(false) }

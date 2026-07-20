@@ -115,7 +115,6 @@ import com.abk.kernel.miuix.viewmodel.MiuixSettingsViewModel
 import com.abk.kernel.ui.navigation3.LocalNavigator
 import com.abk.kernel.ui.navigation3.Navigator
 import com.abk.kernel.ui.navigation3.Route
-import com.abk.kernel.ui.navigation3.rememberNavigator
 import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
 import com.abk.kernel.utils.findActivity
@@ -173,14 +172,25 @@ private fun AbkMiuixMainScaffold(
 ) {
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
-    val navigator = rememberNavigator()
+    val restoreColorAppearanceOnEntry = remember { openColorAppearanceRequest != 0 }
+    val navigator = rememberSaveable(saver = Navigator.Saver) {
+        Navigator(Route.Main).apply {
+            if (restoreColorAppearanceOnEntry) {
+                push(Route.ThemeSettings)
+            }
+        }
+    }
     val navIsOnSubPage = navigator.backStackSize() > 1
 
     LaunchedEffect(Unit) {
         vm.markMainUiEntered()
     }
 
-    var selectedTab by rememberSaveable { mutableStateOf(AbkTab.Status) }
+    var selectedTab by rememberSaveable {
+        mutableStateOf(
+            if (restoreColorAppearanceOnEntry) AbkTab.Settings else AbkTab.Status
+        )
+    }
     var flashDetailPageVisible by rememberSaveable { mutableStateOf(false) }
     var settingsChildPageVisible by rememberSaveable { mutableStateOf(false) }
     var buildPlanPageVisible by rememberSaveable { mutableStateOf(false) }
@@ -206,7 +216,9 @@ private fun AbkMiuixMainScaffold(
     LaunchedEffect(openColorAppearanceRequest) {
         if (openColorAppearanceRequest != 0) {
             selectedTab = AbkTab.Settings
-            navigator.replaceAll(listOf(Route.Main, Route.ThemeSettings))
+            if (navigator.current() != Route.ThemeSettings) {
+                navigator.replaceAll(listOf(Route.Main, Route.ThemeSettings))
+            }
             onColorAppearanceRequestConsumed()
         }
     }
