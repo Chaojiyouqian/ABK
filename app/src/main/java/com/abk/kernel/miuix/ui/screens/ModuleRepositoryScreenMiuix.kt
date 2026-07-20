@@ -167,6 +167,7 @@ private fun MiuixModuleTagChip(
     maxWidth: Dp = 140.dp
 ) {
     val isDark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
+    val primaryColors = ButtonDefaults.buttonColorsPrimary()
     val secondaryColors = ButtonDefaults.buttonColors()
     val bgColor = if (primary) {
         if (isDark) Color(0xFF223452) else Color(0xFFE4F3FF)
@@ -174,7 +175,7 @@ private fun MiuixModuleTagChip(
         secondaryColors.color
     }
     val contentColor = if (primary) {
-        if (isDark) Color(0xFF66A9FF) else Color(0xFF1689D8)
+        primaryColors.contentColor
     } else {
         secondaryColors.contentColor
     }
@@ -182,7 +183,7 @@ private fun MiuixModuleTagChip(
         modifier = Modifier
             .widthIn(max = maxWidth)
             .squircleSurface(color = bgColor, cornerRadius = ButtonDefaults.CornerRadius)
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .padding(horizontal = 8.dp, vertical = 3.dp)
     ) {
         Text(
             text = label,
