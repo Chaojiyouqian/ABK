@@ -836,6 +836,7 @@ private fun DownloadDirectoryItem(
 ) {
     val context = LocalContext.current
     val defaultDirectory = remember { DownloadDirectoryUtils.defaultDirectoryPath() }
+    var showEditor by remember { mutableStateOf(false) }
     val needsAllFilesAccess = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
         !Environment.isExternalStorageManager()
     val unsupportedTreeMessage = stringResource(R.string.settings_download_directory_tree_unsupported)
@@ -856,81 +857,74 @@ private fun DownloadDirectoryItem(
                 Toast.makeText(context, unsupportedTreeMessage, Toast.LENGTH_SHORT).show()
             } else {
                 onValueChange(selectedPath)
+                showEditor = false
             }
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.Top
+    if (showEditor) {
+        WindowDialog(
+            show = true,
+            title = stringResource(R.string.settings_download_directory),
+            onDismissRequest = { showEditor = false },
         ) {
-            if (leadingIcon != null) leadingIcon()
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                top.yukonga.miuix.kmp.basic.Text(
-                    text = stringResource(R.string.settings_download_directory),
-                    style = MiuixTheme.textStyles.main
-                )
-                top.yukonga.miuix.kmp.basic.Text(
+            Column {
+                MiuixText(
                     text = stringResource(R.string.settings_download_directory_desc),
                     style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
+                Spacer(Modifier.height(8.dp))
+                MiuixText(
+                    text = value.ifEmpty { defaultDirectory },
+                    style = MiuixTheme.textStyles.body1,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(12.dp))
+                AnimatedVisibility(visible = needsAllFilesAccess) {
+                    MiuixTextButton(
+                        text = permissionNeededMessage,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { openAllFilesAccessSettings(context) },
+                    )
+                }
+                MiuixTextButton(
+                    text = stringResource(R.string.settings_download_directory_reset),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        onValueChange(defaultDirectory)
+                        showEditor = false
+                        Toast.makeText(context, restoredMessage, Toast.LENGTH_SHORT).show()
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    MiuixTextButton(
+                        text = stringResource(android.R.string.cancel),
+                        modifier = Modifier.weight(1f),
+                        onClick = { showEditor = false },
+                    )
+                    Spacer(Modifier.width(20.dp))
+                    MiuixTextButton(
+                        text = stringResource(R.string.settings_download_directory_choose),
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                        onClick = { folderPicker.launch(null) },
+                    )
+                }
             }
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    color = MiuixTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(17.dp)
-                )
-                .border(
-                    width = 1.dp,
-                    color = MiuixTheme.colorScheme.primary,
-                    shape = RoundedCornerShape(17.dp)
-                )
-                .padding(horizontal = 20.dp, vertical = 14.dp)
-        ) {
-            top.yukonga.miuix.kmp.basic.Text(
-                text = value.ifEmpty { defaultDirectory },
-                style = MiuixTheme.textStyles.body1,
-                color = MiuixTheme.colorScheme.onSurface,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            top.yukonga.miuix.kmp.basic.TextButton(
-                text = stringResource(R.string.settings_download_directory_choose),
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.textButtonColorsPrimary(),
-                onClick = { folderPicker.launch(null) }
-            )
-            top.yukonga.miuix.kmp.basic.TextButton(
-                text = stringResource(R.string.settings_download_directory_reset),
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    onValueChange(defaultDirectory)
-                    Toast.makeText(context, restoredMessage, Toast.LENGTH_SHORT).show()
-                }
-            )
-        }
-        AnimatedVisibility(visible = needsAllFilesAccess) {
-            top.yukonga.miuix.kmp.basic.TextButton(
-                text = permissionNeededMessage,
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { openAllFilesAccessSettings(context) }
-            )
-        }
     }
+
+    ArrowPreference(
+        title = stringResource(R.string.settings_download_directory),
+        summary = value.ifEmpty { defaultDirectory },
+        startAction = leadingIcon,
+        onClick = { showEditor = true },
+    )
 }
 
 /** Mirror URL text field. */
