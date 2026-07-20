@@ -6,6 +6,7 @@ import android.os.Vibrator
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -165,26 +166,37 @@ private fun MiuixModuleTagChip(
     primary: Boolean = false,
     maxWidth: Dp = 140.dp
 ) {
+    val isDark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
     val bgColor = if (primary) {
-        MiuixTheme.colorScheme.primary
+        if (isDark) Color(0xFF15364F) else Color(0xFFDDF2FF)
     } else {
-        MiuixTheme.colorScheme.secondary
+        MiuixTheme.colorScheme.surfaceContainerHigh.copy(alpha = if (isDark) 0.58f else 0.72f)
     }
-    val contentColor = Color.White
+    val contentColor = if (primary) {
+        if (isDark) Color(0xFF74C7FF) else Color(0xFF1689D8)
+    } else {
+        if (isDark) MiuixTheme.colorScheme.onSurfaceSecondary else MiuixTheme.colorScheme.onSurface
+    }
+    val chipShape = RoundedCornerShape(50)
     Box(
         modifier = Modifier
             .widthIn(max = maxWidth)
             .background(
-                color = bgColor.copy(alpha = if (primary) 0.88f else 0.78f),
-                shape = RoundedCornerShape(5.dp)
+                color = bgColor,
+                shape = chipShape
             )
-            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .border(
+                width = 1.dp,
+                color = MiuixTheme.colorScheme.outline.copy(alpha = if (primary) 0.08f else 0.14f),
+                shape = chipShape
+            )
+            .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         Text(
             text = label,
             style = MiuixTheme.textStyles.body2,
             color = contentColor,
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
