@@ -89,8 +89,10 @@ fun ManagerToolsScreenMiuix(vm: MainViewModel) {
                 .scrollEndHaptic(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                horizontal = 20.dp,
-                vertical = 16.dp
+                start = 20.dp,
+                top = 16.dp,
+                end = 20.dp,
+                bottom = 24.dp
             )
         ) {
             // Card 1: System tools
@@ -156,9 +158,6 @@ fun ManagerToolsScreenMiuix(vm: MainViewModel) {
                 }
             }
 
-            item(key = "bottom_spacer") {
-                Spacer(Modifier.height(60.dp))
-            }
         }
     }
 }

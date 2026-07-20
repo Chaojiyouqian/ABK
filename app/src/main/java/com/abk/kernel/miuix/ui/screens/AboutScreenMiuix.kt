@@ -114,7 +114,7 @@ fun AboutScreenMiuix(vm: MainViewModel) {
                     top = padding.calculateTopPadding() + 16.dp,
                     start = 20.dp,
                     end = 20.dp,
-                    bottom = 16.dp
+                    bottom = 24.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -269,9 +269,6 @@ fun AboutScreenMiuix(vm: MainViewModel) {
                 }
             }
 
-            item {
-                Spacer(Modifier.size(80.dp))
-            }
         }
     }
     }

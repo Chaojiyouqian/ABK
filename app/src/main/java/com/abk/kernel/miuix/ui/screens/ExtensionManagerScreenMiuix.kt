@@ -191,7 +191,7 @@ fun ExtensionManagerScreenMiuix(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+            contentPadding = PaddingValues(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (extensions.isEmpty()) {
@@ -240,7 +240,6 @@ fun ExtensionManagerScreenMiuix(
                         onReset = { resetExtension(extension) }
                     )
                 }
-                item { Spacer(Modifier.size(80.dp)) }
             }
         }
     }
