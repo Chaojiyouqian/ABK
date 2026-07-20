@@ -248,9 +248,6 @@ private fun AbkMiuixMainScaffold(
     val isTabletLayout = configuration.smallestScreenWidthDp >= 600
     val hasRail = isTabletLayout && !state.miuixFloatingBottomBarEnabled
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
-    val contentPadding = PaddingValues(
-        bottom = with(density) { bottomBarHeightPx.toDp() },
-    )
     val popBack = { navigator.pop() }
     val childPageVisible = when (activeTab) {
         AbkTab.Build -> navIsOnSubPage || buildPlanPageVisible
@@ -263,6 +260,10 @@ private fun AbkMiuixMainScaffold(
         AbkTab.Status -> navIsOnSubPage
         else -> false
     }
+    val bottomBarHeightDp = with(density) { bottomBarHeightPx.toDp() }
+    val contentPadding = PaddingValues(
+        bottom = if (childPageVisible) 0.dp else bottomBarHeightDp,
+    )
     // Mutable state captured by closures; reassigned inside NavDisplay setup so any
     // downstream composable (e.g., bottom bar graphicsLayer) can read the latest
     // gesture state and recompose when it changes.
@@ -809,56 +810,58 @@ private fun AbkMiuixMainScaffold(
                 .background(appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface))),
         ) {
             // Phone bottom bar (existing code, unchanged logic)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter)
-                    .zIndex(if (childPageSceneSettled) 0f else 2f)
-                    .graphicsLayer {
-                        if (!hasRail) {
-                            translationX = size.width * MIUIX_PARENT_SCENE_EXIT_FRACTION * barSlideOffset.value
-                        }
-                    },
-            ) {
+            if (!childPageSceneSettled) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .onSizeChanged { bottomBarHeightPx = it.height },
-                ) {
-                    key(visibleTabs) {
-                        when {
-                            state.miuixFloatingBottomBarEnabled -> {
-                                MiuixFloatingBottomBar(
-                                    modifier = Modifier
-                                        .align(Alignment.Center),
-                                    items = visibleTabs.map { tab ->
-                                        FloatingTabItem(
-                                            label = tabLabel(tab),
-                                            icon = tabIcon(tab),
-                                            onClick = { if (!childPageVisible && tab in visibleTabs) selectedTab = tab },
-                                        )
-                                    },
-                                    selectedIndex = visibleTabs.indexOf(activeTab).coerceAtLeast(0),
-                                    backdrop = floatingGlassBackdrop,
-                                    isBlurEnabled = state.miuixLiquidGlassEnabled,
-                                    isLiquidGlassEnabled = state.miuixLiquidGlassEnabled,
-                                )
+                        .align(Alignment.BottomCenter)
+                        .zIndex(2f)
+                        .graphicsLayer {
+                            if (!hasRail) {
+                                translationX = size.width * MIUIX_PARENT_SCENE_EXIT_FRACTION * barSlideOffset.value
                             }
-                            else -> {
-                                BlurredBar(blurBackdrop, surfaceColor) {
-                                    MiuixNavigationBar(
-                                        modifier = Modifier.fillMaxWidth().height(80.dp),
-                                        color = if (blurBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface,
-                                    ) {
-                                        visibleTabs.forEach { tab ->
-                                            MiuixNavigationBarItem(
-                                                modifier = Modifier.weight(1f).height(80.dp),
-                                                selected = activeTab == tab,
-                                                onClick = { if (!childPageVisible && tab in visibleTabs) selectedTab = tab },
-                                                enabled = !childPageVisible,
-                                                icon = tabIcon(tab),
+                        },
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onSizeChanged { bottomBarHeightPx = it.height },
+                    ) {
+                        key(visibleTabs) {
+                            when {
+                                state.miuixFloatingBottomBarEnabled -> {
+                                    MiuixFloatingBottomBar(
+                                        modifier = Modifier
+                                            .align(Alignment.Center),
+                                        items = visibleTabs.map { tab ->
+                                            FloatingTabItem(
                                                 label = tabLabel(tab),
+                                                icon = tabIcon(tab),
+                                                onClick = { if (!childPageVisible && tab in visibleTabs) selectedTab = tab },
                                             )
+                                        },
+                                        selectedIndex = visibleTabs.indexOf(activeTab).coerceAtLeast(0),
+                                        backdrop = floatingGlassBackdrop,
+                                        isBlurEnabled = state.miuixLiquidGlassEnabled,
+                                        isLiquidGlassEnabled = state.miuixLiquidGlassEnabled,
+                                    )
+                                }
+                                else -> {
+                                    BlurredBar(blurBackdrop, surfaceColor) {
+                                        MiuixNavigationBar(
+                                            modifier = Modifier.fillMaxWidth().height(80.dp),
+                                            color = if (blurBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface,
+                                        ) {
+                                            visibleTabs.forEach { tab ->
+                                                MiuixNavigationBarItem(
+                                                    modifier = Modifier.weight(1f).height(80.dp),
+                                                    selected = activeTab == tab,
+                                                    onClick = { if (!childPageVisible && tab in visibleTabs) selectedTab = tab },
+                                                    enabled = !childPageVisible,
+                                                    icon = tabIcon(tab),
+                                                    label = tabLabel(tab),
+                                                )
+                                            }
                                         }
                                     }
                                 }
