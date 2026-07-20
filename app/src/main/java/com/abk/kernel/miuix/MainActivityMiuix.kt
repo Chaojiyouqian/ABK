@@ -5,7 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -119,6 +119,11 @@ import com.abk.kernel.ui.theme.appPageBackgroundColor
 import com.abk.kernel.ui.theme.uiSurfaceColor
 import com.abk.kernel.utils.findActivity
 import com.abk.kernel.viewmodel.MainViewModel
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.sin
+import kotlin.math.sqrt
 import top.yukonga.miuix.kmp.basic.NavigationBar as MiuixNavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem as MiuixNavigationBarItem
 import top.yukonga.miuix.kmp.basic.NavigationRail as MiuixNavigationRail
@@ -130,6 +135,23 @@ import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.MiuixPopupUtils
+
+private const val MIUIX_NAV_TRANSITION_DURATION_MS = 500
+private const val MIUIX_PARENT_SCENE_EXIT_FRACTION = 0.25f
+
+private val MiuixNavTransitionEasing = Easing { fraction ->
+    val response = 0.8f
+    val damping = 0.95f
+    val omega = 2.0 * PI / response
+    val k = omega * omega
+    val c = damping * 4.0 * PI / response
+    val w = (sqrt(4.0 * k - c * c) / 2.0).toFloat()
+    val r = (-c / 2.0).toFloat()
+    val c2 = r / w
+    val t = fraction.toDouble()
+    val decay = exp(r * t)
+    (decay * (-cos(w * t) + c2 * sin(w * t)) + 1.0).toFloat()
+}
 
 /**
  * Bridge composable for miuix UI mode.
@@ -227,7 +249,6 @@ private fun AbkMiuixMainScaffold(
     val isTabletLayout = configuration.smallestScreenWidthDp >= 600
     val hasRail = isTabletLayout && !state.miuixFloatingBottomBarEnabled
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
-    var bottomBarContainerWidthPx by remember { mutableIntStateOf(0) }
     val contentPadding = PaddingValues(
         bottom = with(density) { bottomBarHeightPx.toDp() },
     )
@@ -363,7 +384,7 @@ private fun AbkMiuixMainScaffold(
     val blurEnabledForGlass = state.miuixFloatingBottomBarEnabled && state.miuixLiquidGlassEnabled
     val blurBackdrop = rememberBlurBackdrop(state.miuixBlurEnabled, surfaceColor)
 
-    // Bar slide offset (0f = visible, -1f = hidden left). Single LaunchedEffect drives it:
+    // Mirrors NavDisplay's parent scene slide: 0f = root position, -1f = -width / 4.
     val barSlideOffset = remember { Animatable(0f) }
     val lastGestureProgress = remember { mutableStateOf(0f) }
     val predictiveBackProgress by remember {
@@ -403,8 +424,8 @@ private fun AbkMiuixMainScaffold(
             if (!hasRail) {
                 LaunchedEffect(childPageVisible, predictiveBackProgress) {
                     if (predictiveBackProgress > 0f) {
-                        // Only show bar during predictive back when popping from first sub-page level
-                        // (backStackSize == 2) back to root. For deeper pages (>= 3) the bar stays hidden.
+                        // Only return the bar during predictive back when popping from the first
+                        // sub-page level. Deeper pages keep it parked with the parent scene.
                         if (navigator.backStackSize() <= 2) {
                             barSlideOffset.snapTo(-(1f - predictiveBackProgress))
                             lastGestureProgress.value = predictiveBackProgress
@@ -417,8 +438,8 @@ private fun AbkMiuixMainScaffold(
                         barSlideOffset.animateTo(
                             targetValue = target,
                             animationSpec = tween(
-                                durationMillis = if (fromGesture) 200 else 300,
-                                easing = FastOutSlowInEasing,
+                                durationMillis = MIUIX_NAV_TRANSITION_DURATION_MS,
+                                easing = MiuixNavTransitionEasing,
                             ),
                         )
                         if (fromGesture) lastGestureProgress.value = 0f
@@ -777,13 +798,11 @@ private fun AbkMiuixMainScaffold(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onSizeChanged { bottomBarContainerWidthPx = it.width }
                     .align(Alignment.BottomCenter)
                     .zIndex(2f)
                     .graphicsLayer {
                         if (!hasRail) {
-                            val containerWidth = bottomBarContainerWidthPx.takeIf { it > 0 } ?: size.width.toInt()
-                            translationX = containerWidth * barSlideOffset.value
+                            translationX = size.width * MIUIX_PARENT_SCENE_EXIT_FRACTION * barSlideOffset.value
                         }
                     },
             ) {
