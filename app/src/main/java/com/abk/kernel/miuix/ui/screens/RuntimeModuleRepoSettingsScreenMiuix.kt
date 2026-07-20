@@ -85,15 +85,13 @@ fun RuntimeModuleRepoSettingsScreenMiuix(vm: MainViewModel) {
             show = true,
             title = runtimeRepoCentralLabelMiuix(context),
             message = runtimeRepoCentralDescLabelMiuix(context),
-            label = runtimeRepoUrlLabelMiuix(context),
             value = repositoryUrl,
             cancelText = stringResource(android.R.string.cancel),
             confirmText = stringResource(R.string.add),
-            confirmEnabled = repositoryUrl.isNotBlank(),
-            onValueChange = { repositoryUrl = it },
+            confirmEnabled = { it.isNotBlank() },
             onDismiss = { showAddRepositoryDialog = false },
-            onConfirm = {
-                vm.addRuntimeModuleRepository(repositoryUrl.trim())
+            onConfirm = { url ->
+                vm.addRuntimeModuleRepository(url.trim())
                 repositoryUrl = ""
                 showAddRepositoryDialog = false
             },

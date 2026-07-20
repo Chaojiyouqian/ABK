@@ -871,16 +871,14 @@ private fun DownloadDirectoryItem(
             Column {
                 MiuixText(
                     text = stringResource(R.string.settings_download_directory_desc),
+                )
+                Spacer(Modifier.height(12.dp))
+                MiuixText(
+                    text = value.ifEmpty { defaultDirectory },
                     style = MiuixTheme.textStyles.body2,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
-                Spacer(Modifier.height(8.dp))
-                MiuixText(
-                    text = value.ifEmpty { defaultDirectory },
-                    style = MiuixTheme.textStyles.body1,
-                    color = MiuixTheme.colorScheme.onSurface,
-                )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(16.dp))
                 AnimatedVisibility(visible = needsAllFilesAccess) {
                     MiuixTextButton(
                         text = permissionNeededMessage,
@@ -897,7 +895,7 @@ private fun DownloadDirectoryItem(
                         Toast.makeText(context, restoredMessage, Toast.LENGTH_SHORT).show()
                     },
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(16.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -935,7 +933,6 @@ private fun MirrorUrlItem(
     leadingIcon: @Composable (() -> Unit)? = null
 ) {
     var showEditor by remember { mutableStateOf(false) }
-    var draftValue by remember { mutableStateOf(value) }
     val title = stringResource(R.string.settings_download_mirror)
     val description = stringResource(R.string.settings_download_mirror_desc)
 
@@ -944,14 +941,12 @@ private fun MirrorUrlItem(
             show = true,
             title = title,
             message = description,
-            label = title,
-            value = draftValue,
+            value = value,
             cancelText = stringResource(android.R.string.cancel),
             confirmText = stringResource(R.string.confirm),
-            onValueChange = { draftValue = it },
             onDismiss = { showEditor = false },
-            onConfirm = {
-                onValueChange(draftValue.trim())
+            onConfirm = { mirrorUrl ->
+                onValueChange(mirrorUrl.trim())
                 showEditor = false
             },
         )
@@ -961,10 +956,7 @@ private fun MirrorUrlItem(
         title = title,
         summary = value.ifBlank { description },
         startAction = leadingIcon,
-        onClick = {
-            draftValue = value
-            showEditor = true
-        },
+        onClick = { showEditor = true },
     )
 }
 

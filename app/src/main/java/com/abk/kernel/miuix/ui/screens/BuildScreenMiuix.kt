@@ -155,6 +155,7 @@ import com.abk.kernel.viewmodel.BuildPlanShareScope
 import com.abk.kernel.viewmodel.MainViewModel
 import com.abk.kernel.ui.navigation3.LocalNavigator
 import com.abk.kernel.ui.navigation3.Route
+import com.abk.kernel.miuix.component.MiuixTextInputDialog
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -2854,13 +2855,6 @@ private fun BuildTextFieldItem(
     }
 
     var showEditor by remember { mutableStateOf(false) }
-    var draftValue by rememberSaveable { mutableStateOf(value) }
-
-    LaunchedEffect(value, showEditor) {
-        if (!showEditor) {
-            draftValue = value
-        }
-    }
 
     val hasValue = value.isNotBlank()
     val summary = when {
@@ -2887,47 +2881,23 @@ private fun BuildTextFieldItem(
                 modifier = Modifier.size(20.dp)
             )
         },
-        onClick = {
-            draftValue = value
-            showEditor = true
-        }
+        onClick = { showEditor = true }
     )
 
     if (showEditor) {
-        WindowDialog(
+        MiuixTextInputDialog(
             show = true,
             title = label,
-            onDismissRequest = { showEditor = false },
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                InlineBuildTextFieldItem(
-                    value = draftValue,
-                    onValueChange = { draftValue = it },
-                    label = label,
-                    placeholder = placeholder,
-                )
-                Spacer(Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    top.yukonga.miuix.kmp.basic.TextButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = { showEditor = false },
-                        text = stringResource(R.string.cancel)
-                    )
-                    top.yukonga.miuix.kmp.basic.TextButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            onValueChange(draftValue)
-                            showEditor = false
-                        },
-                        text = stringResource(R.string.confirm),
-                        colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary()
-                    )
-                }
-            }
-        }
+            message = placeholder,
+            value = value,
+            cancelText = stringResource(R.string.cancel),
+            confirmText = stringResource(R.string.confirm),
+            onDismiss = { showEditor = false },
+            onConfirm = { editedValue ->
+                onValueChange(editedValue)
+                showEditor = false
+            },
+        )
     }
 }
 

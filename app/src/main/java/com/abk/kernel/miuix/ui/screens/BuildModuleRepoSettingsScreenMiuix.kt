@@ -75,15 +75,13 @@ fun BuildModuleRepoSettingsScreenMiuix(vm: MainViewModel) {
             show = true,
             title = buildRepoCentralLabelMiuix(context),
             message = buildRepoCentralDescLabelMiuix(context),
-            label = buildRepoUrlLabelMiuix(context),
             value = repositoryUrl,
             cancelText = stringResource(android.R.string.cancel),
             confirmText = stringResource(R.string.add),
-            confirmEnabled = repositoryUrl.isNotBlank(),
-            onValueChange = { repositoryUrl = it },
+            confirmEnabled = { it.isNotBlank() },
             onDismiss = { showAddRepositoryDialog = false },
-            onConfirm = {
-                vm.addBuildModuleRepository(repositoryUrl.trim())
+            onConfirm = { url ->
+                vm.addBuildModuleRepository(url.trim())
                 repositoryUrl = ""
                 showAddRepositoryDialog = false
                 Toast.makeText(context, context.getString(R.string.add), Toast.LENGTH_SHORT).show()
