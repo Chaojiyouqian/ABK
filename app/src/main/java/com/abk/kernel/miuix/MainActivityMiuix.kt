@@ -799,7 +799,7 @@ private fun AbkMiuixMainScaffold(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .zIndex(2f)
+                    .zIndex(if (childPageVisible) 0f else 2f)
                     .graphicsLayer {
                         if (!hasRail) {
                             translationX = size.width * MIUIX_PARENT_SCENE_EXIT_FRACTION * barSlideOffset.value
