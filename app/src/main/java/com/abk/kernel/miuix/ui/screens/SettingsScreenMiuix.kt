@@ -868,7 +868,7 @@ private fun DownloadDirectoryItem(
             title = stringResource(R.string.settings_download_directory),
             onDismissRequest = { showEditor = false },
         ) {
-            Column {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 MiuixText(
                     text = stringResource(R.string.settings_download_directory_desc),
                 )
@@ -879,22 +879,27 @@ private fun DownloadDirectoryItem(
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
                 Spacer(Modifier.height(16.dp))
-                AnimatedVisibility(visible = needsAllFilesAccess) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (needsAllFilesAccess) {
+                        MiuixTextButton(
+                            text = permissionNeededMessage,
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { openAllFilesAccessSettings(context) },
+                        )
+                    }
                     MiuixTextButton(
-                        text = permissionNeededMessage,
+                        text = stringResource(R.string.settings_download_directory_reset),
                         modifier = Modifier.fillMaxWidth(),
-                        onClick = { openAllFilesAccessSettings(context) },
+                        onClick = {
+                            onValueChange(defaultDirectory)
+                            showEditor = false
+                            Toast.makeText(context, restoredMessage, Toast.LENGTH_SHORT).show()
+                        },
                     )
                 }
-                MiuixTextButton(
-                    text = stringResource(R.string.settings_download_directory_reset),
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = {
-                        onValueChange(defaultDirectory)
-                        showEditor = false
-                        Toast.makeText(context, restoredMessage, Toast.LENGTH_SHORT).show()
-                    },
-                )
                 Spacer(Modifier.height(16.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
