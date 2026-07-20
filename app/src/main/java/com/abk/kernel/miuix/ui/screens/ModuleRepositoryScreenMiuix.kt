@@ -175,7 +175,7 @@ private fun MiuixModuleTagChip(
         secondaryColors.color
     }
     val contentColor = if (primary) {
-        primaryColors.contentColor
+        primaryColors.color
     } else {
         secondaryColors.contentColor
     }
