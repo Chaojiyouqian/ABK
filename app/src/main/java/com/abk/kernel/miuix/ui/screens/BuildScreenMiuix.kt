@@ -1405,15 +1405,15 @@ private fun BuildTargetContentMiuix(
                         )
                     }
                 )
-                ArrowPreference(
+                BasicComponent(
                     title = stringResource(R.string.build_oneplus_cpu),
                     summary = config.onePlusCpu
                 )
-                ArrowPreference(
+                BasicComponent(
                     title = stringResource(R.string.build_android_version),
                     summary = config.androidVersion
                 )
-                ArrowPreference(
+                BasicComponent(
                     title = stringResource(R.string.build_kernel_version),
                     summary = config.kernelVersion
                 )
@@ -2276,7 +2276,18 @@ private fun BuildPlanHeroMiuix(
                             if (!config.cancelSusfs) stringResource(R.string.build_susfs_on) else stringResource(R.string.build_susfs_off)
                         )
                     }
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(10.dp))
+                    BuildHeroDetailsRowMiuix(
+                        details = listOf(
+                            stringResource(R.string.build_oneplus_cpu) to config.onePlusCpu,
+                            stringResource(R.string.build_android_version) to config.androidVersion,
+                            stringResource(R.string.build_kernel_version) to config.kernelVersion,
+                        ),
+                        contentColor = contentColor,
+                        descColor = descColor,
+                        isDark = isDark,
+                    )
+                    Spacer(Modifier.height(2.dp))
                 }
             }
         }
@@ -2326,7 +2337,61 @@ private fun BuildPlanHeroMiuix(
                         if (isRecommended) stringResource(R.string.build_device_recommended) else buildStatusLabel(status)
                     )
                 }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(10.dp))
+                BuildHeroDetailsRowMiuix(
+                    details = listOf(
+                        stringResource(R.string.build_android_version) to config.androidVersion,
+                        stringResource(R.string.build_kernel_version) to "${config.kernelVersion}.${config.subLevel}",
+                        stringResource(R.string.build_kernelsu_variant) to ksuVariantDisplayName(config.kernelsuVariant),
+                    ),
+                    contentColor = contentColor,
+                    descColor = descColor,
+                    isDark = isDark,
+                )
+                Spacer(Modifier.height(2.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun BuildHeroDetailsRowMiuix(
+    details: List<Pair<String, String>>,
+    contentColor: Color,
+    descColor: Color,
+    isDark: Boolean,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        details.forEach { (title, value) ->
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 58.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.42f))
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.Center
+            ) {
+                top.yukonga.miuix.kmp.basic.Text(
+                    text = title,
+                    style = MiuixTheme.textStyles.body2,
+                    color = descColor,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                top.yukonga.miuix.kmp.basic.Text(
+                    text = value,
+                    style = MiuixTheme.textStyles.body2,
+                    color = contentColor,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }
@@ -2400,6 +2465,30 @@ private fun BuildPlanToolsCardMiuix(
                 }
             }
 
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                BuildPlanMetricPillMiuix(
+                    text = if (plansCount > 0) {
+                        stringResource(R.string.build_saved_plans_count, plansCount)
+                    } else {
+                        stringResource(R.string.build_no_saved_plans)
+                    },
+                    highlighted = plansCount > 0,
+                    modifier = Modifier.weight(1f)
+                )
+                BuildPlanMetricPillMiuix(
+                    text = if (activeQueueCount > 0) {
+                        stringResource(R.string.build_queue_summary, activeQueueCount, pendingQueueCount)
+                    } else {
+                        stringResource(R.string.build_queue_empty)
+                    },
+                    highlighted = activeQueueCount > 0,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
             AnimatedVisibility(
                 visible = expanded,
                 enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
@@ -2454,6 +2543,39 @@ private fun BuildPlanToolsCardMiuix(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun BuildPlanMetricPillMiuix(
+    text: String,
+    highlighted: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val bgColor = if (highlighted) {
+        MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.20f)
+    } else {
+        MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)
+    }
+    val contentColor = if (highlighted) {
+        MiuixTheme.colorScheme.primary
+    } else {
+        MiuixTheme.colorScheme.onSurfaceSecondary
+    }
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(bgColor)
+            .padding(horizontal = 10.dp, vertical = 7.dp)
+    ) {
+        top.yukonga.miuix.kmp.basic.Text(
+            text = text,
+            style = MiuixTheme.textStyles.body2,
+            color = contentColor,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
