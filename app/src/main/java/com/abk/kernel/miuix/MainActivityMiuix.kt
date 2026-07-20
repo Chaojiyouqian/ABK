@@ -799,7 +799,7 @@ private fun AbkMiuixMainScaffold(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .zIndex(if (childPageVisible) 0f else 2f)
+                    .zIndex(2f)
                     .graphicsLayer {
                         if (!hasRail) {
                             translationX = size.width * MIUIX_PARENT_SCENE_EXIT_FRACTION * barSlideOffset.value
@@ -852,6 +852,19 @@ private fun AbkMiuixMainScaffold(
                         }
                     }
                 }
+            }
+            if (bottomBarHeightPx > 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(with(density) { bottomBarHeightPx.toDp() })
+                        .align(Alignment.BottomCenter)
+                        .zIndex(3f)
+                        .graphicsLayer {
+                            translationX = size.width * (1f + barSlideOffset.value.coerceIn(-1f, 0f))
+                        }
+                        .background(MiuixTheme.colorScheme.surface),
+                )
             }
 
             // Content area with NavDisplay
