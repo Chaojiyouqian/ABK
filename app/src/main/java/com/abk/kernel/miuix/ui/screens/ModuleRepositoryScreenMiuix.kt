@@ -124,6 +124,7 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import top.yukonga.miuix.kmp.window.WindowDialog
 
 private const val RUNTIME_MODULE_DOWNLOAD_RUN_ID = -2_000_000_001L
+private val MODULE_TAG_CHIP_CORNER_RADIUS = 8.dp
 
 private data class ModuleListComputation<T>(
     val items: List<T> = emptyList(),
@@ -182,7 +183,7 @@ private fun MiuixModuleTagChip(
     Box(
         modifier = Modifier
             .widthIn(max = maxWidth)
-            .squircleSurface(color = bgColor, cornerRadius = ButtonDefaults.CornerRadius)
+            .squircleSurface(color = bgColor, cornerRadius = MODULE_TAG_CHIP_CORNER_RADIUS)
             .padding(horizontal = 8.dp, vertical = 3.dp)
     ) {
         Text(
