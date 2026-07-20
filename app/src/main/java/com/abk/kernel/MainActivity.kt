@@ -138,6 +138,22 @@ class MainActivity : ComponentActivity() {
             val miuixVm: MiuixSettingsViewModel = viewModel()
             val miuixState by miuixVm.state.collectAsState()
             var extensionBootstrapIssued by rememberSaveable { mutableStateOf(false) }
+            var pendingColorAppearanceStyle by rememberSaveable { mutableStateOf<String?>(null) }
+            var openColorAppearanceRequest by rememberSaveable { mutableIntStateOf(0) }
+            val openColorAppearanceRequestForCurrentStyle =
+                if (pendingColorAppearanceStyle == state.uiStyle) openColorAppearanceRequest else 0
+            val onColorAppearanceRequestConsumed = {
+                if (pendingColorAppearanceStyle == state.uiStyle) {
+                    pendingColorAppearanceStyle = null
+                }
+            }
+            val onUiStyleChangeFromAppearance: (String) -> Unit = { style ->
+                if (style != state.uiStyle) {
+                    pendingColorAppearanceStyle = style
+                    openColorAppearanceRequest += 1
+                    vm.setUiStyle(style)
+                }
+            }
 
             LaunchedEffect(Unit) {
                 vm.checkRoot()
@@ -187,13 +203,19 @@ class MainActivity : ComponentActivity() {
                                     vm = vm,
                                     miuixVm = miuixVm,
                                     pendingModuleInstallUri = pendingModuleInstallUri,
-                                    onModuleInstallUriConsumed = { pendingModuleInstallUri = null }
+                                    onModuleInstallUriConsumed = { pendingModuleInstallUri = null },
+                                    openColorAppearanceRequest = openColorAppearanceRequestForCurrentStyle,
+                                    onColorAppearanceRequestConsumed = onColorAppearanceRequestConsumed,
+                                    onUiStyleChangeFromAppearance = onUiStyleChangeFromAppearance,
                                 )
                             } else {
                                 AbkMainScaffold(
                                     vm = vm,
                                     pendingModuleInstallUri = pendingModuleInstallUri,
-                                    onModuleInstallUriConsumed = { pendingModuleInstallUri = null }
+                                    onModuleInstallUriConsumed = { pendingModuleInstallUri = null },
+                                    openColorAppearanceRequest = openColorAppearanceRequestForCurrentStyle,
+                                    onColorAppearanceRequestConsumed = onColorAppearanceRequestConsumed,
+                                    onUiStyleChangeFromAppearance = onUiStyleChangeFromAppearance,
                                 )
                             }
                             val rootGrantRecoveryNotice = state.rootGrantRecoveryNotice
@@ -511,7 +533,10 @@ private val AbkTabletRailWidth = 92.dp
 private fun AbkMainScaffold(
     vm: MainViewModel,
     pendingModuleInstallUri: String? = null,
-    onModuleInstallUriConsumed: () -> Unit = {}
+    onModuleInstallUriConsumed: () -> Unit = {},
+    openColorAppearanceRequest: Int = 0,
+    onColorAppearanceRequestConsumed: () -> Unit = {},
+    onUiStyleChangeFromAppearance: (String) -> Unit = { vm.setUiStyle(it) },
 ) {
     val state by vm.uiState.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -871,7 +896,10 @@ private fun AbkMainScaffold(
                                 } else {
                                     AbkTab.RuntimeHome
                                 }
-                            }
+                            },
+                            openThemeSettingsRequest = openColorAppearanceRequest,
+                            onOpenThemeSettingsRequestConsumed = onColorAppearanceRequestConsumed,
+                            onUiStyleChangeFromAppearance = onUiStyleChangeFromAppearance,
                         )
                     }
                 }

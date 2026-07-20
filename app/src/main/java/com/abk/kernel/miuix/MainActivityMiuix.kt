@@ -142,12 +142,18 @@ fun AbkMiuixMainContent(
     miuixVm: MiuixSettingsViewModel,
     pendingModuleInstallUri: String?,
     onModuleInstallUriConsumed: () -> Unit,
+    openColorAppearanceRequest: Int = 0,
+    onColorAppearanceRequestConsumed: () -> Unit = {},
+    onUiStyleChangeFromAppearance: (String) -> Unit = { vm.setUiStyle(it) },
 ) {
     AbkMiuixMainScaffold(
         vm = vm,
         miuixVm = miuixVm,
         pendingModuleInstallUri = pendingModuleInstallUri,
         onModuleInstallUriConsumed = onModuleInstallUriConsumed,
+        openColorAppearanceRequest = openColorAppearanceRequest,
+        onColorAppearanceRequestConsumed = onColorAppearanceRequestConsumed,
+        onUiStyleChangeFromAppearance = onUiStyleChangeFromAppearance,
     )
 }
 
@@ -161,6 +167,9 @@ private fun AbkMiuixMainScaffold(
     miuixVm: MiuixSettingsViewModel,
     pendingModuleInstallUri: String? = null,
     onModuleInstallUriConsumed: () -> Unit = {},
+    openColorAppearanceRequest: Int = 0,
+    onColorAppearanceRequestConsumed: () -> Unit = {},
+    onUiStyleChangeFromAppearance: (String) -> Unit = { vm.setUiStyle(it) },
 ) {
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
@@ -194,6 +203,13 @@ private fun AbkMiuixMainScaffold(
         }
     }
     val activeTab = if (selectedTab in visibleTabs) selectedTab else visibleTabs.first()
+    LaunchedEffect(openColorAppearanceRequest) {
+        if (openColorAppearanceRequest != 0) {
+            selectedTab = AbkTab.Settings
+            navigator.replaceAll(listOf(Route.Main, Route.ThemeSettings))
+            onColorAppearanceRequestConsumed()
+        }
+    }
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
     val isTabletLayout = configuration.smallestScreenWidthDp >= 600
@@ -596,6 +612,7 @@ private fun AbkMiuixMainScaffold(
                                             vm = vm,
                                             miuixVm = miuixVm,
                                             onBack = popBack,
+                                            onUiStyleChange = onUiStyleChangeFromAppearance,
                                         )
                                     }
                                     entry<Route.AppProfileTemplates> {
@@ -957,6 +974,7 @@ private fun AbkMiuixMainScaffold(
                                         vm = vm,
                                         miuixVm = miuixVm,
                                         onBack = popBack,
+                                        onUiStyleChange = onUiStyleChangeFromAppearance,
                                     )
                                 }
                                 entry<Route.AppProfileTemplates> {

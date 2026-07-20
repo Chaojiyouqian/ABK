@@ -104,7 +104,10 @@ fun SettingsScreen(
     vm: MainViewModel,
     outerPadding: PaddingValues = PaddingValues(0.dp),
     onChildPageVisibleChange: (Boolean) -> Unit = {},
-    onOpenInstalledModules: () -> Unit = {}
+    onOpenInstalledModules: () -> Unit = {},
+    openThemeSettingsRequest: Int = 0,
+    onOpenThemeSettingsRequestConsumed: () -> Unit = {},
+    onUiStyleChangeFromAppearance: (String) -> Unit = { vm.setUiStyle(it) },
 ) {
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
@@ -179,6 +182,13 @@ fun SettingsScreen(
         showOpenSourceLicenses = false
         showExtensionManagerPage = false
         showThemeSettings = true
+    }
+
+    LaunchedEffect(openThemeSettingsRequest) {
+        if (openThemeSettingsRequest != 0) {
+            openThemeSettings()
+            onOpenThemeSettingsRequestConsumed()
+        }
     }
 
     fun openAppProfileTemplates() {
@@ -391,7 +401,7 @@ fun SettingsScreen(
                         onBackgroundImageEnabledChange = { enabled -> vm.setBackgroundImageEnabled(enabled) },
                         onUiSurfaceAlphaChange = { alpha -> vm.setUiSurfaceAlpha(alpha) },
                         uiStyle = state.uiStyle,
-                        onUiStyleChange = { style -> vm.setUiStyle(style) }
+                        onUiStyleChange = onUiStyleChangeFromAppearance
                     )
                 }
             }
@@ -1824,8 +1834,8 @@ private fun ThemeSettingsScreen(
             }
             val currentUiLabel = uiStyleLabels[uiStyle] ?: uiStyle
             ExpressiveListItem(
-                title = "MIUIX",
-                subtitle = stringResource(R.string.settings_ui_style_miuix_subtitle),
+                title = stringResource(R.string.settings_ui_style),
+                subtitle = currentUiLabel,
                 leadingIcon = Icons.Default.Style,
                 trailingContent = {
                     Box {
