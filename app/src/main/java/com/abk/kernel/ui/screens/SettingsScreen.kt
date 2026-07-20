@@ -98,6 +98,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private val SettingsChildPageBottomSpacing = 24.dp
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SettingsScreen(
@@ -1588,7 +1591,7 @@ private fun ManagerToolsSettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(80.dp))
+        SettingsChildPageBottomSpacer()
     }
 }
 
@@ -1745,7 +1748,7 @@ private fun AppProfileTemplateSettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(80.dp))
+        SettingsChildPageBottomSpacer()
     }
 }
 
@@ -1975,7 +1978,7 @@ private fun ThemeSettingsScreen(
             )
         }
 
-        Spacer(Modifier.height(80.dp))
+        SettingsChildPageBottomSpacer()
     }
 }
 
@@ -2205,7 +2208,7 @@ private fun AboutRepositoryScreen(
                 )
             }
         }
-        Spacer(Modifier.height(80.dp))
+        SettingsChildPageBottomSpacer()
     }
 }
 
@@ -2235,8 +2238,13 @@ private fun OpenSourceLicensesScreen(
                 }
             }
         }
-        Spacer(Modifier.height(80.dp))
+        SettingsChildPageBottomSpacer()
     }
+}
+
+@Composable
+private fun SettingsChildPageBottomSpacer() {
+    Spacer(Modifier.height(SettingsChildPageBottomSpacing))
 }
 
 @Composable
