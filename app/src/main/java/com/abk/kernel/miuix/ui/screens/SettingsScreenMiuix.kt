@@ -871,51 +871,57 @@ private fun DownloadDirectoryItem(
             Column(modifier = Modifier.fillMaxWidth()) {
                 MiuixText(
                     text = stringResource(R.string.settings_download_directory_desc),
-                )
-                Spacer(Modifier.height(12.dp))
-                MiuixText(
-                    text = value.ifEmpty { defaultDirectory },
                     style = MiuixTheme.textStyles.body2,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
-                Spacer(Modifier.height(16.dp))
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (needsAllFilesAccess) {
-                        MiuixTextButton(
-                            text = permissionNeededMessage,
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = { openAllFilesAccessSettings(context) },
+                Spacer(Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            color = MiuixTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(17.dp)
                         )
-                    }
-                    MiuixTextButton(
-                        text = stringResource(R.string.settings_download_directory_reset),
+                        .border(
+                            width = 1.dp,
+                            color = MiuixTheme.colorScheme.primary,
+                            shape = RoundedCornerShape(17.dp)
+                        )
+                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                ) {
+                    MiuixText(
+                        text = value.ifEmpty { defaultDirectory },
+                        style = MiuixTheme.textStyles.body1,
+                        color = MiuixTheme.colorScheme.onSurface,
                         modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            onValueChange(defaultDirectory)
-                            showEditor = false
-                            Toast.makeText(context, restoredMessage, Toast.LENGTH_SHORT).show()
-                        },
                     )
                 }
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    MiuixTextButton(
-                        text = stringResource(android.R.string.cancel),
-                        modifier = Modifier.weight(1f),
-                        onClick = { showEditor = false },
-                    )
-                    Spacer(Modifier.width(20.dp))
                     MiuixTextButton(
                         text = stringResource(R.string.settings_download_directory_choose),
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.textButtonColorsPrimary(),
                         onClick = { folderPicker.launch(null) },
+                    )
+                    MiuixTextButton(
+                        text = stringResource(R.string.settings_download_directory_reset),
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            onValueChange(defaultDirectory)
+                            Toast.makeText(context, restoredMessage, Toast.LENGTH_SHORT).show()
+                        },
+                    )
+                }
+                if (needsAllFilesAccess) {
+                    Spacer(Modifier.height(8.dp))
+                    MiuixTextButton(
+                        text = permissionNeededMessage,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { openAllFilesAccessSettings(context) },
                     )
                 }
             }
