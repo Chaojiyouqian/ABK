@@ -51,7 +51,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
@@ -395,6 +397,8 @@ private fun AbkMiuixMainScaffold(
             } else 0f
         }
     }
+    val childPageSceneSettled =
+        childPageVisible && predictiveBackProgress <= 0f && barSlideOffset.value <= -0.999f
     val tabIcon: @Composable (AbkTab) -> ImageVector = { tab ->
         when (tab) {
             AbkTab.Status -> if (state.runtimeNavigationEnabled) Icons.Default.Memory else Icons.Default.Home
@@ -806,16 +810,22 @@ private fun AbkMiuixMainScaffold(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .zIndex(2f)
-                    .graphicsLayer {
-                        if (!hasRail) {
-                            translationX = size.width * MIUIX_PARENT_SCENE_EXIT_FRACTION * barSlideOffset.value
+                    .zIndex(if (childPageSceneSettled) 0f else 2f)
+                    .drawWithContent {
+                        val visibleWidth = size.width * (1f + barSlideOffset.value.coerceIn(-1f, 0f))
+                        clipRect(right = visibleWidth) {
+                            this@drawWithContent.drawContent()
                         }
                     },
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .graphicsLayer {
+                            if (!hasRail) {
+                                translationX = size.width * MIUIX_PARENT_SCENE_EXIT_FRACTION * barSlideOffset.value
+                            }
+                        }
                         .onSizeChanged { bottomBarHeightPx = it.height },
                 ) {
                     key(visibleTabs) {
@@ -859,19 +869,6 @@ private fun AbkMiuixMainScaffold(
                         }
                     }
                 }
-            }
-            if (bottomBarHeightPx > 0) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(with(density) { bottomBarHeightPx.toDp() })
-                        .align(Alignment.BottomCenter)
-                        .zIndex(3f)
-                        .graphicsLayer {
-                            translationX = size.width * (1f + barSlideOffset.value.coerceIn(-1f, 0f))
-                        }
-                        .background(MiuixTheme.colorScheme.surface),
-                )
             }
 
             // Content area with NavDisplay
