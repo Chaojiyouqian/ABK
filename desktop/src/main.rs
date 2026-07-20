@@ -700,6 +700,7 @@ async fn main() -> Result<()> {
 
     let addr = SocketAddr::from((host.parse::<std::net::IpAddr>()?, port));
     let listener = TcpListener::bind(addr).await?;
+    println!("ABK desktop sidecar listening on http://{host}:{port}");
     axum::serve(listener, app).await?;
     Ok(())
 }

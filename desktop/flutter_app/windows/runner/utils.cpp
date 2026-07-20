@@ -84,7 +84,7 @@ std::optional<std::filesystem::path> ResolvePythonPath(
   return std::nullopt;
 }
 
-bool WaitForLocalPort(unsigned short port, DWORD timeout_ms) {
+bool WaitForSidecarHealth(unsigned short port, DWORD timeout_ms) {
   WSADATA wsa_data;
   if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
     return false;
@@ -100,9 +100,26 @@ bool WaitForLocalPort(unsigned short port, DWORD timeout_ms) {
       ::InetPtonW(AF_INET, kSidecarHost, &address.sin_addr);
       if (::connect(socket_handle, reinterpret_cast<sockaddr*>(&address),
                     sizeof(address)) == 0) {
-        ::closesocket(socket_handle);
-        WSACleanup();
-        return true;
+        static constexpr char kHealthRequest[] =
+            "GET /api/v1/health HTTP/1.1\r\n"
+            "Host: 127.0.0.1\r\n"
+            "Connection: close\r\n\r\n";
+        const int sent = ::send(socket_handle, kHealthRequest,
+                                static_cast<int>(sizeof(kHealthRequest) - 1), 0);
+        if (sent > 0) {
+          char buffer[1024];
+          const int received = ::recv(socket_handle, buffer, sizeof(buffer) - 1, 0);
+          if (received > 0) {
+            buffer[received] = '\0';
+            const std::string response(buffer);
+            if (response.find("200 OK") != std::string::npos ||
+                response.find("\"status\":\"ok\"") != std::string::npos) {
+              ::closesocket(socket_handle);
+              WSACleanup();
+              return true;
+            }
+          }
+        }
       }
       ::closesocket(socket_handle);
     }
@@ -185,14 +202,10 @@ SidecarProcess::~SidecarProcess() {
 }
 
 bool SidecarProcess::EnsureRunning(std::wstring* error_message) {
-  if (::GetEnvironmentVariableW(L"ABK_DESKTOP_BASE_URL", nullptr, 0) > 0) {
-    return true;
-  }
+  ::SetEnvironmentVariableW(L"ABK_DESKTOP_BASE_URL",
+                            L"http://127.0.0.1:38765");
 
-  if (WaitForLocalPort(kSidecarPort, 100)) {
-    ::SetEnvironmentVariableW(
-        L"ABK_DESKTOP_BASE_URL",
-        L"http://127.0.0.1:38765");
+  if (WaitForSidecarHealth(kSidecarPort, 500)) {
     return true;
   }
 
@@ -242,10 +255,11 @@ bool SidecarProcess::EnsureRunning(std::wstring* error_message) {
   }
   started_ = true;
 
-  if (!WaitForLocalPort(kSidecarPort, kSidecarStartupTimeoutMs)) {
+  if (!WaitForSidecarHealth(kSidecarPort, kSidecarStartupTimeoutMs)) {
     Stop();
     if (error_message != nullptr) {
-      *error_message = L"abk_sidecar.exe did not start listening on 127.0.0.1:38765.";
+      *error_message =
+          L"abk_sidecar.exe did not become healthy on http://127.0.0.1:38765/api/v1/health.";
     }
     return false;
   }
