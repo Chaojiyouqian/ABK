@@ -185,6 +185,9 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private const val CATALOG_MODULE_REMOVE_DELAY_MS = 300L
+private val BuildPageHorizontalPadding = 20.dp
+private val BuildPageTopSpacing = 8.dp
+private val BuildPageBottomSpacing = 80.dp
 
 @Composable
 fun BuildScreenMiuix(
@@ -1048,9 +1051,9 @@ fun BuildScreenMiuix(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 12.dp)
+                    .padding(horizontal = BuildPageHorizontalPadding)
             ) {
-                Spacer(Modifier.height(padding.calculateTopPadding() + 25.dp))
+                Spacer(Modifier.height(padding.calculateTopPadding() + BuildPageTopSpacing))
                 BuildHeroCardMiuix(
                     title = stringResource(
                         if (needsLogin) R.string.build_login_required_title
@@ -1075,7 +1078,7 @@ fun BuildScreenMiuix(
                         )
                     )
                 }
-                Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
+                Spacer(Modifier.height(BuildPageBottomSpacing + outerPadding.calculateBottomPadding()))
             }
             }
         }
@@ -1108,10 +1111,10 @@ fun BuildScreenMiuix(
                     .verticalScroll(rememberScrollState())
                     .overScrollVertical()
                     .scrollEndHaptic()
-                    .padding(horizontal = 12.dp),
+                    .padding(horizontal = BuildPageHorizontalPadding),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Spacer(Modifier.height(padding.calculateTopPadding() + 4.dp))
+                Spacer(Modifier.height(padding.calculateTopPadding() + BuildPageTopSpacing))
 
                 // ═══ 1. Hero card ═══════════════════════════════════════════
                 BuildPlanHeroMiuix(
@@ -1318,7 +1321,7 @@ fun BuildScreenMiuix(
                     )
                 }
 
-                Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
+                Spacer(Modifier.height(BuildPageBottomSpacing + outerPadding.calculateBottomPadding()))
             }
             }
         }
@@ -2055,9 +2058,10 @@ fun BuildPlanLibraryScreenMiuix(vm: MainViewModel) {
                 .verticalScroll(rememberScrollState())
                 .overScrollVertical()
                 .scrollEndHaptic()
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = BuildPageHorizontalPadding),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Spacer(Modifier.height(padding.calculateTopPadding() + BuildPageTopSpacing))
             BuildPlanLibraryPageMiuix(
                 plans = state.buildPlans,
                 onApply = {
@@ -2072,7 +2076,7 @@ fun BuildPlanLibraryScreenMiuix(vm: MainViewModel) {
                 },
                 onDelete = { deletePlanTarget = it }
             )
-            Spacer(Modifier.height(80.dp))
+            Spacer(Modifier.height(BuildPageBottomSpacing))
         }
         }
     }
@@ -2121,9 +2125,10 @@ fun BuildQueueScreenMiuix(vm: MainViewModel) {
                 .verticalScroll(rememberScrollState())
                 .overScrollVertical()
                 .scrollEndHaptic()
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = BuildPageHorizontalPadding),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Spacer(Modifier.height(padding.calculateTopPadding() + BuildPageTopSpacing))
             BuildQueuePageMiuix(
                 queue = state.buildQueue,
                 cancellingRunIds = state.cancellingWorkflowRunIds,
@@ -2137,7 +2142,7 @@ fun BuildQueueScreenMiuix(vm: MainViewModel) {
                 onCancelRun = { runId -> vm.cancelWorkflowRun(runId) },
                 onClearCompleted = vm::clearCompletedBuildQueueItems
             )
-            Spacer(Modifier.height(80.dp))
+            Spacer(Modifier.height(BuildPageBottomSpacing))
         }
         }
     }
@@ -2965,32 +2970,17 @@ private fun ConfigPreviewItemMiuix(
     title: String,
     preview: String,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        top.yukonga.miuix.kmp.basic.Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MiuixTheme.colorScheme.onSurfaceSecondary,
-            modifier = Modifier.size(20.dp).padding(top = 2.dp)
-        )
-        Column {
-            top.yukonga.miuix.kmp.basic.Text(
-                text = title,
-                style = MiuixTheme.textStyles.body1,
-                fontWeight = FontWeight.Medium
-            )
-            top.yukonga.miuix.kmp.basic.Text(
-                text = preview,
-                style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    BasicComponent(
+        title = title,
+        summary = preview,
+        startAction = {
+            top.yukonga.miuix.kmp.basic.Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MiuixTheme.colorScheme.onSurfaceSecondary
             )
         }
-    }
+    )
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
