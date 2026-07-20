@@ -9,6 +9,7 @@
 #include <windows.h>
 
 #include <filesystem>
+#include <algorithm>
 #include <iostream>
 #include <optional>
 
@@ -166,6 +167,23 @@ std::vector<std::string> GetCommandLineArguments() {
   }
 
   ::LocalFree(argv);
+
+  if (::GetEnvironmentVariableW(L"ABK_DESKTOP_BASE_URL", nullptr, 0) > 0) {
+    wchar_t buffer[512];
+    const DWORD length =
+        ::GetEnvironmentVariableW(L"ABK_DESKTOP_BASE_URL", buffer, 512);
+    if (length > 0) {
+      const std::string base_url = Utf8FromUtf16(buffer);
+      const bool already_set = std::find(command_line_arguments.begin(),
+                                         command_line_arguments.end(),
+                                         "--abk-base-url") !=
+                               command_line_arguments.end();
+      if (!already_set && !base_url.empty()) {
+        command_line_arguments.push_back("--abk-base-url");
+        command_line_arguments.push_back(base_url);
+      }
+    }
+  }
 
   return command_line_arguments;
 }

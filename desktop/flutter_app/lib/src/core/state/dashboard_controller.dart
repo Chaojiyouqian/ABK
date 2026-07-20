@@ -7,8 +7,14 @@ import '../models/sidecar_models.dart';
 
 const _missing = Object();
 
+final sidecarBaseUrlOverrideProvider = Provider<String?>((ref) => null);
+
 final sidecarApiProvider = Provider<AbkSidecarApi>((ref) {
-  final client = HttpAbkSidecarClient.fromEnvironment();
+  final overrideBaseUrl = ref.watch(sidecarBaseUrlOverrideProvider);
+  final client =
+      overrideBaseUrl?.trim().isNotEmpty == true
+      ? HttpAbkSidecarClient(baseUrl: overrideBaseUrl!.trim())
+      : HttpAbkSidecarClient.fromEnvironment();
   ref.onDispose(client.close);
   return client;
 });

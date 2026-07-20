@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'src/app.dart';
+import 'src/core/state/dashboard_controller.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,6 +15,7 @@ Future<void> main(List<String> args) async {
     args,
     '--abk-task-state-file',
   );
+  final sidecarBaseUrl = _readArgValue(args, '--abk-base-url');
   final options = launchMode == AppLaunchMode.taskWindow
       ? const WindowOptions(
           size: Size(1160, 760),
@@ -37,6 +39,9 @@ Future<void> main(List<String> args) async {
   });
   runApp(
     ProviderScope(
+      overrides: [
+        sidecarBaseUrlOverrideProvider.overrideWithValue(sidecarBaseUrl),
+      ],
       child: AbkDesktopApp(
         launchMode: launchMode,
         taskWorkspaceStateFilePath: taskWorkspaceStateFilePath,

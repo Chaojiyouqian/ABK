@@ -2,6 +2,7 @@
 
 use anyhow::{anyhow, Context, Result};
 use std::env;
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -70,6 +71,8 @@ fn spawn_sidecar(sidecar_path: &Path, app_root: &Path, port: u16) -> Result<Chil
 
 fn spawn_frontend(frontend_path: &Path, port: u16) -> Result<Child> {
     let mut args = env::args_os().skip(1).collect::<Vec<_>>();
+    args.push("--abk-base-url".into());
+    args.push(format!("http://{SIDECAR_HOST}:{port}").into());
     let mut command = Command::new(frontend_path);
     command
         .args(args.drain(..))
@@ -108,12 +111,27 @@ fn spawn_child(command: &mut Command, label: &str) -> Result<Child> {
 fn wait_for_sidecar(port: u16) -> Result<()> {
     let deadline = Instant::now() + SIDECAR_START_TIMEOUT;
     loop {
-        match TcpStream::connect((SIDECAR_HOST, port)) {
-            Ok(_) => return Ok(()),
+        match sidecar_healthy(port) {
+            Ok(true) => return Ok(()),
+            Ok(false) if Instant::now() < deadline => thread::sleep(Duration::from_millis(250)),
             Err(_) if Instant::now() < deadline => thread::sleep(Duration::from_millis(250)),
             Err(error) => return Err(anyhow!(error)),
+            Ok(false) => return Err(anyhow!("health probe did not return success")),
         }
     }
+}
+
+fn sidecar_healthy(port: u16) -> Result<bool> {
+    let mut stream = TcpStream::connect((SIDECAR_HOST, port))?;
+    stream.write_all(
+        format!(
+            "GET /api/v1/health HTTP/1.1\r\nHost: {SIDECAR_HOST}\r\nConnection: close\r\n\r\n"
+        )
+        .as_bytes(),
+    )?;
+    let mut buffer = String::new();
+    stream.read_to_string(&mut buffer)?;
+    Ok(buffer.contains("200 OK") || buffer.contains("\"status\":\"ok\""))
 }
 
 fn terminate_child(child: &mut Child) {
