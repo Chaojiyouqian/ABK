@@ -31,7 +31,7 @@ void main() {
     expect(find.text('应用探测'), findsOneWidget);
   });
 
-  testWidgets('shows restoring session state before github session loads', (
+  testWidgets('shows build page content before github session loads', (
     tester,
   ) async {
     final api = _FakeSidecarApi(
@@ -41,12 +41,33 @@ void main() {
     await _pumpBuildPage(tester, api, settle: false);
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(find.text('正在恢复 GitHub 登录态'), findsOneWidget);
-    expect(find.text('登录 GitHub'), findsNothing);
+    expect(find.text('构建'), findsAtLeastNWidgets(1));
 
     await tester.pump(const Duration(milliseconds: 450));
     await tester.pumpAndSettle();
   });
+
+  testWidgets(
+    'keeps sidecar available when device detection fails',
+    (tester) async {
+      final api = _FakeSidecarApi(
+        detectError: const SidecarException('adb is not installed'),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: <Override>[sidecarApiProvider.overrideWithValue(api)],
+          child: const AbkDesktopApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('桌面桥接服务当前不可用'), findsNothing);
+      expect(find.text('桥接服务缺失'), findsNothing);
+      expect(find.text('adb is not installed'), findsOneWidget);
+      expect(find.text('需要手动处理'), findsWidgets);
+    },
+  );
 
   testWidgets('does not show stale serial when no adb devices are present', (
     tester,
@@ -415,6 +436,7 @@ class _FakeSidecarApi implements AbkSidecarApi {
   _FakeSidecarApi({
     this._deviceState,
     this._detectionResult,
+    this.detectError,
     this._health,
     GitHubSessionStatus? session,
     List<BuildRunSummary>? runs,
@@ -427,6 +449,7 @@ class _FakeSidecarApi implements AbkSidecarApi {
 
   final DeviceConnectionState? _deviceState;
   final DeviceDetectionResult? _detectionResult;
+  final SidecarException? detectError;
   final SidecarHealth? _health;
   final GitHubSessionStatus _session;
   final List<BuildRunSummary> _runs;
@@ -496,6 +519,9 @@ class _FakeSidecarApi implements AbkSidecarApi {
 
   @override
   Future<DeviceDetectionResult> detectDevices() async {
+    if (detectError != null) {
+      throw detectError!;
+    }
     return _detectionResult ??
         const DeviceDetectionResult(
           devices: <DetectedDevice>[

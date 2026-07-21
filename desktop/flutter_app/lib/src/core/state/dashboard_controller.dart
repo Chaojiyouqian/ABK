@@ -130,6 +130,12 @@ class DashboardController extends StateNotifier<DashboardState> {
 
     try {
       final health = await _api.getHealth();
+      state = state.copyWith(
+        sidecarAvailable: true,
+        health: health,
+        lastUpdatedAt: DateTime.now(),
+      );
+
       final detection = await _api.detectDevices();
       final connection = _normalizeDisconnectedConnection(
         await _api.getDeviceState(),
@@ -137,8 +143,6 @@ class DashboardController extends StateNotifier<DashboardState> {
       );
 
       state = state.copyWith(
-        sidecarAvailable: true,
-        health: health,
         connection: connection,
         devices: detection.devices,
         selectedSerial: connection.serial,
@@ -181,16 +185,27 @@ class DashboardController extends StateNotifier<DashboardState> {
         isRefreshing: false,
         lastError: readyDevices.length > 1
             ? 'Multiple ADB devices detected. Pick one from the detection page.'
-            : connection.lastError,
+          : connection.lastError,
       );
     } on SidecarException catch (error) {
+      final hasHealth = state.health != null;
       state = state.copyWith(
-        flow: ConnectionFlow.sidecarUnavailable,
+        flow: hasHealth
+            ? ConnectionFlow.failed
+            : ConnectionFlow.sidecarUnavailable,
         isRefreshing: false,
-        sidecarAvailable: false,
-        health: null,
-        connection: null,
-        devices: const <DetectedDevice>[],
+        sidecarAvailable: hasHealth ? true : false,
+        health: hasHealth ? state.health : null,
+        connection: hasHealth
+            ? _normalizeDisconnectedConnection(
+                state.connection ??
+                    DeviceConnectionState.disconnected(
+                      lastDetected: state.devices,
+                    ),
+                state.devices,
+              )
+            : null,
+        devices: hasHealth ? state.devices : const <DetectedDevice>[],
         lastError: error.message,
         lastUpdatedAt: DateTime.now(),
       );
