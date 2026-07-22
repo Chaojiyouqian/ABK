@@ -49,6 +49,9 @@ class _BuildPageState extends ConsumerState<BuildPage> {
 
   Future<void> _syncTaskWorkspaceWindow() async {
     final stateFile = _taskWorkspaceStateFilePath();
+    final sidecarBaseUrl =
+        ref.read(sidecarBaseUrlOverrideProvider) ??
+        Platform.environment['ABK_DESKTOP_BASE_URL'];
     await _writeTaskWorkspaceState(
       stateFile,
       _TaskWorkspaceStateFile(
@@ -56,7 +59,7 @@ class _BuildPageState extends ConsumerState<BuildPage> {
         activeEntryId: _activeTaskWorkspaceEntryId,
       ),
     );
-    await _ensureTaskWorkspaceWindowRunning(stateFile);
+    await _ensureTaskWorkspaceWindowRunning(stateFile, sidecarBaseUrl);
   }
 
   @override
@@ -5413,13 +5416,27 @@ Future<bool> _isTaskWorkspaceWindowAlive(String stateFilePath) async {
   return false;
 }
 
-Future<void> _ensureTaskWorkspaceWindowRunning(String stateFilePath) async {
+Future<void> _ensureTaskWorkspaceWindowRunning(
+  String stateFilePath,
+  String? sidecarBaseUrl,
+) async {
   if (await _isTaskWorkspaceWindowAlive(stateFilePath)) {
     return;
   }
+  final args = <String>[
+    '--abk-task-window',
+    '--abk-task-state-file',
+    stateFilePath,
+  ];
+  final cleanBaseUrl = sidecarBaseUrl?.trim();
+  if (cleanBaseUrl != null && cleanBaseUrl.isNotEmpty) {
+    args
+      ..add('--abk-base-url')
+      ..add(cleanBaseUrl);
+  }
   await Process.start(
     Platform.resolvedExecutable,
-    <String>['--abk-task-window', '--abk-task-state-file', stateFilePath],
+    args,
     mode: ProcessStartMode.detached,
     environment: Platform.environment,
   );
