@@ -850,6 +850,7 @@
     <string name="runtime_pending_update">Pending update</string>
     <string name="runtime_update_available">Update available</string>
     <string name="runtime_update_module">Update module</string>
+    <string name="module_update">Update</string>
     <string name="runtime_update_version_change">Version: %1$s → %2$s</string>
     <string name="runtime_update_source">Source: %1$s</string>
     <string name="runtime_update_changelog">Changelog</string>

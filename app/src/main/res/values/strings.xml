@@ -888,6 +888,7 @@
     <string name="runtime_pending_update">待更新</string>
     <string name="runtime_update_available">发现更新</string>
     <string name="runtime_update_module">更新模块</string>
+    <string name="module_update">更新</string>
     <string name="runtime_update_version_change">版本：%1$s → %2$s</string>
     <string name="runtime_update_source">来源：%1$s</string>
     <string name="runtime_update_changelog">更新日志</string>

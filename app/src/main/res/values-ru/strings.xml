@@ -836,6 +836,7 @@
     <string name="runtime_pending_update">Ожидает обновления</string>
     <string name="runtime_update_available">Доступно обновление</string>
     <string name="runtime_update_module">Обновить модуль</string>
+    <string name="module_update">Обновить</string>
     <string name="runtime_update_version_change">Версия: %1$s → %2$s</string>
     <string name="runtime_update_source">Источник: %1$s</string>
     <string name="runtime_update_changelog">Журнал изменений</string>
