@@ -32,8 +32,11 @@ import com.abk.kernel.utils.ForkSigningImportError
 import com.abk.kernel.utils.ForkSigningImportException
 import com.abk.kernel.utils.ForkSigningMaterial
 import com.abk.kernel.utils.ForkSigningManager
+import com.abk.kernel.utils.ForkSigningPublicKeyResolver
+import com.abk.kernel.utils.ForkSigningPublicKeyValue
 import com.abk.kernel.utils.DownloadUtils
 import com.abk.kernel.utils.FailureLogExtractor
+import com.abk.kernel.utils.INVALID_FORK_SIGNING_PUBLIC_KEY_MESSAGE
 import com.abk.kernel.utils.NotificationUtils
 import com.abk.kernel.utils.WorkflowStepI18n
 import com.abk.kernel.utils.BUNDLED_SUSFS_VERSION
@@ -103,6 +106,13 @@ data class CustomKernelOptionsImportResult(
     val importedCount: Int,
     val skippedCount: Int,
     val duplicateCount: Int
+)
+
+data class CustomKernelOptionSummary(
+    val total: Int,
+    val enabled: Int,
+    val disabled: Int,
+    val ignored: Int
 )
 
 data class MainUiState(
@@ -273,6 +283,10 @@ class MainViewModel @JvmOverloads constructor(
 
     private val prefs = PreferencesRepository(application)
     val github: GitHubRepository = github
+    private val forkSigningPublicKeyResolver = ForkSigningPublicKeyResolver(
+        assetName = FORK_ARTIFACT_SIGNING_PUBLIC_KEY_ASSET_NAME,
+        downloadReleaseAssetText = this.github::downloadReleaseAssetText
+    )
     private val gson = Gson()
     private val ksuModuleListType = object : TypeToken<List<Map<String, Any?>>>() {}.type
     private var hasSavedBuildConfig = false
@@ -1257,10 +1271,10 @@ class MainViewModel @JvmOverloads constructor(
         fork: GitHubRepo,
         release: GitHubRelease,
     ): String? {
-        ForkSigningManager.publicKeyPemFromStoredValue(prefs.forkArtifactSigningPublicKey.first())
-            ?.let { return it }
-        return when (val downloaded = github.downloadReleaseAssetText(owner, fork.name, release.id, FORK_ARTIFACT_SIGNING_PUBLIC_KEY_ASSET_NAME)) {
-            is Result.Success -> downloaded.data.trim().takeIf { it.isNotBlank() }
+        forkSigningPublicKeyResolver.parse(prefs.forkArtifactSigningPublicKey.first())
+            ?.let { return it.pem }
+        return when (val resolved = forkSigningPublicKeyResolver.download(owner, fork.name, release.id)) {
+            is Result.Success -> resolved.data.pem
             else -> null
         }
     }
@@ -1430,22 +1444,13 @@ class MainViewModel @JvmOverloads constructor(
             )
             Result.Loading -> return@withLock Result.Loading
         }
-        suspend fun readRemotePublicKey(): String? =
-            when (val result = github.downloadReleaseAssetText(
-                owner,
-                fork.name,
-                release.id,
-                FORK_ARTIFACT_SIGNING_PUBLIC_KEY_ASSET_NAME,
-            )) {
-                is Result.Success -> ForkSigningManager.publicKeyBase64FromStoredValue(
-                    result.data
-                )
-                else -> null
-            }
-        val firstPublicKeyBase64 = readRemotePublicKey()
-            ?: return@withLock Result.Error(
-                "Fork signing public key is unavailable or invalid"
-            )
+        suspend fun readRemotePublicKey(): Result<ForkSigningPublicKeyValue> =
+            forkSigningPublicKeyResolver.download(owner, fork.name, release.id)
+        val firstPublicKey = when (val result = readRemotePublicKey()) {
+            is Result.Success -> result.data
+            is Result.Error -> return@withLock Result.Error(result.message, result.code)
+            Result.Loading -> return@withLock Result.Loading
+        }
         val secretExists = when (val result = github.listRepositorySecrets(owner, fork.name)) {
             is Result.Success -> result.data.any { it.name == secretName }
             is Result.Error -> return@withLock Result.Error(
@@ -1456,17 +1461,18 @@ class MainViewModel @JvmOverloads constructor(
         if (!secretExists) {
             return@withLock Result.Error("Fork signing Secret is missing")
         }
-        val secondPublicKeyBase64 = readRemotePublicKey()
-            ?: return@withLock Result.Error(
-                "Fork signing public key is unavailable or invalid"
-            )
-        if (firstPublicKeyBase64 != secondPublicKeyBase64) {
+        val secondPublicKey = when (val result = readRemotePublicKey()) {
+            is Result.Success -> result.data
+            is Result.Error -> return@withLock Result.Error(result.message, result.code)
+            Result.Loading -> return@withLock Result.Loading
+        }
+        if (firstPublicKey.base64 != secondPublicKey.base64) {
             return@withLock Result.Error(
                 "Fork signing public key changed during refresh"
             )
         }
-        prefs.saveForkArtifactSigningState(firstPublicKeyBase64, secretName, releaseTag)
-        Result.Success(ForkSigningManager.publicKeyPemFromBase64(firstPublicKeyBase64))
+        prefs.saveForkArtifactSigningState(firstPublicKey.base64, secretName, releaseTag)
+        Result.Success(firstPublicKey.pem)
     }
 
     private suspend fun ensureForkArtifactSigningReady(owner: String, fork: GitHubRepo) {
@@ -1524,23 +1530,22 @@ class MainViewModel @JvmOverloads constructor(
             }
             val existingPublicKeyAsset = releaseAssets.firstOrNull { it.name == FORK_ARTIFACT_SIGNING_PUBLIC_KEY_ASSET_NAME }
             if (secretExists && existingPublicKeyAsset != null) {
-                when (val downloaded = github.downloadReleaseAssetText(owner, fork.name, release.id, FORK_ARTIFACT_SIGNING_PUBLIC_KEY_ASSET_NAME)) {
+                when (val resolved = forkSigningPublicKeyResolver.download(owner, fork.name, release.id)) {
                     is Result.Success -> {
-                        val base64 = ForkSigningManager.publicKeyBase64FromStoredValue(
-                            downloaded.data
+                        prefs.saveForkArtifactSigningState(
+                            resolved.data.base64,
+                            secretName,
+                            releaseTag
                         )
-                        if (base64 == null) {
-                            showSnackbar("Fork signing public key is invalid", longDuration = true)
-                            return
-                        }
-                        prefs.saveForkArtifactSigningState(base64, secretName, releaseTag)
                         return
                     }
                     is Result.Error -> {
-                        showSnackbar(
-                            "Fork signing public key refresh failed: ${downloaded.message}",
-                            longDuration = true
-                        )
+                        val message = if (resolved.message == INVALID_FORK_SIGNING_PUBLIC_KEY_MESSAGE) {
+                            "Fork signing public key is invalid"
+                        } else {
+                            "Fork signing public key refresh failed: ${resolved.message}"
+                        }
+                        showSnackbar(message, longDuration = true)
                         return
                     }
                     Result.Loading -> return
@@ -4517,13 +4522,9 @@ class MainViewModel @JvmOverloads constructor(
             if (editingIndex != null && editingIndex in indices) {
                 removeAt(editingIndex)
             }
-            val duplicateIndex = indexOfFirst { it.symbol.equals(symbol, ignoreCase = true) }
-            if (duplicateIndex >= 0) {
-                removeAt(duplicateIndex)
-            }
-            add(normalizedOption)
         }
-        updateBuildConfig(currentConfig.copy(customKernelOptions = updated))
+        val merged = mergeCustomKernelOptions(updated, listOf(normalizedOption))
+        updateBuildConfig(currentConfig.copy(customKernelOptions = merged))
     }
 
     fun removeCustomKernelOption(index: Int) {
@@ -4533,10 +4534,24 @@ class MainViewModel @JvmOverloads constructor(
         updateBuildConfig(currentConfig.copy(customKernelOptions = updated))
     }
 
+    fun removeCustomKernelOptions(indices: Collection<Int>) {
+        val currentConfig = KernelSupport.normalize(_uiState.value.buildConfig)
+        if (currentConfig.buildTarget == BUILD_TARGET_ONEPLUS) return
+        val updated = removeCustomKernelOptionsAtIndices(currentConfig.customKernelOptions, indices)
+        if (updated == currentConfig.customKernelOptions) return
+        updateBuildConfig(currentConfig.copy(customKernelOptions = updated))
+    }
+
+    fun clearCustomKernelOptions() {
+        val currentConfig = KernelSupport.normalize(_uiState.value.buildConfig)
+        if (currentConfig.buildTarget == BUILD_TARGET_ONEPLUS || currentConfig.customKernelOptions.isEmpty()) return
+        updateBuildConfig(currentConfig.copy(customKernelOptions = emptyList()))
+    }
+
     fun importCustomKernelOptions(text: String): CustomKernelOptionsImportResult {
         val currentConfig = KernelSupport.normalize(_uiState.value.buildConfig)
         val imported = parseCustomKernelOptionsText(text)
-        val merged = currentConfig.customKernelOptions + imported.options
+        val merged = mergeCustomKernelOptions(currentConfig.customKernelOptions, imported.options)
         updateBuildConfig(currentConfig.copy(customKernelOptions = merged))
         return imported
     }
@@ -5793,6 +5808,47 @@ internal fun parseCustomKernelOptionsText(text: String): CustomKernelOptionsImpo
         skippedCount = skippedCount,
         duplicateCount = duplicateCount
     )
+}
+
+internal fun summarizeCustomKernelOptions(options: List<CustomKernelOption>): CustomKernelOptionSummary {
+    var enabled = 0
+    var disabled = 0
+    var ignored = 0
+    options.forEach { option ->
+        when (CustomKernelOptionMode.normalize(option.mode)) {
+            CustomKernelOptionMode.ENABLED_Y,
+            CustomKernelOptionMode.ENABLED_M,
+            CustomKernelOptionMode.RAW -> enabled += 1
+            CustomKernelOptionMode.DISABLED -> disabled += 1
+            else -> ignored += 1
+        }
+    }
+    return CustomKernelOptionSummary(
+        total = options.size,
+        enabled = enabled,
+        disabled = disabled,
+        ignored = ignored
+    )
+}
+
+internal fun mergeCustomKernelOptions(
+    options: List<CustomKernelOption>,
+    updates: List<CustomKernelOption>
+): List<CustomKernelOption> {
+    if (updates.isEmpty()) return options
+    return KernelSupport.normalizeCustomKernelOptions(options + updates)
+}
+
+internal fun removeCustomKernelOptionsAtIndices(
+    options: List<CustomKernelOption>,
+    indices: Collection<Int>
+): List<CustomKernelOption> {
+    if (options.isEmpty() || indices.isEmpty()) return options
+    val targetIndices = indices.filter { it in options.indices }.toSet()
+    if (targetIndices.isEmpty()) return options
+    return options.filterIndexed { index, _ ->
+        index !in targetIndices
+    }
 }
 
 internal fun CustomKernelOption.toWorkflowLine(): String? {
