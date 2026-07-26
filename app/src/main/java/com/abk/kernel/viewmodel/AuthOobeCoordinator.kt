@@ -36,18 +36,26 @@ class AuthOobeCoordinator(
         }
     }
 
-    fun openBuildOobe() = enterOobeFlow()
+    /** Build page entry: a re-entry, so first-run onboarding must not resume. */
+    fun openBuildOobe() = enterOobeFlow(fromBuild = true)
 
     /** Settings account entry: jump back into the OOBE flow so the user can sign in again. */
-    fun openLoginOobe() = enterOobeFlow()
+    fun openLoginOobe() = enterOobeFlow(fromBuild = true)
 
-    private fun enterOobeFlow() {
+    /**
+     * Intro "continue" for a user who is already signed in. This is still the
+     * first-run flow, so it keeps [MainUiState.oobeFromBuild] false and reaches
+     * [AuthStep.THEME_SELECT] once the fork check settles.
+     */
+    fun continueOobeFromIntro() = enterOobeFlow(fromBuild = false)
+
+    private fun enterOobeFlow(fromBuild: Boolean) {
         val state = readState()
         val nextStep = if (state.isLoggedIn && state.user != null) AuthStep.FORK_CHECK else AuthStep.LOGIN
         updateState {
             it.copy(
                 showOobe = true,
-                oobeFromBuild = true,
+                oobeFromBuild = fromBuild,
                 authStep = nextStep,
                 error = null,
             )

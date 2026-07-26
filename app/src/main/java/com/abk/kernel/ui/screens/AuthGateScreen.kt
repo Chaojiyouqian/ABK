@@ -105,7 +105,7 @@ fun OobeScreen(vm: MainViewModel) {
                     onContinue = {
                         if (!skipInFlight) {
                             if (state.isLoggedIn) {
-                                vm.openBuildOobe()
+                                vm.continueOobeFromIntro()
                             } else {
                                 vm.continueOobeToLogin()
                             }

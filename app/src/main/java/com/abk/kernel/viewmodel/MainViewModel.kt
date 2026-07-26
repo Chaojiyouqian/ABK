@@ -905,6 +905,8 @@ class MainViewModel @JvmOverloads constructor(
 
     fun openLoginOobe() = authOobe.openLoginOobe()
 
+    fun continueOobeFromIntro() = authOobe.continueOobeFromIntro()
+
     fun continueOobeToLogin() = authOobe.continueOobeToLogin()
 
     fun skipOobe() = authOobe.skipOobe()
