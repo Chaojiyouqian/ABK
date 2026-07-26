@@ -353,25 +353,20 @@ fun SettingsScreenMiuix(
                             onClick = forkUrl?.let { url -> { openUrl(context, url) } }
                         )
                     } ?: run {
-                        // Not logged in
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AccountCircle,
-                                contentDescription = null,
-                                modifier = Modifier.size(42.dp),
-                                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                            )
-                            top.yukonga.miuix.kmp.basic.Text(
-                                text = stringResource(R.string.settings_not_logged_in),
-                                style = MiuixTheme.textStyles.main,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+                        // Not logged in: the whole row re-enters the OOBE login flow
+                        ArrowPreference(
+                            title = stringResource(R.string.settings_not_logged_in),
+                            summary = stringResource(R.string.settings_login_hint),
+                            startAction = {
+                                Icon(
+                                    imageVector = Icons.Default.AccountCircle,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(42.dp),
+                                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                )
+                            },
+                            onClick = { vm.openLoginOobe() }
+                        )
                     }
                 }
 
