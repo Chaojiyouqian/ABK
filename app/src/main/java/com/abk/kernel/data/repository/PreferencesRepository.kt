@@ -12,6 +12,7 @@ import com.abk.kernel.data.model.normalizeAppUpdateStability
 import com.abk.kernel.utils.DownloadDirectoryUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
@@ -190,7 +191,14 @@ class PreferencesRepository(private val context: Context) {
             ?.toSet()
             .orEmpty()
     }
-    val uiStyle: Flow<String> = context.dataStore.data.map { it[KEY_UI_STYLE] ?: "material" }
+    // distinctUntilChanged matters here: dataStore.data re-emits on every write to any
+    // key, so without it an unrelated write republishes the stored style and overwrites
+    // an in-memory value that has been set ahead of the store - see
+    // AuthOobeCoordinator.completeOobeWithUiStyle, where that showed up as the theme
+    // bouncing back to the old one mid-handoff.
+    val uiStyle: Flow<String> = context.dataStore.data
+        .map { it[KEY_UI_STYLE] ?: "material" }
+        .distinctUntilChanged()
     val miuixThemeColorArgb: Flow<Int?> = context.dataStore.data.map { it[KEY_MIUIX_THEME_COLOR] }
     val miuixAccentColorArgb: Flow<Int?> = context.dataStore.data.map { it[KEY_MIUIX_ACCENT_COLOR] }
     val miuixDynamicColorEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_MIUIX_DYNAMIC_COLOR_ENABLED] ?: false }

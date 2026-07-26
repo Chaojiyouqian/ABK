@@ -108,10 +108,12 @@ class AuthOobeCoordinator(
         closeOobe()
         updateState { it.copy(uiStyle = style) }
         scope.launch {
+            // Style first: it is what the theme wrapper keys off, so it should reach
+            // the store before any other write can republish the old value.
+            prefs.setUiStyle(style)
             if (!readState().oobeCompleted) {
                 prefs.setOobeCompleted(true)
             }
-            prefs.setUiStyle(style)
         }
     }
 
