@@ -1520,22 +1520,63 @@ private fun BuildTargetContentMiuix(
                 }
             )
             AnimatedVisibility(
+                visible = noRootScheme,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                BuildSectionNoteMiuix(
+                    text = if (isOnePlusBuild) {
+                        stringResource(R.string.build_oneplus_no_root_scheme_desc)
+                    } else {
+                        stringResource(R.string.build_no_root_scheme_desc)
+                    }
+                )
+            }
+            AnimatedVisibility(
+                visible = !noRootScheme && isOnePlusBuild,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                BuildSectionNoteMiuix(stringResource(R.string.build_oneplus_ksu_branch_desc))
+            }
+            AnimatedVisibility(
                 visible = !noRootScheme && !isOnePlusBuild,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
-                val branchIndex = ksuBranchOptions.indexOf(KernelSupport.normalizeKsuBranch(config.kernelsuBranch)).coerceAtLeast(0)
-                OverlayDropdownPreference(
-                    title = stringResource(R.string.build_ksu_branch),
-                    items = ksuBranchOptions,
-                    selectedIndex = branchIndex,
-                    renderInRootScaffold = true,
-                    onSelectedIndexChange = { index ->
-                        vm.updateBuildConfig(
-                            KernelSupport.normalize(config.copy(kernelsuBranch = ksuBranchOptions[index]))
+                Column {
+                    val branchIndex = ksuBranchOptions.indexOf(KernelSupport.normalizeKsuBranch(config.kernelsuBranch)).coerceAtLeast(0)
+                    OverlayDropdownPreference(
+                        title = stringResource(R.string.build_ksu_branch),
+                        items = ksuBranchOptions,
+                        selectedIndex = branchIndex,
+                        renderInRootScaffold = true,
+                        onSelectedIndexChange = { index ->
+                            vm.updateBuildConfig(
+                                KernelSupport.normalize(config.copy(kernelsuBranch = ksuBranchOptions[index]))
+                            )
+                        }
+                    )
+                    AnimatedVisibility(
+                        visible = config.kernelsuBranch == KSU_BRANCH_LATEST,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        BuildSectionNoteMiuix(stringResource(R.string.build_ksu_branch_latest_hint))
+                    }
+                    AnimatedVisibility(
+                        visible = config.kernelsuBranch == KSU_BRANCH_CUSTOM,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        BuildTextFieldItem(
+                            value = config.customRef,
+                            onValueChange = { vm.updateBuildConfig(config.copy(customRef = it)) },
+                            label = stringResource(R.string.build_custom_ksu_ref),
+                            placeholder = stringResource(R.string.build_custom_ksu_ref_placeholder)
                         )
                     }
-                )
+                }
             }
         }
 
@@ -2756,6 +2797,22 @@ private fun BuildRunChipViewMiuix(chip: BuildRunChip) {
             maxLines = 1
         )
     }
+}
+
+/**
+ * Explanatory text inside a section [Card], for the cases where M3 renders a bare
+ * `Text` instead of a preference row. Padded to line up with preference rows.
+ */
+@Composable
+private fun BuildSectionNoteMiuix(text: String) {
+    top.yukonga.miuix.kmp.basic.Text(
+        text = text,
+        style = MiuixTheme.textStyles.body2,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    )
 }
 
 @Composable
