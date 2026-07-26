@@ -1701,7 +1701,7 @@ private fun BuildTargetContentMiuix(
                         onCheckedChange = { vm.updateBuildConfig(config.copy(zramFullAlgo = it)) }
                     )
                     AnimatedVisibility(
-                        visible = config.zramFullAlgo,
+                        visible = !config.zramFullAlgo,
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically()
                     ) {
