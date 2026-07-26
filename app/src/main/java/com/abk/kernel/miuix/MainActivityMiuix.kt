@@ -94,6 +94,7 @@ import com.abk.kernel.miuix.ui.screens.AboutScreenMiuix
 import com.abk.kernel.miuix.ui.screens.AppProfileTemplatesScreenMiuix
 import com.abk.kernel.miuix.ui.screens.BuildPlanLibraryScreenMiuix
 import com.abk.kernel.miuix.ui.screens.BuildQueueScreenMiuix
+import com.abk.kernel.miuix.ui.screens.BuildKernelOptionsScreenMiuix
 import com.abk.kernel.miuix.ui.screens.BuildModuleRepoSettingsScreenMiuix
 import com.abk.kernel.miuix.ui.screens.ExtensionManagerScreenMiuix
 import com.abk.kernel.miuix.ui.screens.ManagerPatchScreenMiuix
@@ -619,6 +620,9 @@ private fun AbkMiuixMainScaffold(
                                     entry<Route.BuildQueue> {
                                         BuildQueueScreenMiuix(vm = vm)
                                     }
+                                    entry<Route.BuildKernelOptions> {
+                                        BuildKernelOptionsScreenMiuix(vm = vm)
+                                    }
                                     entry<Route.BuildModuleRepoSettings> {
                                         BuildModuleRepoSettingsScreenMiuix(vm = vm)
                                     }
@@ -979,6 +983,9 @@ private fun AbkMiuixMainScaffold(
                                 }
                                 entry<Route.BuildQueue> {
                                     BuildQueueScreenMiuix(vm = vm)
+                                }
+                                entry<Route.BuildKernelOptions> {
+                                    BuildKernelOptionsScreenMiuix(vm = vm)
                                 }
                                 entry<Route.BuildModuleRepoSettings> {
                                     BuildModuleRepoSettingsScreenMiuix(vm = vm)

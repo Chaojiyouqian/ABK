@@ -1,12 +1,16 @@
 package com.abk.kernel.miuix.ui.screens
 
-import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ClipData
 import android.content.Context
+import android.net.Uri
 import android.widget.Toast
+
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -22,36 +26,35 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CallSplit
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
@@ -67,10 +70,11 @@ import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.ForkRight
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Queue
@@ -83,23 +87,26 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircleOutline
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -107,24 +114,25 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
-import com.abk.kernel.R
+
 import com.abk.kernel.data.model.BUILD_TARGET_GKI
 import com.abk.kernel.data.model.BUILD_TARGET_ONEPLUS
 import com.abk.kernel.data.model.BuildPlan
@@ -135,29 +143,36 @@ import com.abk.kernel.data.model.BuildStatus
 import com.abk.kernel.data.model.CustomExternalModule
 import com.abk.kernel.data.model.CustomExternalModuleEntryKind
 import com.abk.kernel.data.model.CustomExternalModuleStage
+import com.abk.kernel.data.model.CustomKernelOption
+import com.abk.kernel.data.model.CustomKernelOptionMode
 import com.abk.kernel.data.model.ExternalModuleMetadata
+import com.abk.kernel.data.model.isKernelBuild
+import com.abk.kernel.data.model.isManagerBuild
+import com.abk.kernel.data.model.isManagerDevBuild
+import com.abk.kernel.data.model.KernelBuildConfig
+import com.abk.kernel.data.model.KernelSupport
 import com.abk.kernel.data.model.KSU_BRANCH_CUSTOM
 import com.abk.kernel.data.model.KSU_BRANCH_LATEST
 import com.abk.kernel.data.model.KSU_VARIANT_NONE
 import com.abk.kernel.data.model.KSU_VARIANT_RESUKISU
 import com.abk.kernel.data.model.KSU_VARIANT_SUKISU
-import com.abk.kernel.data.model.KernelBuildConfig
-import com.abk.kernel.data.model.KernelSupport
 import com.abk.kernel.data.model.ModuleCatalogItem
 import com.abk.kernel.data.model.ModuleCatalogItemKind
 import com.abk.kernel.data.model.ModuleCatalogRepository
 import com.abk.kernel.data.model.WorkflowRun
-import com.abk.kernel.data.model.isKernelBuild
-import com.abk.kernel.data.model.isManagerBuild
-import com.abk.kernel.data.model.isManagerDevBuild
-import com.abk.kernel.viewmodel.BuildPlanImportPreview
-import com.abk.kernel.viewmodel.BuildPlanShareScope
-import com.abk.kernel.viewmodel.MainViewModel
+import com.abk.kernel.miuix.util.BlurredBar
+import com.abk.kernel.miuix.util.rememberBlurBackdrop
+import com.abk.kernel.R
 import com.abk.kernel.ui.navigation3.LocalNavigator
 import com.abk.kernel.ui.navigation3.Route
-import kotlin.math.roundToInt
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import com.abk.kernel.viewmodel.BuildPlanImportPreview
+import com.abk.kernel.viewmodel.BuildPlanShareScope
+import com.abk.kernel.viewmodel.CustomKernelOptionsImportResult
+import com.abk.kernel.viewmodel.CustomKernelOptionSummary
+import com.abk.kernel.viewmodel.MainViewModel
+import com.abk.kernel.viewmodel.summarizeCustomKernelOptions
+import com.abk.kernel.viewmodel.toWorkflowLine
+
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
@@ -166,21 +181,23 @@ import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import top.yukonga.miuix.kmp.window.WindowDialog
-import com.abk.kernel.miuix.util.BlurredBar
-import com.abk.kernel.miuix.util.rememberBlurBackdrop
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import java.time.ZoneOffset
-import java.time.ZonedDateTime
+
 import java.time.format.DateTimeFormatter
+import java.time.ZonedDateTime
+import java.time.ZoneOffset
 import java.util.Locale
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val CATALOG_MODULE_REMOVE_DELAY_MS = 300L
 
@@ -292,6 +309,11 @@ fun BuildScreenMiuix(
 
     fun openBuildQueuePage() {
         navigator.push(Route.BuildQueue)
+    }
+
+    fun openKernelOptionsPage() {
+        if (isOnePlusBuild) return
+        navigator.push(Route.BuildKernelOptions)
     }
 
     DisposableEffect(Unit) {
@@ -1266,6 +1288,7 @@ fun BuildScreenMiuix(
                         onCheckCustomModuleMetadata = onCheckCustomModuleMetadata,
                         onEditCustomModuleStages = onEditCustomModuleStages,
                         onOpenModuleSetEditor = ::openModuleSetEditor,
+                        onOpenKernelOptions = ::openKernelOptionsPage
                     )
                 }
 
@@ -1336,6 +1359,7 @@ private fun BuildTargetContentMiuix(
     onCheckCustomModuleMetadata: (url: String) -> Unit,
     onEditCustomModuleStages: (group: BuildCustomModuleGroup) -> Unit,
     onOpenModuleSetEditor: (group: BuildCustomModuleGroup) -> Unit,
+    onOpenKernelOptions: () -> Unit,
 ) {
     val state by vm.uiState.collectAsState()
     val isOnePlusBuild = config.buildTarget == BUILD_TARGET_ONEPLUS
@@ -1634,6 +1658,27 @@ private fun BuildTargetContentMiuix(
                     title = stringResource(R.string.build_enable_oneplus_8e),
                     checked = config.suppOp,
                     onCheckedChange = { vm.updateBuildConfig(config.copy(suppOp = it)) }
+                )
+            }
+        }
+
+
+        // ═══ Custom Kernel Options (GKI only) ═══════════════════════
+        if (!isOnePlusBuild) {
+            SectionTitle(stringResource(R.string.build_kernel_options_title))
+            Card(modifier = Modifier.fillMaxWidth()) {
+                ArrowPreference(
+                    title = stringResource(R.string.build_kernel_options_title),
+                    summary = buildCustomKernelOptionSummaryTextMiuix(
+                        summarizeCustomKernelOptions(config.customKernelOptions)
+                    ),
+                    onClick = onOpenKernelOptions
+                )
+                top.yukonga.miuix.kmp.basic.Text(
+                    text = stringResource(R.string.build_section_kernel_options_desc),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
                 )
             }
         }
@@ -3626,3 +3671,635 @@ private fun runChipTitleFallback(run: WorkflowRun, runLabel: String): String? {
         }
         .firstOrNull { title -> title.isNotBlank() && title !in disallowed }
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Custom kernel options child page (parity with M3 #165)
+// ═════════════════════════════════════════════════════════════════════════════
+
+@Composable
+fun BuildKernelOptionsScreenMiuix(vm: MainViewModel) {
+    val state by vm.uiState.collectAsState()
+    val context = LocalContext.current
+    val navigator = LocalNavigator.current
+    val config = remember(state.buildConfig) { KernelSupport.normalize(state.buildConfig) }
+    val scrollBehavior = MiuixScrollBehavior()
+    val surfaceColor = MiuixTheme.colorScheme.surface
+    val backdrop = rememberBlurBackdrop(state.miuixBlurEnabled, surfaceColor)
+    val barColor = if (backdrop != null) Color.Transparent else surfaceColor
+    val coroutineScope = rememberCoroutineScope()
+
+    var showKernelOptionImportDialog by remember { mutableStateOf(false) }
+    var kernelOptionImportText by remember { mutableStateOf("") }
+    var kernelOptionImportSummary by remember { mutableStateOf<String?>(null) }
+    var kernelOptionImportError by remember { mutableStateOf<String?>(null) }
+    var showKernelOptionEditorDialog by remember { mutableStateOf(false) }
+    var editingKernelOptionIndex by remember { mutableStateOf<Int?>(null) }
+    var editingKernelOption by remember { mutableStateOf(CustomKernelOption()) }
+    var kernelOptionSearchQuery by rememberSaveable { mutableStateOf("") }
+    var showKernelOptionActionMenu by remember { mutableStateOf(false) }
+    var showClearKernelOptionsDialog by remember { mutableStateOf(false) }
+    var clearAllKernelOptions by rememberSaveable { mutableStateOf(false) }
+
+    val kernelOptionFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            runCatching { vm.loadCustomKernelOptionsFromUri(uri) }
+                .onSuccess {
+                    kernelOptionImportText = it
+                    kernelOptionImportError = null
+                }
+                .onFailure {
+                    kernelOptionImportError = it.message
+                        ?: context.getString(R.string.build_kernel_option_import_read_failed)
+                }
+        }
+    }
+
+    val kernelOptionSummary = summarizeCustomKernelOptions(config.customKernelOptions)
+    val modeY = stringResource(R.string.build_kernel_option_mode_y)
+    val modeM = stringResource(R.string.build_kernel_option_mode_m)
+    val modeDisabled = stringResource(R.string.build_kernel_option_mode_disabled)
+    val modeIgnore = stringResource(R.string.build_kernel_option_mode_ignore)
+    val modeRaw = stringResource(R.string.build_kernel_option_mode_raw)
+    val filteredKernelOptions = config.customKernelOptions
+        .mapIndexed { index, option -> IndexedValue(index, option) }
+        .filter { indexed ->
+            val query = kernelOptionSearchQuery.trim().lowercase(Locale.ROOT)
+            query.isBlank() || buildCustomKernelOptionSearchTextMiuix(
+                option = indexed.value,
+                enabledYLabel = modeY,
+                enabledMLabel = modeM,
+                disabledLabel = modeDisabled,
+                ignoreLabel = modeIgnore,
+                rawLabel = modeRaw
+            ).contains(query)
+        }
+    val filteredKernelOptionIndices = filteredKernelOptions.map { it.index }
+    val canToggleKernelOptionClearAll = filteredKernelOptions.size != config.customKernelOptions.size
+    val clearAllKernelOptionsTarget = !canToggleKernelOptionClearAll || clearAllKernelOptions
+
+    LaunchedEffect(config.buildTarget) {
+        if (config.buildTarget == BUILD_TARGET_ONEPLUS) {
+            navigator.pop()
+        }
+    }
+
+    if (showKernelOptionImportDialog) {
+        ImportCustomKernelOptionsDialogMiuix(
+            text = kernelOptionImportText,
+            summary = kernelOptionImportSummary,
+            error = kernelOptionImportError,
+            onTextChange = {
+                kernelOptionImportText = it
+                kernelOptionImportSummary = null
+                kernelOptionImportError = null
+            },
+            onPickFile = {
+                kernelOptionFilePicker.launch(arrayOf("text/*", "application/octet-stream", "*/*"))
+            },
+            onImport = {
+                runCatching { vm.importCustomKernelOptions(kernelOptionImportText) }
+                    .onSuccess { result ->
+                        kernelOptionImportSummary = formatCustomKernelImportSummaryMiuix(context, result)
+                        kernelOptionImportError = null
+                        showKernelOptionImportDialog = false
+                        kernelOptionImportText = ""
+                        Toast.makeText(
+                            context,
+                            formatCustomKernelImportSummaryMiuix(context, result),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    .onFailure {
+                        kernelOptionImportError = it.message
+                            ?: context.getString(R.string.build_kernel_option_import_failed)
+                    }
+            },
+            onDismiss = {
+                showKernelOptionImportDialog = false
+                kernelOptionImportText = ""
+                kernelOptionImportSummary = null
+                kernelOptionImportError = null
+            }
+        )
+    }
+
+    if (showKernelOptionEditorDialog) {
+        EditCustomKernelOptionDialogMiuix(
+            option = editingKernelOption,
+            isEditing = editingKernelOptionIndex != null,
+            onOptionChange = { editingKernelOption = it },
+            onDismiss = {
+                showKernelOptionEditorDialog = false
+                editingKernelOptionIndex = null
+                editingKernelOption = CustomKernelOption()
+            },
+            onConfirm = {
+                runCatching { vm.upsertCustomKernelOption(editingKernelOption, editingKernelOptionIndex) }
+                    .onSuccess {
+                        showKernelOptionEditorDialog = false
+                        editingKernelOptionIndex = null
+                        editingKernelOption = CustomKernelOption()
+                    }
+                    .onFailure {
+                        Toast.makeText(
+                            context,
+                            it.message ?: context.getString(R.string.build_kernel_option_save_failed),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+            }
+        )
+    }
+
+    if (showClearKernelOptionsDialog) {
+        ClearCustomKernelOptionsDialogMiuix(
+            totalCount = config.customKernelOptions.size,
+            filteredCount = filteredKernelOptions.size,
+            canToggleClearAll = canToggleKernelOptionClearAll,
+            clearAll = clearAllKernelOptions,
+            onClearAllChange = { clearAllKernelOptions = it },
+            onDismiss = {
+                showClearKernelOptionsDialog = false
+                clearAllKernelOptions = false
+            },
+            onConfirm = {
+                if (clearAllKernelOptionsTarget) {
+                    vm.clearCustomKernelOptions()
+                } else {
+                    vm.removeCustomKernelOptions(filteredKernelOptionIndices)
+                }
+                showClearKernelOptionsDialog = false
+                clearAllKernelOptions = false
+            }
+        )
+    }
+
+    Scaffold(
+        topBar = {
+            BlurredBar(backdrop, surfaceColor) {
+                TopAppBar(
+                    color = barColor,
+                    title = stringResource(R.string.build_kernel_options_title),
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        top.yukonga.miuix.kmp.basic.IconButton(onClick = { navigator.pop() }) {
+                            top.yukonga.miuix.kmp.basic.Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.build_back_to_config)
+                            )
+                        }
+                    },
+                    actions = {
+                        Box {
+                            top.yukonga.miuix.kmp.basic.IconButton(
+                                onClick = { showKernelOptionActionMenu = true }
+                            ) {
+                                top.yukonga.miuix.kmp.basic.Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = stringResource(R.string.build_kernel_option_menu)
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showKernelOptionActionMenu,
+                                onDismissRequest = { showKernelOptionActionMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.build_kernel_option_add)) },
+                                    onClick = {
+                                        showKernelOptionActionMenu = false
+                                        showKernelOptionEditorDialog = true
+                                        editingKernelOptionIndex = null
+                                        editingKernelOption = CustomKernelOption()
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.build_kernel_option_import_title)) },
+                                    onClick = {
+                                        showKernelOptionActionMenu = false
+                                        showKernelOptionImportDialog = true
+                                        kernelOptionImportText = ""
+                                        kernelOptionImportSummary = null
+                                        kernelOptionImportError = null
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Tune, contentDescription = null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.build_kernel_option_clear)) },
+                                    onClick = {
+                                        showKernelOptionActionMenu = false
+                                        clearAllKernelOptions = false
+                                        showClearKernelOptionsDialog = true
+                                    },
+                                    enabled = config.customKernelOptions.isNotEmpty(),
+                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
+                                )
+                            }
+                        }
+                    }
+                )
+            }
+        }
+    ) { padding ->
+        Box(
+            modifier = Modifier.then(
+                if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
+            )
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .overScrollVertical()
+                    .scrollEndHaptic()
+                    .padding(horizontal = 12.dp),
+                contentPadding = PaddingValues(
+                    top = padding.calculateTopPadding() + 8.dp,
+                    bottom = padding.calculateBottomPadding() + 80.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item(key = "search") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                color = MiuixTheme.colorScheme.surfaceVariant,
+                                shape = RoundedCornerShape(17.dp)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = MiuixTheme.colorScheme.primary,
+                                shape = RoundedCornerShape(17.dp)
+                            )
+                            .padding(horizontal = 20.dp, vertical = 14.dp)
+                    ) {
+                        BasicTextField(
+                            value = kernelOptionSearchQuery,
+                            onValueChange = { kernelOptionSearchQuery = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            textStyle = MiuixTheme.textStyles.body1.copy(
+                                color = MiuixTheme.colorScheme.onSurface
+                            ),
+                            cursorBrush = SolidColor(MiuixTheme.colorScheme.primary),
+                            decorationBox = { innerTextField ->
+                                Box(modifier = Modifier.fillMaxWidth()) {
+                                    if (kernelOptionSearchQuery.isEmpty()) {
+                                        top.yukonga.miuix.kmp.basic.Text(
+                                            text = stringResource(R.string.build_kernel_option_search),
+                                            style = MiuixTheme.textStyles.body1,
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            }
+                        )
+                    }
+                }
+                item(key = "summary") {
+                    top.yukonga.miuix.kmp.basic.Text(
+                        text = buildCustomKernelOptionSummaryTextMiuix(kernelOptionSummary),
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+                }
+                if (filteredKernelOptions.isEmpty()) {
+                    item(key = "empty") {
+                        top.yukonga.miuix.kmp.basic.Text(
+                            text = if (kernelOptionSearchQuery.isNotBlank()) {
+                                stringResource(R.string.build_kernel_option_no_matching)
+                            } else {
+                                stringResource(R.string.build_kernel_option_empty)
+                            },
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                        )
+                    }
+                } else {
+                    items(
+                        items = filteredKernelOptions,
+                        key = { indexed -> "${indexed.index}:${indexed.value.symbol}" }
+                    ) { indexed ->
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            ArrowPreference(
+                                title = KernelSupport.normalizeCustomKernelSymbol(indexed.value.symbol),
+                                summary = buildCustomKernelOptionSubtitleMiuix(indexed.value),
+                                onClick = {
+                                    editingKernelOptionIndex = indexed.index
+                                    editingKernelOption = indexed.value
+                                    showKernelOptionEditorDialog = true
+                                },
+                                endActions = {
+                                    IconButton(onClick = { vm.removeCustomKernelOption(indexed.index) }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = stringResource(R.string.delete),
+                                            tint = MiuixTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun ImportCustomKernelOptionsDialogMiuix(
+    text: String,
+    summary: String?,
+    error: String?,
+    onTextChange: (String) -> Unit,
+    onPickFile: () -> Unit,
+    onImport: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    WindowDialog(
+        show = true,
+        title = stringResource(R.string.build_kernel_option_import_title),
+        onDismissRequest = onDismiss
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    top.yukonga.miuix.kmp.basic.Text(
+                        text = stringResource(R.string.build_kernel_option_import_desc),
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    )
+                    BuildTextFieldItem(
+                        value = text,
+                        onValueChange = onTextChange,
+                        label = stringResource(R.string.build_kernel_option_import_text),
+                        placeholder = "CONFIG_FOO=y"
+                    )
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onPickFile,
+                        text = stringResource(R.string.build_kernel_option_pick_file)
+                    )
+                    summary?.let {
+                        top.yukonga.miuix.kmp.basic.Text(
+                            text = it,
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.primary
+                        )
+                    }
+                    error?.let {
+                        top.yukonga.miuix.kmp.basic.Text(
+                            text = it,
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                top.yukonga.miuix.kmp.basic.TextButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onDismiss,
+                    text = stringResource(R.string.cancel)
+                )
+                top.yukonga.miuix.kmp.basic.TextButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onImport,
+                    enabled = text.isNotBlank(),
+                    text = stringResource(R.string.build_import),
+                    colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditCustomKernelOptionDialogMiuix(
+    option: CustomKernelOption,
+    isEditing: Boolean, 
+    onOptionChange: (CustomKernelOption) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val modeOptions = CustomKernelOptionMode.options
+    val modeLabels = modeOptions.map { customKernelOptionModeLabelMiuix(it) }
+    val selectedModeIndex = modeOptions.indexOf(CustomKernelOptionMode.normalize(option.mode)).coerceAtLeast(0)
+    WindowDialog(
+        show = true,
+        title = stringResource(
+            if (isEditing) R.string.build_kernel_option_edit else R.string.build_kernel_option_add
+        ),
+        onDismissRequest = onDismiss
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    BuildTextFieldItem(
+                        value = option.symbol,
+                        onValueChange = { onOptionChange(option.copy(symbol = it)) },
+                        label = stringResource(R.string.build_kernel_option_symbol),
+                        placeholder = "CONFIG_EXAMPLE"
+                    )
+                    OverlayDropdownPreference(
+                        title = stringResource(R.string.build_kernel_option_mode),
+                        items = modeLabels,
+                        selectedIndex = selectedModeIndex,
+                        onSelectedIndexChange = { index ->
+                            onOptionChange(option.copy(mode = modeOptions[index]))
+                        }
+                    )
+                    if (CustomKernelOptionMode.normalize(option.mode) == CustomKernelOptionMode.RAW) {
+                        BuildTextFieldItem(
+                            value = option.rawValue,
+                            onValueChange = { onOptionChange(option.copy(rawValue = it)) },
+                            label = stringResource(R.string.build_kernel_option_raw_value),
+                            placeholder = stringResource(R.string.build_kernel_option_raw_placeholder)
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                top.yukonga.miuix.kmp.basic.TextButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onDismiss,
+                    text = stringResource(R.string.cancel)
+                )
+                top.yukonga.miuix.kmp.basic.TextButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onConfirm,
+                    text = stringResource(R.string.build_save),
+                    colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClearCustomKernelOptionsDialogMiuix(
+    totalCount: Int,
+    filteredCount: Int,
+    canToggleClearAll: Boolean,
+    clearAll: Boolean,
+    onClearAllChange: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val clearAllTarget = !canToggleClearAll || clearAll
+    val confirmEnabled = if (clearAllTarget) totalCount > 0 else filteredCount > 0
+    val message = when {
+        clearAllTarget -> stringResource(R.string.build_kernel_option_clear_all_confirm, totalCount)
+        filteredCount > 0 -> stringResource(R.string.build_kernel_option_clear_filtered_confirm, filteredCount)
+        else -> stringResource(R.string.build_kernel_option_clear_no_matching, totalCount)
+    }
+    WindowDialog(
+        show = true,
+        title = stringResource(R.string.build_kernel_option_clear_title),
+        onDismissRequest = onDismiss
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    top.yukonga.miuix.kmp.basic.Text(
+                        text = message,
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurface
+                    )
+                    if (canToggleClearAll) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onClearAllChange(!clearAll) },
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Checkbox(
+                                checked = clearAll,
+                                onCheckedChange = onClearAllChange
+                            )
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = stringResource(R.string.build_kernel_option_clear_toggle_all, totalCount),
+                                style = MiuixTheme.textStyles.body1,
+                                color = MiuixTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                top.yukonga.miuix.kmp.basic.TextButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onDismiss,
+                    text = stringResource(R.string.cancel)
+                )
+                top.yukonga.miuix.kmp.basic.TextButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onConfirm,
+                    enabled = confirmEnabled,
+                    text = stringResource(
+                        if (clearAllTarget) {
+                            R.string.build_kernel_option_clear_all_action
+                        } else {
+                            R.string.build_kernel_option_clear_filtered_action
+                        }
+                    ),
+                    colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColors(
+                        color = MiuixTheme.colorScheme.error
+                    )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun buildCustomKernelOptionSummaryTextMiuix(summary: CustomKernelOptionSummary): String =
+    stringResource(
+        R.string.build_kernel_options_summary,
+        summary.total,
+        summary.enabled,
+        summary.disabled,
+        summary.ignored
+    )
+
+private fun buildCustomKernelOptionSearchTextMiuix(
+    option: CustomKernelOption,
+    enabledYLabel: String,
+    enabledMLabel: String,
+    disabledLabel: String,
+    ignoreLabel: String,
+    rawLabel: String
+): String {
+    val modeLabel = when (CustomKernelOptionMode.normalize(option.mode)) {
+        CustomKernelOptionMode.ENABLED_Y -> enabledYLabel
+        CustomKernelOptionMode.ENABLED_M -> enabledMLabel
+        CustomKernelOptionMode.DISABLED -> disabledLabel
+        CustomKernelOptionMode.RAW -> rawLabel
+        else -> ignoreLabel
+    }
+    return buildString {
+        append(KernelSupport.normalizeCustomKernelSymbol(option.symbol))
+        append(' ')
+        append(modeLabel)
+        if (option.rawValue.isNotBlank()) {
+            append(' ')
+            append(option.rawValue.trim())
+        }
+        option.toWorkflowLine()?.let { workflowLine ->
+            append(' ')
+            append(workflowLine)
+        }
+    }.lowercase(Locale.ROOT)
+}
+
+@Composable
+private fun customKernelOptionModeLabelMiuix(mode: String): String = when (CustomKernelOptionMode.normalize(mode)) {
+    CustomKernelOptionMode.ENABLED_Y -> stringResource(R.string.build_kernel_option_mode_y)
+    CustomKernelOptionMode.ENABLED_M -> stringResource(R.string.build_kernel_option_mode_m)
+    CustomKernelOptionMode.DISABLED -> stringResource(R.string.build_kernel_option_mode_disabled)
+    CustomKernelOptionMode.RAW -> stringResource(R.string.build_kernel_option_mode_raw)
+    else -> stringResource(R.string.build_kernel_option_mode_ignore)
+}
+
+@Composable
+private fun buildCustomKernelOptionSubtitleMiuix(option: CustomKernelOption): String =
+    when (CustomKernelOptionMode.normalize(option.mode)) {
+        CustomKernelOptionMode.ENABLED_Y -> stringResource(R.string.build_kernel_option_mode_y)
+        CustomKernelOptionMode.ENABLED_M -> stringResource(R.string.build_kernel_option_mode_m)
+        CustomKernelOptionMode.DISABLED -> stringResource(R.string.build_kernel_option_mode_disabled)
+        CustomKernelOptionMode.RAW -> stringResource(R.string.build_kernel_option_raw_summary, option.rawValue)
+        else -> stringResource(R.string.build_kernel_option_mode_ignore)
+    }
+
+private fun formatCustomKernelImportSummaryMiuix(
+    context: android.content.Context,
+    result: CustomKernelOptionsImportResult
+): String = context.getString(
+    R.string.build_kernel_option_import_summary,
+    result.importedCount,
+    result.duplicateCount,
+    result.skippedCount
+)
