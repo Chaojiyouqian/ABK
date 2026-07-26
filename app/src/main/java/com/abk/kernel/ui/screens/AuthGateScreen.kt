@@ -65,13 +65,21 @@ fun OobeScreen(vm: MainViewModel) {
         .pow(OOBE_SKIP_BACK_VISUAL_EXPONENT)
     val density = LocalDensity.current
 
-    fun requestSkip() {
+    /**
+     * [applyUiStyle] is applied at the very end, next to [MainViewModel.skipOobe] and
+     * with no suspension point between them. MainActivity picks the theme wrapper off
+     * `uiStyle`, so changing it earlier disposes this whole subtree - taking the
+     * pending exit coroutine with it - and leaves the OOBE on screen under the other
+     * theme until the user confirms a second time.
+     */
+    fun requestSkip(applyUiStyle: String? = null) {
         if (skipInFlight) return
         skipInFlight = true
         scope.launch {
             delay(OOBE_SKIP_LOADING_DELAY_MS)
             skipExitStarted = true
             delay(OOBE_SKIP_EXIT_DELAY_MS)
+            applyUiStyle?.let { vm.setUiStyle(it) }
             vm.skipOobe()
         }
     }
@@ -126,10 +134,7 @@ fun OobeScreen(vm: MainViewModel) {
                 )
                 AuthStep.THEME_SELECT -> ThemeSelectScreen(
                     currentStyle = state.uiStyle,
-                    onConfirm = { selected ->
-                        vm.setUiStyle(selected)
-                        requestSkip()
-                    }
+                    onConfirm = { selected -> requestSkip(applyUiStyle = selected) }
                 )
                 AuthStep.FORK_CHECK -> ForkCheckScreen(
                     isLoading = state.isLoading,
