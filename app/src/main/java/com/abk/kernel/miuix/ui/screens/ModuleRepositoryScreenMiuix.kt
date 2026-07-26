@@ -218,6 +218,35 @@ private fun MiuixModuleInitialLoading() {
     }
 }
 
+/**
+ * Compact variant of [MiuixModuleInitialLoading] for the case where a stale list is
+ * still on screen: the rows stay visible and this only marks them as being rebuilt.
+ * MIUIX counterpart of the M3 `AbkInlineLoadingPill`.
+ */
+@Composable
+private fun MiuixModuleInlineLoading() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(16.dp),
+            progress = null,
+            size = 16.dp,
+            strokeWidth = 2.dp
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = stringResource(R.string.module_repo_building_list),
+            style = MiuixTheme.textStyles.body2,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+        )
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BUILD_ABK screen
 // ─────────────────────────────────────────────────────────────────────────────
@@ -253,9 +282,10 @@ private fun BuildModuleRepositoryScreenMiuix(
             value = ModuleListComputation(items = emptyList(), loading = false)
             return@produceState
         }
-        // Keep previous items visible while recomputing to avoid UI flicker
+        // Keep previous items visible while recomputing to avoid UI flicker, but stay
+        // marked as loading so the UI can show the list is stale.
         val previousItems = value.items
-        value = ModuleListComputation(items = previousItems, loading = false)
+        value = ModuleListComputation(items = previousItems, loading = true)
         val merged = withContext(Dispatchers.Default) {
             mergeBuildPageCatalogModules(state.buildModuleRepositories)
         }
@@ -571,10 +601,11 @@ private fun BuildModuleRepositoryScreenMiuix(
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    val showInitialLoading = listComputing || (
-                        state.refreshingBuildModuleRepositoryIds.isNotEmpty() &&
-                            mergedModules.isEmpty() && query.isBlank()
-                        )
+                    // Only take over the whole list when there is nothing stale left to
+                    // show; a recompute over existing rows surfaces as the inline row.
+                    val refreshingRepos = state.refreshingBuildModuleRepositoryIds.isNotEmpty()
+                    val showInitialLoading = mergedModules.isEmpty() &&
+                        (listComputing || (refreshingRepos && query.isBlank()))
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
@@ -590,6 +621,11 @@ private fun BuildModuleRepositoryScreenMiuix(
                         ),
                         overscrollEffect = null
                     ) {
+                        if ((refreshingRepos || listComputing) && !showInitialLoading) {
+                            item(key = "refreshing") {
+                                MiuixModuleInlineLoading()
+                            }
+                        }
                         if (showInitialLoading) {
                             item(key = "initial-loading") {
                                 MiuixModuleInitialLoading()
@@ -1153,9 +1189,10 @@ private fun RuntimeModuleRepositoryScreenMiuix(
             value = ModuleListComputation(items = emptyList(), loading = false)
             return@produceState
         }
-        // Keep previous items visible while recomputing to avoid UI flicker
+        // Keep previous items visible while recomputing to avoid UI flicker, but stay
+        // marked as loading so the UI can show the list is stale.
         val previousItems = value.items
-        value = ModuleListComputation(items = previousItems, loading = false)
+        value = ModuleListComputation(items = previousItems, loading = true)
         val merged = withContext(Dispatchers.Default) {
             mergeRuntimeCatalogModules(state.runtimeModuleRepositories)
         }
@@ -1441,10 +1478,11 @@ private fun RuntimeModuleRepositoryScreenMiuix(
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    val showInitialLoading = listComputing || (
-                        state.refreshingRuntimeModuleRepositoryIds.isNotEmpty() &&
-                            mergedModules.isEmpty() && query.isBlank()
-                        )
+                    // Only take over the whole list when there is nothing stale left to
+                    // show; a recompute over existing rows surfaces as the inline row.
+                    val refreshingRepos = state.refreshingRuntimeModuleRepositoryIds.isNotEmpty()
+                    val showInitialLoading = mergedModules.isEmpty() &&
+                        (listComputing || (refreshingRepos && query.isBlank()))
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
@@ -1460,6 +1498,11 @@ private fun RuntimeModuleRepositoryScreenMiuix(
                         ),
                         overscrollEffect = null
                     ) {
+                        if ((refreshingRepos || listComputing) && !showInitialLoading) {
+                            item(key = "refreshing") {
+                                MiuixModuleInlineLoading()
+                            }
+                        }
                         if (showInitialLoading) {
                             item(key = "initial-loading") {
                                 MiuixModuleInitialLoading()
