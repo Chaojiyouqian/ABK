@@ -94,8 +94,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -180,6 +178,11 @@ import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.overlay.OverlayListPopup
+import top.yukonga.miuix.kmp.basic.PopupPositionProvider
+import top.yukonga.miuix.kmp.basic.ListPopupDefaults
+import top.yukonga.miuix.kmp.basic.ListPopupColumn
+import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -3852,48 +3855,60 @@ fun BuildKernelOptionsScreenMiuix(vm: MainViewModel) {
                     },
                     actions = {
                         Box {
-                            top.yukonga.miuix.kmp.basic.IconButton(
-                                onClick = { showKernelOptionActionMenu = true }
+                            OverlayListPopup(
+                                show = showKernelOptionActionMenu,
+                                popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
+                                alignment = PopupPositionProvider.Align.TopEnd,
+                                onDismissRequest = { showKernelOptionActionMenu = false },
                             ) {
-                                top.yukonga.miuix.kmp.basic.Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = stringResource(R.string.build_kernel_option_menu)
-                                )
+                                ListPopupColumn {
+                                    DropdownImpl(
+                                        text = stringResource(R.string.build_kernel_option_add),
+                                        optionSize = 3,
+                                        isSelected = false,
+                                        index = 0,
+                                        onSelectedIndexChange = {
+                                            showKernelOptionActionMenu = false
+                                            showKernelOptionEditorDialog = true
+                                            editingKernelOptionIndex = null
+                                            editingKernelOption = CustomKernelOption()
+                                        },
+                                    )
+                                    DropdownImpl(
+                                        text = stringResource(R.string.build_kernel_option_import_title),
+                                        optionSize = 3,
+                                        isSelected = false,
+                                        index = 1,
+                                        onSelectedIndexChange = {
+                                            showKernelOptionActionMenu = false
+                                            showKernelOptionImportDialog = true
+                                            kernelOptionImportText = ""
+                                            kernelOptionImportSummary = null
+                                            kernelOptionImportError = null
+                                        },
+                                    )
+                                    DropdownImpl(
+                                        text = stringResource(R.string.build_kernel_option_clear),
+                                        optionSize = 3,
+                                        isSelected = false,
+                                        index = 2,
+                                        onSelectedIndexChange = {
+                                            if (config.customKernelOptions.isEmpty()) return@DropdownImpl
+                                            showKernelOptionActionMenu = false
+                                            clearAllKernelOptions = false
+                                            showClearKernelOptionsDialog = true
+                                        },
+                                    )
+                                }
                             }
-                            DropdownMenu(
-                                expanded = showKernelOptionActionMenu,
-                                onDismissRequest = { showKernelOptionActionMenu = false }
+                            top.yukonga.miuix.kmp.basic.IconButton(
+                                onClick = { showKernelOptionActionMenu = true },
+                                holdDownState = showKernelOptionActionMenu,
                             ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.build_kernel_option_add)) },
-                                    onClick = {
-                                        showKernelOptionActionMenu = false
-                                        showKernelOptionEditorDialog = true
-                                        editingKernelOptionIndex = null
-                                        editingKernelOption = CustomKernelOption()
-                                    },
-                                    leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.build_kernel_option_import_title)) },
-                                    onClick = {
-                                        showKernelOptionActionMenu = false
-                                        showKernelOptionImportDialog = true
-                                        kernelOptionImportText = ""
-                                        kernelOptionImportSummary = null
-                                        kernelOptionImportError = null
-                                    },
-                                    leadingIcon = { Icon(Icons.Default.Tune, contentDescription = null) }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.build_kernel_option_clear)) },
-                                    onClick = {
-                                        showKernelOptionActionMenu = false
-                                        clearAllKernelOptions = false
-                                        showClearKernelOptionsDialog = true
-                                    },
-                                    enabled = config.customKernelOptions.isNotEmpty(),
-                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = stringResource(R.string.build_kernel_option_menu),
+                                    tint = MiuixTheme.colorScheme.onSurface,
                                 )
                             }
                         }
