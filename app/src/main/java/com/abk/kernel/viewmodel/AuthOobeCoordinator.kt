@@ -90,6 +90,31 @@ class AuthOobeCoordinator(
         }
     }
 
+    /**
+     * Finish onboarding with the UI style picked on [AuthStep.THEME_SELECT].
+     *
+     * MainActivity picks the theme wrapper off `uiStyle` while the OOBE overlay draws
+     * with Material colors, so the two must move together. Letting the style arrive
+     * on its own - it is normally mirrored in from `prefs.uiStyle` - leaves the
+     * overlay a frame of M3 content inside the MIUIX theme with no `AbkTheme`
+     * provider, which reads as a full-screen flash of the default light scheme.
+     *
+     * Both updates are applied back to back before the next frame, so the overlay
+     * disappears and the theme swaps in one step. Writing `uiStyle` into state here
+     * is only optimistic; the collector re-emits the same value once the store
+     * settles.
+     */
+    fun completeOobeWithUiStyle(style: String) {
+        closeOobe()
+        updateState { it.copy(uiStyle = style) }
+        scope.launch {
+            if (!readState().oobeCompleted) {
+                prefs.setOobeCompleted(true)
+            }
+            prefs.setUiStyle(style)
+        }
+    }
+
     fun startDeviceFlow() {
         scope.launch {
             updateState { it.copy(isLoading = true, error = null) }

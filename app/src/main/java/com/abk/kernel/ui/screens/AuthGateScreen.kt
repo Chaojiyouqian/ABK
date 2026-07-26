@@ -66,11 +66,12 @@ fun OobeScreen(vm: MainViewModel) {
     val density = LocalDensity.current
 
     /**
-     * [applyUiStyle] is applied at the very end, next to [MainViewModel.skipOobe] and
-     * with no suspension point between them. MainActivity picks the theme wrapper off
-     * `uiStyle`, so changing it earlier disposes this whole subtree - taking the
-     * pending exit coroutine with it - and leaves the OOBE on screen under the other
-     * theme until the user confirms a second time.
+     * When [applyUiStyle] is set the style is handed to the view model together with
+     * the close, so the overlay is gone before the theme wrapper swaps. Doing it from
+     * here in two calls cannot work: MainActivity picks the theme off `uiStyle`, and a
+     * style change while the overlay is still up both disposes this subtree - killing
+     * the pending exit coroutine - and paints a frame of M3 content with no `AbkTheme`
+     * provider.
      */
     fun requestSkip(applyUiStyle: String? = null) {
         if (skipInFlight) return
@@ -79,8 +80,11 @@ fun OobeScreen(vm: MainViewModel) {
             delay(OOBE_SKIP_LOADING_DELAY_MS)
             skipExitStarted = true
             delay(OOBE_SKIP_EXIT_DELAY_MS)
-            applyUiStyle?.let { vm.setUiStyle(it) }
-            vm.skipOobe()
+            if (applyUiStyle != null) {
+                vm.completeOobeWithUiStyle(applyUiStyle)
+            } else {
+                vm.skipOobe()
+            }
         }
     }
 
