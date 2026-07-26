@@ -1,4 +1,4 @@
-﻿package com.abk.kernel.miuix.ui.screens
+package com.abk.kernel.miuix.ui.screens
 
 import android.app.Activity
 import android.content.Context

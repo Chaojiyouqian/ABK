@@ -1,4 +1,4 @@
-﻿package com.abk.kernel.miuix
+package com.abk.kernel.miuix
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
