@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.sp
 import com.abk.kernel.R
 import com.abk.kernel.miuix.component.KeyEventBlocker
 import com.abk.kernel.viewmodel.MainViewModel
-import kotlinx.coroutines.flow.first
 import top.yukonga.miuix.kmp.basic.FloatingActionButton
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -68,6 +67,7 @@ fun ModuleActionTerminalScreenMiuix(
     var observedRunning by remember { mutableStateOf(false) }
     var finished by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
+    var refused by remember { mutableStateOf(false) }
 
     val fabVisible by remember {
         var previousScroll = 0
@@ -98,6 +98,7 @@ fun ModuleActionTerminalScreenMiuix(
     )
 
     val waitRootShell = stringResource(R.string.runtime_wait_root_shell)
+    val operationIncomplete = stringResource(R.string.settings_operation_incomplete)
     val statusFailed = stringResource(R.string.flash_terminal_status_failed)
     val statusSuccess = stringResource(R.string.flash_terminal_status_success)
     val back = stringResource(R.string.flash_back)
@@ -112,15 +113,21 @@ fun ModuleActionTerminalScreenMiuix(
     LaunchedEffect(Unit) {
         if (launched) return@LaunchedEffect
         launched = true
-        if (vm.uiState.value.abkRuntimeModuleActionId == params.moduleId) {
+        val inFlight = vm.uiState.value.abkRuntimeModuleActionId
+        if (inFlight == params.moduleId) {
             // Already running from an earlier visit to this page - attach to it
             // rather than dispatching the script a second time.
             observedRunning = true
             return@LaunchedEffect
         }
-        // The coordinator refuses while another module's action holds the lock,
-        // so wait it out instead of silently doing nothing.
-        vm.uiState.first { it.abkRuntimeModuleActionId == null }
+        if (inFlight != null) {
+            // Only one action runs at a time and the coordinator would refuse.
+            // M3 drops the click in this case, so nothing runs here either; say
+            // so rather than leaving the page waiting on something that will
+            // never start.
+            refused = true
+            return@LaunchedEffect
+        }
         vm.runRuntimeModuleAction(params.moduleId)
     }
 
@@ -151,7 +158,11 @@ fun ModuleActionTerminalScreenMiuix(
     val output = if (observedRunning) state.abkRuntimeModuleActionOutput else emptyList()
     val logText = (
         listOf("\$ module action: ${params.moduleName}", "") +
-            if (output.isEmpty()) listOf(waitRootShell) else output
+            when {
+                refused -> listOf(operationIncomplete)
+                output.isEmpty() -> listOf(waitRootShell)
+                else -> output
+            }
         ).joinToString("\n")
 
     // ── Auto scroll ─────────────────────────────────────────────────────────
@@ -189,7 +200,7 @@ fun ModuleActionTerminalScreenMiuix(
             )
         },
         floatingActionButton = {
-            if (finished) {
+            if (finished || refused) {
                 FloatingActionButton(
                     onClick = onBack,
                     modifier = Modifier
