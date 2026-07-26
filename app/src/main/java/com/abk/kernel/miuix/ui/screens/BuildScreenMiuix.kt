@@ -1502,6 +1502,20 @@ private fun BuildTargetContentMiuix(
                         vm.updateBuildConfig(config.copy(osPatchLevel = osPatchOptions[index]))
                     }
                 )
+                AnimatedVisibility(
+                    visible = config.kernelVersion == "5.10",
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    BuildTextFieldItem(
+                        value = config.revision,
+                        onValueChange = { vm.updateBuildConfig(config.copy(revision = it)) },
+                        label = state.recommendedBuildConfig?.revision?.let {
+                            stringResource(R.string.build_revision_recommended, it)
+                        } ?: stringResource(R.string.build_revision_510),
+                        placeholder = stringResource(R.string.build_revision_placeholder)
+                    )
+                }
             }
         }
 
