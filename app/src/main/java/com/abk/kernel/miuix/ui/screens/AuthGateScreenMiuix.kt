@@ -87,25 +87,32 @@ fun OobeScreenMiuix(vm: MainViewModel) {
     val scope = rememberCoroutineScope()
     var skipInFlight by remember { mutableStateOf(false) }
 
-    /**
-     * When [applyUiStyle] is set the style is handed to the view model together with
-     * the close, so the overlay is gone before the theme wrapper swaps. Doing it from
-     * here in two calls cannot work: MainActivity picks the theme off `uiStyle`, and a
-     * style change while the overlay is still up both disposes this subtree - killing
-     * the pending exit coroutine - and paints a frame under the wrong theme.
-     */
-    fun requestSkip(applyUiStyle: String? = null) {
+    fun requestSkip() {
         if (skipInFlight) return
         skipInFlight = true
         scope.launch {
             delay(OOBE_SKIP_LOADING_DELAY_MS)
             delay(OOBE_SKIP_EXIT_DELAY_MS)
-            if (applyUiStyle != null) {
-                vm.completeOobeWithUiStyle(applyUiStyle)
-            } else {
-                vm.skipOobe()
-            }
+            vm.skipOobe()
         }
+    }
+
+    /**
+     * Confirming the theme step. A style that differs from the current one makes
+     * MainActivity swap the theme wrapper, which tears down this whole tree, so the
+     * exit animation is deliberately skipped: it would spend its delay sliding the
+     * overlay off the *outgoing* theme's main UI, and that reveal is the visual
+     * residue users see before the new theme appears. Picking the current style
+     * changes no wrapper, so that keeps the normal animated exit.
+     */
+    fun confirmUiStyle(selected: String) {
+        if (skipInFlight) return
+        if (selected == state.uiStyle) {
+            requestSkip()
+            return
+        }
+        skipInFlight = true
+        vm.completeOobeWithUiStyle(selected)
     }
 
     Box(
@@ -130,7 +137,7 @@ fun OobeScreenMiuix(vm: MainViewModel) {
                 )
                 AuthStep.THEME_SELECT -> ThemeSelectScreenMiuix(
                     currentStyle = state.uiStyle,
-                    onConfirm = { selected -> requestSkip(applyUiStyle = selected) }
+                    onConfirm = ::confirmUiStyle
                 )
                 AuthStep.FORK_CHECK -> ForkCheckScreenMiuix(
                     isLoading = state.isLoading,
