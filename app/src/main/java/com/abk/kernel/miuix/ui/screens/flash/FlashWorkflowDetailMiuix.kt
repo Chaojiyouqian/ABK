@@ -245,6 +245,13 @@ fun FlashWorkflowDetailScreenMiuix(
     LaunchedEffect(runId) {
         vm.loadWorkflowJobs(runId)
         vm.loadFailedRunLogExcerpt(runId)
+        // M3 re-arms the late-artifact poll when a failed run's detail opens, so a
+        // run that failed before this launch - or whose automatic poll window has
+        // already elapsed - still picks up artifacts published late. Gated on the
+        // same condition M3 uses so successful runs do not start polling.
+        if (runId in state.sessionGhostFailedRuns) {
+            vm.watchLateArtifactsForFailedRun(runId)
+        }
     }
 
     // ── Operational callbacks ───────────────────────────────────────────
