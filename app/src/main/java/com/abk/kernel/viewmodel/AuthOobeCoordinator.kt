@@ -36,7 +36,7 @@ class AuthOobeCoordinator(
         }
     }
 
-    /** Build page entry: a re-entry, so first-run onboarding must not resume. */
+/** Build page entry: a re-entry, so first-run onboarding must not resume. */
     fun openBuildOobe() = enterOobeFlow(fromBuild = true)
 
     /** Settings account entry: jump back into the OOBE flow so the user can sign in again. */
