@@ -1885,7 +1885,7 @@ private fun ThemeSettingsScreen(
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
-                ExpressiveSwitchItem(
+var latestAlpha by remember(alpha) { mutableFloatStateOf(alpha.coerceIn(0f, 1f)) }
                     title = stringResource(R.string.settings_blur_background),
                     subtitle = stringResource(R.string.settings_blur_background_desc),
                     icon = Icons.Default.Image,
