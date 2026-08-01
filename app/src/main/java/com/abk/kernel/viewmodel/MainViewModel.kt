@@ -23,6 +23,7 @@ import com.abk.kernel.data.model.*
 import com.abk.kernel.data.repository.GitHubRepository
 import com.abk.kernel.data.repository.PreferencesRepository
 import com.abk.kernel.data.repository.Result
+import com.abk.kernel.ui.blur.BlurConfig
 import com.abk.kernel.utils.BuildMonitorService
 import com.abk.kernel.utils.BuildProgressUtils
 import com.abk.kernel.utils.buildDisplaySnapshot
@@ -205,6 +206,8 @@ data class MainUiState(
     val customBackgroundUri: String? = null,
     val backgroundImageEnabled: Boolean = false,
     val uiSurfaceAlpha: Float = 1f,
+    val blurEnabled: Boolean = true,
+    val blurBackgroundExpEnabled: Boolean = false,
     val downloadDirectory: String = DownloadDirectoryUtils.defaultDirectoryPath(),
     val downloadMirrorBaseUrl: String = "",
     val prebuiltGkiEnabled: Boolean = true,
@@ -267,6 +270,15 @@ data class MainUiState(
 ) {
     val isDownloading: Boolean
         get() = activeDownloadTasks.isNotEmpty() || downloadProgress.isNotEmpty()
+
+    /** Blur preferences snapshot for [BlurScreenScaffold]. */
+    val blurConfig: BlurConfig
+        get() = BlurConfig(
+            blurEnabled = blurEnabled,
+            backgroundExpEnabled = blurBackgroundExpEnabled,
+            backgroundUri = customBackgroundUri,
+            backgroundImageEnabled = backgroundImageEnabled,
+        )
 }
 
 class MainViewModel @JvmOverloads constructor(
@@ -599,6 +611,16 @@ class MainViewModel @JvmOverloads constructor(
                         uiSurfaceAlpha = backgroundPrefs.alpha
                     )
                 }
+            }
+        }
+        viewModelScope.launch {
+            prefs.blurEnabled.distinctUntilChanged().collect { enabled ->
+                _uiState.update { it.copy(blurEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            prefs.blurBackgroundExpEnabled.distinctUntilChanged().collect { enabled ->
+                _uiState.update { it.copy(blurBackgroundExpEnabled = enabled) }
             }
         }
         viewModelScope.launch {
@@ -3252,6 +3274,18 @@ class MainViewModel @JvmOverloads constructor(
     fun setBackgroundImageUri(uri: String?) = viewModelScope.launch { prefs.setBackgroundImageUri(uri) }
     fun setBackgroundImageEnabled(v: Boolean) = viewModelScope.launch { prefs.setBackgroundImageEnabled(v) }
     fun setUiSurfaceAlpha(alpha: Float) = viewModelScope.launch { prefs.setUiSurfaceAlpha(alpha) }
+
+    /**
+     * Updates [MainUiState.uiSurfaceAlpha] in memory only (no DataStore write), so the UI
+     * previews the value live while the user drags. Persist with [setUiSurfaceAlpha] on
+     * drag end. The persisted [PreferencesRepository.uiSurfaceAlpha] flow is
+     * distinct-until-changed, so an in-flight preview isn't clobbered by DataStore.
+     */
+    fun setUiSurfaceAlphaPreview(alpha: Float) {
+        _uiState.update { it.copy(uiSurfaceAlpha = alpha.coerceIn(0f, 1f)) }
+    }
+    fun setBlurEnabled(v: Boolean) = viewModelScope.launch { prefs.setBlurEnabled(v) }
+    fun setBlurBackgroundExpEnabled(v: Boolean) = viewModelScope.launch { prefs.setBlurBackgroundExpEnabled(v) }
     fun acceptTerms() = viewModelScope.launch { prefs.acceptCurrentTerms() }
     suspend fun loadFlashFilterJson(): String? = prefs.flashFilterJson.first()
     fun saveFlashFilterJson(json: String) = viewModelScope.launch { prefs.saveFlashFilterJson(json) }

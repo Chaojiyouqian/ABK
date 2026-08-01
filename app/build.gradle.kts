@@ -200,6 +200,12 @@ dependencies {
     // Preferences
     implementation(libs.datastore.preferences)
 
+    // Blur / glass
+    implementation(libs.miuix.blur)
+
+    // Startup splash
+    implementation(libs.androidx.core.splashscreen)
+
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.kotlinx.coroutines.test)

@@ -15,8 +15,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -50,6 +53,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
 import coil.compose.AsyncImage
@@ -59,6 +63,7 @@ import com.abk.kernel.extensions.AbkExtensionManagerScreen
 import com.abk.kernel.utils.DownloadDirectoryUtils
 import com.abk.kernel.utils.DownloadUtils
 import com.abk.kernel.utils.LocaleHelper
+import com.abk.kernel.ui.blur.BlurScreenScaffold
 import com.abk.kernel.ui.components.AbkScreenHorizontalPadding
 import com.abk.kernel.ui.components.AbkSegmentedButtonOption
 import com.abk.kernel.ui.components.AbkSingleChoiceSegmentedButtonRow
@@ -301,17 +306,19 @@ fun SettingsScreen(
             .fillMaxWidth()
             .height(maxHeight + childPageTopInset + childPageBottomInset)
             .offset(y = -childPageTopInset)
-        Scaffold(
+        BlurScreenScaffold(
+            blurConfig = state.blurConfig,
             containerColor = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
             topBar = {
                 ExpressiveTopBar(
                     title = stringResource(R.string.settings_title),
-                    scrollBehavior = scrollBehavior
+                    scrollBehavior = scrollBehavior,
+                    enableBlur = state.blurEnabled
                 )
             }
-        ) {
+        ) { topBarHeight ->
             SettingsMainContent(
-                padding = it,
+                topBarHeight = topBarHeight,
                 outerPadding = outerPadding,
                 state = state,
                 vm = vm,
@@ -358,7 +365,8 @@ fun SettingsScreen(
                     backgroundUri = state.customBackgroundUri,
                     backgroundImageEnabled = state.backgroundImageEnabled
                 )
-                Scaffold(
+                BlurScreenScaffold(
+                    blurConfig = state.blurConfig,
                     containerColor = Color.Transparent,
                     topBar = {
                         ExpressiveTopBar(
@@ -367,12 +375,13 @@ fun SettingsScreen(
                                 IconButton(onClick = childPageBack::requestDismiss) {
                                     Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.settings_back))
                                 }
-                            }
+                            },
+                            enableBlur = state.blurEnabled
                         )
                     }
-                ) {
+                ) { topBarHeight ->
                     ThemeSettingsScreen(
-                        padding = it,
+                        topBarHeight = topBarHeight,
                         themeMode = state.themeMode,
                         dynamicColorEnabled = state.dynamicColorEnabled,
                         customThemeColorArgb = state.customThemeColorArgb,
@@ -380,6 +389,8 @@ fun SettingsScreen(
                         backgroundUri = state.customBackgroundUri,
                         backgroundImageEnabled = state.backgroundImageEnabled,
                         uiSurfaceAlpha = state.uiSurfaceAlpha,
+                        blurEnabled = state.blurEnabled,
+                        blurBackgroundExpEnabled = state.blurBackgroundExpEnabled,
                         onThemeModeChange = { value -> vm.setThemeMode(value) },
                         onDynamicColorEnabledChange = { enabled, themeColor, accentColor ->
                             vm.setDynamicColorEnabled(enabled, themeColor, accentColor)
@@ -389,7 +400,10 @@ fun SettingsScreen(
                         },
                         onBackgroundImageChange = { uri -> vm.setBackgroundImageUri(uri) },
                         onBackgroundImageEnabledChange = { enabled -> vm.setBackgroundImageEnabled(enabled) },
-                        onUiSurfaceAlphaChange = { alpha -> vm.setUiSurfaceAlpha(alpha) }
+                        onUiSurfaceAlphaChange = { alpha -> vm.setUiSurfaceAlpha(alpha) },
+                        onUiSurfaceAlphaPreviewChange = { alpha -> vm.setUiSurfaceAlphaPreview(alpha) },
+                        onBlurEnabledChange = vm::setBlurEnabled,
+                        onBlurBackgroundExpEnabledChange = vm::setBlurBackgroundExpEnabled
                     )
                 }
             }
@@ -411,7 +425,8 @@ fun SettingsScreen(
                     backgroundUri = state.customBackgroundUri,
                     backgroundImageEnabled = state.backgroundImageEnabled
                 )
-                Scaffold(
+                BlurScreenScaffold(
+                    blurConfig = state.blurConfig,
                     containerColor = Color.Transparent,
                     topBar = {
                         ExpressiveTopBar(
@@ -421,6 +436,7 @@ fun SettingsScreen(
                                     Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.settings_back))
                                 }
                             },
+                            enableBlur = state.blurEnabled,
                             actions = {
                                 IconButton(onClick = {
                                     refreshPresentation.beginRefresh()
@@ -431,9 +447,9 @@ fun SettingsScreen(
                             }
                         )
                     }
-                ) {
+                ) { topBarHeight ->
                     AppProfileTemplateSettingsScreen(
-                        padding = it,
+                        topBarHeight = topBarHeight,
                         state = state,
                         showRefreshLoading = refreshPresentation.showLoading && state.appProfileTemplates.isNotEmpty(),
                         onRefresh = {
@@ -469,6 +485,10 @@ fun SettingsScreen(
                     onBack = childPageBack::requestDismiss,
                     modifier = Modifier.fillMaxSize(),
                     containerColor = Color.Transparent,
+                    blurEnabled = state.blurEnabled,
+                    blurBackgroundExpEnabled = state.blurBackgroundExpEnabled,
+                    backgroundUri = state.customBackgroundUri,
+                    backgroundImageEnabled = state.backgroundImageEnabled,
                 )
             }
         }
@@ -489,7 +509,8 @@ fun SettingsScreen(
                     backgroundUri = state.customBackgroundUri,
                     backgroundImageEnabled = state.backgroundImageEnabled
                 )
-                Scaffold(
+                BlurScreenScaffold(
+                    blurConfig = state.blurConfig,
                     containerColor = Color.Transparent,
                     topBar = {
                         ExpressiveTopBar(
@@ -499,6 +520,7 @@ fun SettingsScreen(
                                     Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.settings_back))
                                 }
                             },
+                            enableBlur = state.blurEnabled,
                             actions = {
                                 IconButton(onClick = {
                                     refreshPresentation.beginRefresh()
@@ -509,9 +531,9 @@ fun SettingsScreen(
                             }
                         )
                     }
-                ) {
+                ) { topBarHeight ->
                     ManagerToolsSettingsScreen(
-                        padding = it,
+                        topBarHeight = topBarHeight,
                         state = state,
                         showRefreshLoading = refreshPresentation.showLoading,
                         onSelinuxChange = vm::setSelinuxEnforcing,
@@ -538,7 +560,8 @@ fun SettingsScreen(
                     backgroundUri = state.customBackgroundUri,
                     backgroundImageEnabled = state.backgroundImageEnabled
                 )
-                Scaffold(
+                BlurScreenScaffold(
+                    blurConfig = state.blurConfig,
                     containerColor = Color.Transparent,
                     topBar = {
                         ExpressiveTopBar(
@@ -548,6 +571,7 @@ fun SettingsScreen(
                                     Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.settings_back))
                                 }
                             },
+                            enableBlur = state.blurEnabled,
                             actions = {
                                 IconButton(onClick = {
                                     refreshPresentation.beginRefresh()
@@ -558,9 +582,9 @@ fun SettingsScreen(
                             }
                         )
                     }
-                ) {
+                ) { topBarHeight ->
                     SusfsControlScreen(
-                        padding = it,
+                        topBarHeight = topBarHeight,
                         state = state,
                         showRefreshLoading = refreshPresentation.showLoading,
                         onApply = vm::applySusfsConfig,
@@ -589,7 +613,8 @@ fun SettingsScreen(
                     backgroundUri = state.customBackgroundUri,
                     backgroundImageEnabled = state.backgroundImageEnabled
                 )
-                Scaffold(
+                BlurScreenScaffold(
+                    blurConfig = state.blurConfig,
                     containerColor = Color.Transparent,
                     topBar = {
                         ExpressiveTopBar(
@@ -598,12 +623,13 @@ fun SettingsScreen(
                                 IconButton(onClick = childPageBack::requestDismiss) {
                                     Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.settings_back))
                                 }
-                            }
+                            },
+                            enableBlur = state.blurEnabled
                         )
                     }
-                ) {
+                ) { topBarHeight ->
                     AboutRepositoryScreen(
-                        padding = it,
+                        topBarHeight = topBarHeight,
                         onOpenUrl = { openUrl(context, it) },
                         onOpenSourceLicenses = ::openOpenSourceLicenses
                     )
@@ -626,7 +652,8 @@ fun SettingsScreen(
                     backgroundUri = state.customBackgroundUri,
                     backgroundImageEnabled = state.backgroundImageEnabled
                 )
-                Scaffold(
+                BlurScreenScaffold(
+                    blurConfig = state.blurConfig,
                     containerColor = Color.Transparent,
                     topBar = {
                         ExpressiveTopBar(
@@ -635,12 +662,13 @@ fun SettingsScreen(
                                 IconButton(onClick = childPageBack::requestDismiss) {
                                     Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.settings_back))
                                 }
-                            }
+                            },
+                            enableBlur = state.blurEnabled
                         )
                     }
-                ) {
+                ) { topBarHeight ->
                     OpenSourceLicensesScreen(
-                        padding = it,
+                        topBarHeight = topBarHeight,
                         onOpenUrl = { openUrl(context, it) }
                     )
                 }
@@ -662,7 +690,7 @@ private fun SettingsPageBackground(
 
 @Composable
 private fun SettingsMainContent(
-    padding: PaddingValues,
+    topBarHeight: Dp,
     outerPadding: PaddingValues,
     state: MainUiState,
     vm: MainViewModel,
@@ -682,13 +710,13 @@ private fun SettingsMainContent(
     val context = LocalContext.current
     Column(
         modifier = Modifier
-            .padding(padding)
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = AbkScreenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Spacer(Modifier.height(topBarHeight + 16.dp))
         SettingsGroup(title = stringResource(R.string.settings_account)) {
             state.user?.let { user ->
                 ExpressiveListItem(
@@ -1473,7 +1501,7 @@ private fun ManagerModeSettingItem(
 
 @Composable
 private fun ManagerToolsSettingsScreen(
-    padding: PaddingValues,
+    topBarHeight: Dp,
     state: MainUiState,
     showRefreshLoading: Boolean,
     onSelinuxChange: (Boolean) -> Unit,
@@ -1497,12 +1525,12 @@ private fun ManagerToolsSettingsScreen(
 
     Column(
         modifier = Modifier
-            .padding(padding)
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = AbkScreenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Spacer(Modifier.height(topBarHeight + 16.dp))
         Crossfade(targetState = showRefreshLoading || showInitialLoading, label = "manager-tools-refresh") { refreshing ->
             if (refreshing) {
                 AbkInlineLoadingPill(
@@ -1597,7 +1625,7 @@ private fun selinuxModeLabel(mode: String): String =
 
 @Composable
 private fun AppProfileTemplateSettingsScreen(
-    padding: PaddingValues,
+    topBarHeight: Dp,
     state: MainUiState,
     showRefreshLoading: Boolean,
     onRefresh: () -> Unit,
@@ -1619,12 +1647,12 @@ private fun AppProfileTemplateSettingsScreen(
 
     Column(
         modifier = Modifier
-            .padding(padding)
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = AbkScreenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Spacer(Modifier.height(topBarHeight + 16.dp))
         Crossfade(targetState = showRefreshLoading, label = "template-refresh") { refreshing ->
             if (refreshing) {
                 AbkInlineLoadingPill(
@@ -1773,7 +1801,7 @@ private fun defaultAppProfileTemplateJson(): String =
 
 @Composable
 private fun ThemeSettingsScreen(
-    padding: PaddingValues,
+    topBarHeight: Dp,
     themeMode: String,
     dynamicColorEnabled: Boolean,
     customThemeColorArgb: Int?,
@@ -1781,12 +1809,17 @@ private fun ThemeSettingsScreen(
     backgroundUri: String?,
     backgroundImageEnabled: Boolean,
     uiSurfaceAlpha: Float,
+    blurEnabled: Boolean,
+    blurBackgroundExpEnabled: Boolean,
     onThemeModeChange: (String) -> Unit,
     onDynamicColorEnabledChange: (Boolean, Int?, Int?) -> Unit,
     onCustomThemeColorsChange: (Int, Int) -> Unit,
     onBackgroundImageChange: (String?) -> Unit,
     onBackgroundImageEnabledChange: (Boolean) -> Unit,
-    onUiSurfaceAlphaChange: (Float) -> Unit
+    onUiSurfaceAlphaChange: (Float) -> Unit,
+    onUiSurfaceAlphaPreviewChange: (Float) -> Unit,
+    onBlurEnabledChange: (Boolean) -> Unit,
+    onBlurBackgroundExpEnabledChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val dynamicColorAvailable = isDynamicColorAvailable()
@@ -1813,14 +1846,29 @@ private fun ThemeSettingsScreen(
         Triple("dark", stringResource(R.string.settings_theme_dark), Icons.Default.DarkMode)
     )
 
+    // Brief "blur enabled" pop-up confirmation, styled like the update-check result row.
+    var blurFeedbackVisible by remember { mutableStateOf(false) }
+    fun onBlurSwitchChanged(enabled: Boolean) {
+        onBlurEnabledChange(enabled)
+        if (enabled) {
+            blurFeedbackVisible = true
+        }
+    }
+    LaunchedEffect(blurFeedbackVisible) {
+        if (blurFeedbackVisible) {
+            delay(1800)
+            blurFeedbackVisible = false
+        }
+    }
+
     Column(
         modifier = Modifier
-            .padding(padding)
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = AbkScreenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Spacer(Modifier.height(topBarHeight + 16.dp))
         SettingsGroup(title = stringResource(R.string.settings_appearance_mode)) {
             themes.forEach { (key, label, icon) ->
                 val selected = themeMode == key
@@ -1834,6 +1882,40 @@ private fun ThemeSettingsScreen(
                         }
                     },
                     onClick = { onThemeModeChange(key) }
+                )
+            }
+        }
+
+        SettingsGroup(title = stringResource(R.string.settings_blur)) {
+            ExpressiveSwitchItem(
+                title = stringResource(R.string.settings_blur),
+                subtitle = stringResource(R.string.settings_blur_desc),
+                icon = Icons.Default.BlurOn,
+                checked = blurEnabled,
+                onCheckedChange = ::onBlurSwitchChanged
+            )
+            // Pop-up confirmation like the update-check "当前已是最新" row.
+            AnimatedVisibility(
+                visible = blurFeedbackVisible,
+                enter = fadeIn(animationSpec = tween(220)) + expandVertically(),
+                exit = fadeOut(animationSpec = tween(200)) + shrinkVertically()
+            ) {
+                ExpressiveListItem(
+                    title = stringResource(R.string.settings_blur_enabled_feedback),
+                    leadingIcon = Icons.Default.Verified
+                )
+            }
+            AnimatedVisibility(
+                visible = blurEnabled,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                ExpressiveSwitchItem(
+                    title = stringResource(R.string.settings_blur_background),
+                    subtitle = stringResource(R.string.settings_blur_background_desc),
+                    icon = Icons.Default.Image,
+                    checked = blurBackgroundExpEnabled,
+                    onCheckedChange = onBlurBackgroundExpEnabledChange
                 )
             }
         }
@@ -1917,7 +1999,8 @@ private fun ThemeSettingsScreen(
             BackgroundAlphaControl(
                 alpha = uiSurfaceAlpha,
                 enabled = backgroundImageEnabled && !backgroundUri.isNullOrBlank(),
-                onAlphaChange = onUiSurfaceAlphaChange
+                onAlphaChange = onUiSurfaceAlphaPreviewChange,
+                onAlphaChangeFinished = onUiSurfaceAlphaChange
             )
         }
 
@@ -1929,8 +2012,12 @@ private fun ThemeSettingsScreen(
 private fun BackgroundAlphaControl(
     alpha: Float,
     enabled: Boolean,
-    onAlphaChange: (Float) -> Unit
+    onAlphaChange: (Float) -> Unit,
+    onAlphaChangeFinished: ((Float) -> Unit)? = null
 ) {
+    // Track the latest drag value so the finish callback can persist it without a
+    // separate state hoist: onValueChange previews live, onValueChangeFinished persists.
+    var latestAlpha by remember { mutableFloatStateOf(alpha) }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -1954,7 +2041,13 @@ private fun BackgroundAlphaControl(
         }
         Slider(
             value = alpha.coerceIn(0f, 1f),
-            onValueChange = onAlphaChange,
+            onValueChange = {
+                latestAlpha = it
+                onAlphaChange(it)
+            },
+            onValueChangeFinished = {
+                onAlphaChangeFinished?.invoke(latestAlpha)
+            },
             valueRange = 0f..1f,
             enabled = enabled
         )
@@ -2097,18 +2190,19 @@ private fun isDynamicColorAvailable(): Boolean =
 
 @Composable
 private fun AboutRepositoryScreen(
-    padding: PaddingValues,
+    topBarHeight: Dp,
     onOpenUrl: (String) -> Unit,
     onOpenSourceLicenses: () -> Unit
 ) {
     Column(
         modifier = Modifier
-            .padding(padding)
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = AbkScreenHorizontalPadding, vertical = 12.dp),
+            .padding(horizontal = AbkScreenHorizontalPadding)
+            .padding(bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Spacer(Modifier.height(topBarHeight + 16.dp))
         ExpressiveHeroCard(
             title = stringResource(R.string.app_full_name),
             subtitle = stringResource(R.string.settings_about_intro),
@@ -2157,17 +2251,18 @@ private fun AboutRepositoryScreen(
 
 @Composable
 private fun OpenSourceLicensesScreen(
-    padding: PaddingValues,
+    topBarHeight: Dp,
     onOpenUrl: (String) -> Unit
 ) {
     Column(
         modifier = Modifier
-            .padding(padding)
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = AbkScreenHorizontalPadding, vertical = 12.dp),
+            .padding(horizontal = AbkScreenHorizontalPadding)
+            .padding(bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Spacer(Modifier.height(topBarHeight + 16.dp))
         ExpressiveHeroCard(
             title = stringResource(R.string.settings_open_source_licenses),
             subtitle = stringResource(R.string.settings_open_source_licenses_intro),

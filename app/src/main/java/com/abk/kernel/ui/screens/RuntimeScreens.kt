@@ -72,6 +72,7 @@ import com.abk.kernel.data.model.AbkRuntimeBuildInfo
 import com.abk.kernel.data.model.AbkRuntimeModule
 import com.abk.kernel.data.model.AbkRuntimeStatus
 import com.abk.kernel.data.model.downloadFileName
+import com.abk.kernel.ui.blur.BlurScreenScaffold
 import com.abk.kernel.ui.components.AbkScreenHorizontalPadding
 import com.abk.kernel.ui.components.AbkInlineLoadingPill
 import com.abk.kernel.ui.components.ObserveChildPageVisibility
@@ -163,13 +164,15 @@ fun RuntimeHomeScreen(
             .fillMaxWidth()
             .height(maxHeight + childPageBottomInset)
 
-        Scaffold(
+        BlurScreenScaffold(
+            blurConfig = state.blurConfig,
             containerColor = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
             topBar = {
                 ExpressiveTopBar(
                     title = "AnyBase Kernel",
                     compactTitle = true,
                     scrollBehavior = scrollBehavior,
+                    enableBlur = state.blurEnabled,
                     actions = {
                         IconButton(onClick = {
                             refreshPresentation.beginRefresh()
@@ -183,16 +186,16 @@ fun RuntimeHomeScreen(
                     }
                 )
             }
-        ) { padding ->
+        ) { topBarHeight ->
             Column(
                 modifier = Modifier
-                    .padding(padding)
                     .fillMaxSize()
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = AbkScreenHorizontalPadding),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                Spacer(Modifier.height(topBarHeight + 16.dp))
                 RuntimeStatusHeader(
                     runtimeStatus = state.abkRuntimeStatus,
                     hasNativeManagerPermission = state.hasNativeManagerPermission,
@@ -260,6 +263,8 @@ fun RuntimeHomeScreen(
                     runtimeVariant = state.abkRuntimeStatus?.manager?.variant.orEmpty(),
                     backgroundUri = state.customBackgroundUri,
                     backgroundImageEnabled = state.backgroundImageEnabled,
+                    blurEnabled = state.blurEnabled,
+                    blurBackgroundExpEnabled = state.blurBackgroundExpEnabled,
                     onBack = childPageBack::requestDismiss,
                     onBackEnabledChange = { managerPatchBackEnabled = it }
                 )
@@ -507,45 +512,36 @@ fun InstalledModulesScreen(
         if (state.runtimeNavigationEnabled) vm.refreshAbkRuntimeStatus()
     }
 
-    Scaffold(
-        containerColor = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
-        topBar = {
-            ExpressiveTopBar(
-                title = stringResource(R.string.runtime_installed_modules_title),
-                scrollBehavior = scrollBehavior,
-                actions = {
-                    IconButton(onClick = {
-                        refreshPresentation.beginRefresh()
-                        vm.refreshAbkRuntimeStatus()
-                    }) {
-                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.runtime_refresh_installed_modules))
+    Box(Modifier.fillMaxSize()) {
+        BlurScreenScaffold(
+            blurConfig = state.blurConfig,
+            containerColor = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
+            topBar = {
+                ExpressiveTopBar(
+                    title = stringResource(R.string.runtime_installed_modules_title),
+                    scrollBehavior = scrollBehavior,
+                    enableBlur = state.blurEnabled,
+                    actions = {
+                        IconButton(onClick = {
+                            refreshPresentation.beginRefresh()
+                            vm.refreshAbkRuntimeStatus()
+                        }) {
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.runtime_refresh_installed_modules))
+                        }
                     }
-                }
-            )
-        },
-        floatingActionButton = {
-            SmallFloatingActionButton(
-                onClick = {
-                    launchModulePickerWithPermissionCheck()
-                },
-                modifier = Modifier.padding(bottom = outerPadding.calculateBottomPadding()),
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-            ) {
-                Icon(Icons.Default.UploadFile, contentDescription = stringResource(R.string.runtime_install_module))
+                )
             }
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = AbkScreenHorizontalPadding),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            RuntimeModuleSearchField(query, onValueChange = { query = it })
+        ) { topBarHeight ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = AbkScreenHorizontalPadding),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Spacer(Modifier.height(topBarHeight + 16.dp))
+                RuntimeModuleSearchField(query, onValueChange = { query = it })
 
             when {
                 showInitialLoading -> {
@@ -635,6 +631,19 @@ fun InstalledModulesScreen(
             }
 
             Spacer(Modifier.height(80.dp + outerPadding.calculateBottomPadding()))
+        }
+        }
+        SmallFloatingActionButton(
+            onClick = {
+                launchModulePickerWithPermissionCheck()
+            },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 16.dp + outerPadding.calculateBottomPadding()),
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        ) {
+            Icon(Icons.Default.UploadFile, contentDescription = stringResource(R.string.runtime_install_module))
         }
     }
 

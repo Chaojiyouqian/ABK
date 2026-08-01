@@ -1,3 +1,7 @@
 <resources>
     <style name="Theme.ABK" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.ABK.Starting" parent="Theme.SplashScreen">
+        <item name="postSplashScreenTheme">@style/Theme.ABK</item>
+        <item name="windowSplashScreenBackground">@android:color/white</item>
+    </style>
 </resources>

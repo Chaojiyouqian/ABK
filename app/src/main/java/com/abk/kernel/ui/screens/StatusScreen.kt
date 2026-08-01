@@ -29,6 +29,7 @@ import com.abk.kernel.BuildConfig
 import com.abk.kernel.R
 import com.abk.kernel.data.model.BuildStatus
 import com.abk.kernel.data.model.WorkflowRun
+import com.abk.kernel.ui.blur.BlurScreenScaffold
 import com.abk.kernel.ui.components.AbkScreenHorizontalPadding
 import com.abk.kernel.ui.components.ExpressiveHeroCard
 import com.abk.kernel.ui.components.ExpressiveSectionCard
@@ -54,13 +55,15 @@ fun StatusScreen(
 
     LaunchedEffect(Unit) { vm.loadRecentRuns() }
 
-    Scaffold(
+    BlurScreenScaffold(
+        blurConfig = state.blurConfig,
         containerColor = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
         topBar = {
             ExpressiveTopBar(
                 title = stringResource(R.string.app_name),
                 compactTitle = true,
                 scrollBehavior = scrollBehavior,
+                enableBlur = state.blurEnabled,
                 actions = {
                     IconButton(onClick = onToggleRuntimeNavigation) {
                         Icon(
@@ -75,16 +78,16 @@ fun StatusScreen(
                 }
             )
         }
-    ) { padding ->
+    ) { topBarHeight ->
         Column(
             modifier = Modifier
-                .padding(padding)
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = AbkScreenHorizontalPadding),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Spacer(Modifier.height(topBarHeight + 16.dp))
             val ksuVersion = remember(state.rootGranted) {
                 if (state.rootGranted) RootUtils.getKsuVersion() else "N/A"
             }

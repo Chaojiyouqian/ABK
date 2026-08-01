@@ -77,6 +77,7 @@ import com.abk.kernel.data.model.WorkflowRun
 import com.abk.kernel.data.model.isKernelBuild
 import com.abk.kernel.data.model.isManagerBuild
 import com.abk.kernel.data.model.isManagerDevBuild
+import com.abk.kernel.ui.blur.BlurScreenScaffold
 import com.abk.kernel.ui.components.AbkScreenHorizontalPadding
 import com.abk.kernel.ui.components.AbkSegmentedButtonOption
 import com.abk.kernel.ui.components.AbkSingleChoiceSegmentedButtonRow
@@ -1028,23 +1029,25 @@ fun BuildScreen(
 
     if (!state.isLoggedIn || state.forkRepo == null) {
         val needsLogin = !state.isLoggedIn
-        Scaffold(
+        BlurScreenScaffold(
+            blurConfig = state.blurConfig,
             containerColor = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
             topBar = {
                 ExpressiveTopBar(
                     title = stringResource(R.string.build_title),
-                    scrollBehavior = scrollBehavior
+                    scrollBehavior = scrollBehavior,
+                    enableBlur = state.blurEnabled
                 )
             }
-        ) { padding ->
+        ) { topBarHeight ->
             Column(
                 modifier = Modifier
-                    .padding(padding)
                     .fillMaxSize()
                     .padding(horizontal = AbkScreenHorizontalPadding)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                Spacer(Modifier.height(topBarHeight + 16.dp))
                 ExpressiveHeroCard(
                     title = stringResource(
                         if (needsLogin) {
@@ -1108,29 +1111,31 @@ fun BuildScreen(
             .fillMaxWidth()
             .height(maxHeight + childPageTopInset + childPageBottomInset)
             .offset(y = -childPageTopInset)
-        Scaffold(
+        BlurScreenScaffold(
+            blurConfig = state.blurConfig,
             containerColor = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
             topBar = {
                 ExpressiveTopBar(
                     title = stringResource(R.string.build_title),
-                    scrollBehavior = scrollBehavior
+                    scrollBehavior = scrollBehavior,
+                    enableBlur = state.blurEnabled
                 )
             }
-        ) { padding ->
+        ) { topBarHeight ->
             Column(
                 modifier = Modifier
-                    .padding(padding)
                     .fillMaxSize()
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = AbkScreenHorizontalPadding),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-            BuildPlanHero(
-                config,
-                recommended,
-                state.buildStatus
-            )
+                Spacer(Modifier.height(topBarHeight + 16.dp))
+                BuildPlanHero(
+                    config,
+                    recommended,
+                    state.buildStatus
+                )
 
             BuildPlanToolsCard(
                 plansCount = state.buildPlans.size,
@@ -1843,7 +1848,8 @@ fun BuildScreen(
                     backgroundUri = state.customBackgroundUri,
                     backgroundImageEnabled = state.backgroundImageEnabled
                 )
-                Scaffold(
+                BlurScreenScaffold(
+                    blurConfig = state.blurConfig,
                     containerColor = Color.Transparent,
                     topBar = {
                         ExpressiveTopBar(
@@ -1857,6 +1863,7 @@ fun BuildScreen(
                                     Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.build_back_to_config))
                                 }
                             },
+                            enableBlur = state.blurEnabled,
                             actions = {
                                 if (showKernelOptionsPage) {
                                     Box {
@@ -1908,9 +1915,10 @@ fun BuildScreen(
                             }
                         )
                     }
-                ) { padding ->
+                ) { topBarHeight ->
                     if (showBuildQueuePage) {
                         BuildQueuePage(
+                            topBarHeight = topBarHeight,
                             queue = state.buildQueue,
                             cancellingRunIds = state.cancellingWorkflowRunIds,
                             onApply = {
@@ -1922,13 +1930,11 @@ fun BuildScreen(
                             onRetry = { vm.retryBuildQueueItem(it.id) },
                             onCancelRun = { runId -> vm.cancelWorkflowRun(runId) },
                             onClearCompleted = vm::clearCompletedBuildQueueItems,
-                            modifier = Modifier
-                                .padding(padding)
-                                .fillMaxSize()
+                            modifier = Modifier.fillMaxSize()
                         )
                     } else if (showKernelOptionsPage) {
                         BuildKernelOptionsPage(
-                            padding = padding,
+                            topBarHeight = topBarHeight,
                             options = filteredKernelOptions,
                             summary = kernelOptionSummary,
                             searchQuery = kernelOptionSearchQuery,
@@ -1943,6 +1949,7 @@ fun BuildScreen(
                         )
                     } else {
                         BuildPlanLibraryPage(
+                            topBarHeight = topBarHeight,
                             plans = state.buildPlans,
                             onApply = {
                                 vm.applyBuildPlan(it)
@@ -1955,9 +1962,7 @@ fun BuildScreen(
                                 renamePlanName = it.name
                             },
                             onDelete = { deletePlanTarget = it },
-                            modifier = Modifier
-                                .padding(padding)
-                                .fillMaxSize()
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
@@ -2245,6 +2250,7 @@ private fun ShareBuildPlanScopeDialog(
 
 @Composable
 private fun BuildPlanLibraryPage(
+    topBarHeight: Dp,
     plans: List<BuildPlan>,
     onApply: (BuildPlan) -> Unit,
     onShare: (BuildPlan) -> Unit,
@@ -2258,6 +2264,7 @@ private fun BuildPlanLibraryPage(
             .padding(horizontal = AbkScreenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Spacer(Modifier.height(topBarHeight + 16.dp))
         if (plans.isEmpty()) {
             ExpressiveSectionCard(
                 title = stringResource(R.string.build_no_plans),
@@ -2340,6 +2347,7 @@ private fun BuildPlanLibraryItem(
 
 @Composable
 private fun BuildQueuePage(
+    topBarHeight: Dp,
     queue: List<BuildQueueItem>,
     cancellingRunIds: Set<Long>,
     onApply: (BuildQueueItem) -> Unit,
@@ -2356,6 +2364,7 @@ private fun BuildQueuePage(
             .padding(horizontal = AbkScreenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Spacer(Modifier.height(topBarHeight + 16.dp))
         ExpressiveSectionCard(
             title = stringResource(R.string.build_queue_status),
             subtitle = if (queue.isEmpty()) {
@@ -2687,7 +2696,7 @@ private fun formatCustomKernelImportSummary(context: Context, result: CustomKern
 
 @Composable
 private fun BuildKernelOptionsPage(
-    padding: PaddingValues,
+    topBarHeight: Dp,
     options: List<IndexedValue<CustomKernelOption>>,
     summary: CustomKernelOptionSummary,
     searchQuery: String,
@@ -2698,11 +2707,10 @@ private fun BuildKernelOptionsPage(
 ) {
     LazyColumn(
         modifier = Modifier
-            .padding(padding)
             .fillMaxSize()
             .padding(horizontal = AbkScreenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(bottom = bottomPadding + 24.dp)
+        contentPadding = PaddingValues(top = topBarHeight + 16.dp, bottom = bottomPadding + 24.dp)
     ) {
         item(key = "search") {
             BuildKernelOptionSearchField(

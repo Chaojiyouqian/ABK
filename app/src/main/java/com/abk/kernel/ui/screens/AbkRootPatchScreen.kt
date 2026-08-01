@@ -69,7 +69,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -95,6 +94,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.abk.kernel.R
+import com.abk.kernel.ui.blur.BlurConfig
+import com.abk.kernel.ui.blur.BlurScreenScaffold
 import com.abk.kernel.ui.components.AbkScreenHorizontalPadding
 import com.abk.kernel.ui.components.AppPageBackground
 import com.abk.kernel.ui.components.ExpressiveListItem
@@ -120,6 +121,8 @@ fun AbkRootPatchScreen(
     runtimeVariant: String,
     backgroundUri: String?,
     backgroundImageEnabled: Boolean,
+    blurEnabled: Boolean,
+    blurBackgroundExpEnabled: Boolean,
     onBack: () -> Unit,
     onBackEnabledChange: (Boolean) -> Unit = {}
 ) {
@@ -485,7 +488,13 @@ fun AbkRootPatchScreen(
             backgroundUri = backgroundUri,
             backgroundImageEnabled = backgroundImageEnabled
         )
-        Scaffold(
+        BlurScreenScaffold(
+            blurConfig = BlurConfig(
+                blurEnabled = blurEnabled,
+                backgroundExpEnabled = blurBackgroundExpEnabled,
+                backgroundUri = backgroundUri,
+                backgroundImageEnabled = backgroundImageEnabled,
+            ),
             containerColor = Color.Transparent,
             topBar = {
                 ExpressiveTopBar(
@@ -494,19 +503,19 @@ fun AbkRootPatchScreen(
                         IconButton(onClick = onBack, enabled = !running) {
                             Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
                         }
-                    }
+                    },
+                    enableBlur = blurEnabled
                 )
             }
-        ) { padding ->
+        ) { topBarHeight ->
             Column(
                 modifier = Modifier
-                    .padding(padding)
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = AbkScreenHorizontalPadding)
-                    .padding(top = 12.dp),
+                    .padding(horizontal = AbkScreenHorizontalPadding),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+            Spacer(Modifier.height(topBarHeight + 16.dp))
             PatchGroupCard {
                 PatchModeRow(
                     title = stringResource(R.string.root_patch_select_file),

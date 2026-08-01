@@ -58,13 +58,13 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import com.abk.kernel.ui.blur.BlurScreenScaffold
 import com.abk.kernel.ui.components.AbkInlineLoadingPill
 import com.abk.kernel.ui.components.rememberAbkInteractiveRefreshPresentation
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -345,12 +345,14 @@ fun ModuleRepositoryScreen(
             .height(maxHeight + childPageTopInset + childPageBottomInset)
             .offset(y = -childPageTopInset)
 
-        Scaffold(
+        BlurScreenScaffold(
+            blurConfig = state.blurConfig,
             containerColor = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
             topBar = {
                 ExpressiveTopBar(
                     title = runtimeRepoTitleLabel(context),
                     scrollBehavior = scrollBehavior,
+                    enableBlur = state.blurEnabled,
                     actions = {
                         IconButton(onClick = ::openRepositorySettings) {
                             Icon(
@@ -361,9 +363,9 @@ fun ModuleRepositoryScreen(
                     }
                 )
             }
-        ) { padding ->
+        ) { topBarHeight ->
             RuntimeModuleRepositoryListContent(
-                padding = padding,
+                topBarHeight = topBarHeight,
                 modules = filteredModules,
                 totalModules = mergedModules.size,
                 computing = listComputing,
@@ -423,7 +425,8 @@ fun ModuleRepositoryScreen(
                     backgroundUri = state.customBackgroundUri,
                     backgroundImageEnabled = state.backgroundImageEnabled
                 )
-                Scaffold(
+                BlurScreenScaffold(
+                    blurConfig = state.blurConfig,
                     containerColor = Color.Transparent,
                     topBar = {
                         ExpressiveTopBar(
@@ -432,12 +435,13 @@ fun ModuleRepositoryScreen(
                                 IconButton(onClick = childPageBack::requestDismiss) {
                                     Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.module_repo_back))
                                 }
-                            }
+                            },
+                            enableBlur = state.blurEnabled
                         )
                     }
-                ) { padding ->
+                ) { topBarHeight ->
                     RuntimeModuleRepositorySettingsPage(
-                        padding = padding,
+                        topBarHeight = topBarHeight,
                         repositories = state.runtimeModuleRepositories,
                         refreshingRepositoryIds = state.refreshingRuntimeModuleRepositoryIds,
                         onAddRepository = vm::addRuntimeModuleRepository,
@@ -809,12 +813,14 @@ private fun BuildModuleRepositoryScreenContent(
             .height(maxHeight + childPageTopInset + childPageBottomInset)
             .offset(y = -childPageTopInset)
 
-        Scaffold(
+        BlurScreenScaffold(
+            blurConfig = state.blurConfig,
             containerColor = appPageBackgroundColor(uiSurfaceColor(MaterialTheme.colorScheme.surface)),
             topBar = {
                 ExpressiveTopBar(
                     title = buildRepoTitleLabel(context),
                     scrollBehavior = scrollBehavior,
+                    enableBlur = state.blurEnabled,
                     actions = {
                         IconButton(onClick = ::openRepositorySettings) {
                             Icon(Icons.Default.Dns, contentDescription = buildRepoManageLabel(context))
@@ -822,9 +828,9 @@ private fun BuildModuleRepositoryScreenContent(
                     }
                 )
             }
-        ) { padding ->
+        ) { topBarHeight ->
             BuildModuleRepositoryListContent(
-                padding = padding,
+                topBarHeight = topBarHeight,
                 modules = filteredModules,
                 totalModules = mergedModules.size,
                 computing = listComputing,
@@ -892,7 +898,8 @@ private fun BuildModuleRepositoryScreenContent(
                     backgroundUri = state.customBackgroundUri,
                     backgroundImageEnabled = state.backgroundImageEnabled
                 )
-                Scaffold(
+                BlurScreenScaffold(
+                    blurConfig = state.blurConfig,
                     containerColor = Color.Transparent,
                     topBar = {
                         ExpressiveTopBar(
@@ -901,12 +908,13 @@ private fun BuildModuleRepositoryScreenContent(
                                 IconButton(onClick = childPageBack::requestDismiss) {
                                     Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.module_repo_back))
                                 }
-                            }
+                            },
+                            enableBlur = state.blurEnabled
                         )
                     }
-                ) { padding ->
+                ) { topBarHeight ->
                     BuildModuleRepositorySettingsPage(
-                        padding = padding,
+                        topBarHeight = topBarHeight,
                         repositories = state.buildModuleRepositories,
                         refreshingRepositoryIds = state.refreshingBuildModuleRepositoryIds,
                         onAddRepository = vm::addBuildModuleRepository,
@@ -922,7 +930,7 @@ private fun BuildModuleRepositoryScreenContent(
 
 @Composable
 private fun RuntimeModuleRepositoryListContent(
-    padding: PaddingValues,
+    topBarHeight: Dp,
     modules: List<MergedRuntimeCatalogModule>,
     totalModules: Int,
     computing: Boolean,
@@ -939,12 +947,11 @@ private fun RuntimeModuleRepositoryListContent(
     val showInitialLoading = computing || (refreshing && totalModules == 0 && searchQuery.isBlank())
     LazyColumn(
         modifier = Modifier
-            .padding(padding)
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection)
             .padding(horizontal = AbkScreenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(bottom = bottomPadding + 24.dp)
+        contentPadding = PaddingValues(top = topBarHeight + 16.dp, bottom = bottomPadding + 24.dp)
     ) {
         item(key = "search") {
             CompactModuleSearchField(
@@ -1265,7 +1272,7 @@ private fun ModuleTagChip(
 
 @Composable
 private fun RuntimeModuleRepositorySettingsPage(
-    padding: PaddingValues,
+    topBarHeight: Dp,
     repositories: List<RuntimeModuleRepository>,
     refreshingRepositoryIds: Set<String>,
     onAddRepository: (String) -> Unit,
@@ -1279,12 +1286,12 @@ private fun RuntimeModuleRepositorySettingsPage(
     var repositoryUrl by rememberSaveable { mutableStateOf("") }
     Column(
         modifier = Modifier
-            .padding(padding)
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = AbkScreenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Spacer(Modifier.height(topBarHeight + 16.dp))
         ExpressiveSectionCard(
             title = runtimeRepoCentralLabel(LocalContext.current),
             subtitle = runtimeRepoCentralDescLabel(LocalContext.current),
@@ -1717,7 +1724,7 @@ private fun BuildPageMergedCatalogModule.matchesQuery(query: String): Boolean {
 
 @Composable
 private fun BuildModuleRepositoryListContent(
-    padding: PaddingValues,
+    topBarHeight: Dp,
     modules: List<BuildPageMergedCatalogModule>,
     totalModules: Int,
     computing: Boolean,
@@ -1736,12 +1743,11 @@ private fun BuildModuleRepositoryListContent(
     val showInitialLoading = computing || (refreshing && totalModules == 0 && searchQuery.isBlank())
     LazyColumn(
         modifier = Modifier
-            .padding(padding)
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection)
             .padding(horizontal = AbkScreenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(bottom = bottomPadding + 24.dp)
+        contentPadding = PaddingValues(top = topBarHeight + 16.dp, bottom = bottomPadding + 24.dp)
     ) {
         item(key = "search") {
             CompactModuleSearchField(
@@ -1926,7 +1932,7 @@ private fun BuildModuleRepositoryListContent(
 
 @Composable
 private fun BuildModuleRepositorySettingsPage(
-    padding: PaddingValues,
+    topBarHeight: Dp,
     repositories: List<ModuleCatalogRepository>,
     refreshingRepositoryIds: Set<String>,
     onAddRepository: (String) -> Unit,
@@ -1941,12 +1947,12 @@ private fun BuildModuleRepositorySettingsPage(
     var repositoryUrl by rememberSaveable { mutableStateOf("") }
     Column(
         modifier = Modifier
-            .padding(padding)
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = AbkScreenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Spacer(Modifier.height(topBarHeight + 16.dp))
         ExpressiveSectionCard(
             title = buildRepoCentralLabel(context),
             subtitle = buildRepoCentralDescLabel(context),

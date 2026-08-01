@@ -1,6 +1,7 @@
 package com.abk.kernel.data.repository
 
 import com.abk.kernel.data.api.NetworkClient
+import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -34,7 +35,7 @@ class GitHubRepositoryNetworkTest {
     }
 
     @Test
-    fun getRepo_usesGitHubJsonAcceptByDefault() {
+    fun getUserFork_usesGitHubJsonAcceptByDefault() {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
@@ -53,7 +54,8 @@ class GitHubRepositoryNetworkTest {
                 )
         )
 
-        val result = repository.getRepo("owner", "repo")
+        // getUserFork wraps the raw api.getRepo call, so this exercises the repository layer.
+        val result = runBlocking { repository.getUserFork("owner", "repo", "owner") }
 
         assertTrue(result is Result.Success)
         val request = server.takeRequest()
@@ -105,12 +107,14 @@ class GitHubRepositoryNetworkTest {
             }
         }
 
-        val result = repository.downloadReleaseAssetText(
-            owner = "owner",
-            repo = "repo",
-            releaseId = 1L,
-            assetName = "abk-artifact-signing-public.pem"
-        )
+        val result = runBlocking {
+            repository.downloadReleaseAssetText(
+                owner = "owner",
+                repo = "repo",
+                releaseId = 1L,
+                assetName = "abk-artifact-signing-public.pem"
+            )
+        }
 
         assertEquals(Result.Success(pem), result)
         server.takeRequest()
