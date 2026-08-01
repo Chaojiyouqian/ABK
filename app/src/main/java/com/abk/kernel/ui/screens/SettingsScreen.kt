@@ -15,7 +15,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -1846,21 +1845,6 @@ private fun ThemeSettingsScreen(
         Triple("dark", stringResource(R.string.settings_theme_dark), Icons.Default.DarkMode)
     )
 
-    // Brief "blur enabled" pop-up confirmation, styled like the update-check result row.
-    var blurFeedbackVisible by remember { mutableStateOf(false) }
-    fun onBlurSwitchChanged(enabled: Boolean) {
-        onBlurEnabledChange(enabled)
-        if (enabled) {
-            blurFeedbackVisible = true
-        }
-    }
-    LaunchedEffect(blurFeedbackVisible) {
-        if (blurFeedbackVisible) {
-            delay(1800)
-            blurFeedbackVisible = false
-        }
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1892,19 +1876,10 @@ private fun ThemeSettingsScreen(
                 subtitle = stringResource(R.string.settings_blur_desc),
                 icon = Icons.Default.BlurOn,
                 checked = blurEnabled,
-                onCheckedChange = ::onBlurSwitchChanged
+                onCheckedChange = onBlurEnabledChange
             )
-            // Pop-up confirmation like the update-check "当前已是最新" row.
-            AnimatedVisibility(
-                visible = blurFeedbackVisible,
-                enter = fadeIn(animationSpec = tween(220)) + expandVertically(),
-                exit = fadeOut(animationSpec = tween(200)) + shrinkVertically()
-            ) {
-                ExpressiveListItem(
-                    title = stringResource(R.string.settings_blur_enabled_feedback),
-                    leadingIcon = Icons.Default.Verified
-                )
-            }
+            // The nested "render custom background into blur" item expands out from
+            // below the toggle when blur is enabled.
             AnimatedVisibility(
                 visible = blurEnabled,
                 enter = fadeIn() + expandVertically(),

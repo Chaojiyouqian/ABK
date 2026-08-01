@@ -680,7 +680,6 @@
     <string name="settings_blur_desc">Enable frosted-glass on top and bottom bars</string>
     <string name="settings_blur_background">Render custom background into blur</string>
     <string name="settings_blur_background_desc">When enabled, top and bottom bars blur the custom background image</string>
-    <string name="settings_blur_enabled_feedback">Blur enabled</string>
     <string name="settings_current_color">Current</string>
     <string name="settings_color_green">Green</string>
     <string name="settings_color_blue">Blue</string>

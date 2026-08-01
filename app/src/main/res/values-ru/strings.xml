@@ -680,7 +680,6 @@
     <string name="settings_blur_desc">Включить матовое стекло на верхней и нижней панелях</string>
     <string name="settings_blur_background">Рендерить пользовательский фон в размытие</string>
     <string name="settings_blur_background_desc">При включении верхняя и нижняя панели размывают изображение пользовательского фона</string>
-    <string name="settings_blur_enabled_feedback">Размытие включено</string>
     <string name="settings_current_color">Текущий</string>
     <string name="settings_color_green">Зелёный</string>
     <string name="settings_color_blue">Синий</string>
