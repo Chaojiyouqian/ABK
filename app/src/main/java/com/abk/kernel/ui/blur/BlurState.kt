@@ -12,7 +12,7 @@ import top.yukonga.miuix.kmp.shader.isRuntimeShaderSupported
  * (wraps [top.yukonga.miuix.kmp.blur.layerBackdrop]); bars that should show a
  * frosted-glass effect attach [Modifier.blurEffect] (wraps
  * [top.yukonga.miuix.kmp.blur.textureBlur]). Both no-op when no backdrop is provided
- * or the device does not support RenderEffect (API < 31).
+ * (which is always the case below API 33, see [isBlurCapableDevice]).
  */
 val LocalBlurState = compositionLocalOf<LayerBackdrop?> { null }
 
@@ -34,14 +34,26 @@ data class BlurConfig(
 }
 
 /**
+ * Whether the device can actually render the miuix frosted-glass path.
+ *
+ * miuix's `textureBlur` runs on AGSL runtime shaders, which exist from API 33
+ * onward. This is the single gate both backdrop creation ([BlurBackdrop]) and
+ * [isBlurActive] use, so the two cannot drift apart. It strictly implies the
+ * older RenderEffect check (API 31), which is why the backdrop no longer tests
+ * it separately.
+ */
+internal fun isBlurCapableDevice(): Boolean = isRuntimeShaderSupported()
+
+/**
  * Whether frosted-glass will actually render for [enableBlur] in the current composition.
  *
  * The miuix render path needs three things: the user toggle, an active backdrop
- * (present only when RenderEffect is supported, i.e. API >= 31), and the runtime
- * shader the blur effect runs on (API >= 33). Callers must use this to decide between
- * a transparent bar (blur shows through) and the opaque fallback surface — gating the
- * transparent color on [enableBlur] alone leaves bars fully transparent on API < 33.
+ * (which itself is only created when the device is blur-capable, see
+ * [isBlurCapableDevice]), and [isBlurCapableDevice]. Callers must use this to decide
+ * between a transparent bar (blur shows through) and the opaque fallback surface —
+ * gating the transparent color on [enableBlur] alone leaves bars fully transparent
+ * on API < 33 devices.
  */
 @Composable
 fun isBlurActive(enableBlur: Boolean): Boolean =
-    enableBlur && LocalBlurState.current != null && isRuntimeShaderSupported()
+    enableBlur && LocalBlurState.current != null && isBlurCapableDevice()

@@ -13,7 +13,6 @@ import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
-import top.yukonga.miuix.kmp.shader.isRenderEffectSupported
 import com.abk.kernel.ui.theme.LocalUiSurfaceAlpha
 
 internal const val AbkBlurRadius = 25f
@@ -27,8 +26,8 @@ internal const val AbkBlurBackgroundDim = 0.35f
  * The draw callback first paints an optional background [Painter] (the custom
  * background image, when enabled), then a dimmed surface base for contrast, then the
  * content that will be captured as the blur source. Returns `null` when blur is
- * disabled or the device does not support RenderEffect (API < 31), in which case the
- * app falls back to opaque surfaces.
+ * disabled or the device cannot run the frosted-glass shader (API < 33), in which
+ * case the app falls back to opaque surfaces.
  *
  * @param enableBlur Whether blur is enabled.
  * @param surfaceColor The theme surface color used for the dimmed base.
@@ -43,7 +42,7 @@ fun rememberBlurBackdrop(
     backgroundPainter: Painter? = null,
     backgroundDim: Float = AbkBlurBackgroundDim,
 ): LayerBackdrop? {
-if (!enableBlur || !isRenderEffectSupported() || !top.yukonga.miuix.kmp.shader.isRuntimeShaderSupported()) return null
+    if (!enableBlur || !isBlurCapableDevice()) return null
     return rememberLayerBackdrop {
         backgroundPainter?.let { painter ->
             with(painter) { draw(size = drawContext.size) }
