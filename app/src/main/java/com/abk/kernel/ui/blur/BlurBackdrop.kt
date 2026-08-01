@@ -43,7 +43,7 @@ fun rememberBlurBackdrop(
     backgroundPainter: Painter? = null,
     backgroundDim: Float = AbkBlurBackgroundDim,
 ): LayerBackdrop? {
-    if (!enableBlur || !isRenderEffectSupported()) return null
+if (!enableBlur || !isRenderEffectSupported() || !top.yukonga.miuix.kmp.shader.isRuntimeShaderSupported()) return null
     return rememberLayerBackdrop {
         backgroundPainter?.let { painter ->
             with(painter) { draw(size = drawContext.size) }
