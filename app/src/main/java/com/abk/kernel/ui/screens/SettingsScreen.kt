@@ -1992,7 +1992,8 @@ private fun BackgroundAlphaControl(
 ) {
     // Track the latest drag value so the finish callback can persist it without a
     // separate state hoist: onValueChange previews live, onValueChangeFinished persists.
-    var latestAlpha by remember { mutableFloatStateOf(alpha) }
+    // Re-key on the hoisted alpha so an external change re-syncs the cached value.
+    var latestAlpha by remember(alpha) { mutableFloatStateOf(alpha.coerceIn(0f, 1f)) }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp)
