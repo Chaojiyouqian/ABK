@@ -76,7 +76,7 @@ android {
 
     defaultConfig {
         applicationId = "com.abk.kernel"
-        minSdk = 26
+        minSdk = 33
         targetSdk = 35
         versionCode = 10026
         versionName = "1.2.6"
