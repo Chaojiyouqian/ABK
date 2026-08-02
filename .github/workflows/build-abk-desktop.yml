@@ -13,6 +13,9 @@ on:
       - "hmbird_patch.c"
       - ".github/workflows/build-abk-desktop.yml"
 
+permissions:
+  contents: read
+
 jobs:
   linux-appimage:
     if: ${{ github.event_name == 'workflow_dispatch' || github.repository == 'xingguangcuican6666/ABK' }}
