@@ -2,9 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- minSdk 26 kept by design; miuix-blur declares minSdk 33. The blur code path
-         is fully guarded (no backdrop / no blurEffect below API 33) and matches the
-         ReSukiSU reference, so the override only affects the manifest merge check. -->
     <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />
 
     <uses-permission android:name="android.permission.INTERNET" />
