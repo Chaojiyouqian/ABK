@@ -33,11 +33,7 @@ fun BlurHost(
         surfaceColor = surfaceColor,
         backgroundPainter = backgroundPainter,
     )
-    if (backdrop != null) {
-        CompositionLocalProvider(LocalBlurState provides backdrop) {
-            content()
-        }
-    } else {
+    CompositionLocalProvider(LocalBlurState provides backdrop) {
         content()
     }
 }

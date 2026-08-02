@@ -2,7 +2,12 @@ package com.abk.kernel.ui.blur
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -15,8 +20,9 @@ import androidx.compose.ui.unit.dp
  * A screen scaffold that hosts a [LocalBlurState] backdrop for frosted-glass bars,
  * replicating the Miuix structure:
  *
- * - the **body is laid out full-screen from y=0** (not pushed below the top bar) and its
- *   scroll container fills the whole screen, so content scrolls *beneath* the top bar;
+ * - the **body backdrop is laid out full-screen from y=0** (not pushed below the top
+ *   bar), while its content keeps the horizontal and bottom safe-drawing insets that
+ *   Material [androidx.compose.material3.Scaffold] normally supplies;
  * - the backdrop captures that full-screen body — meaning the top-bar region has content
  *   (the scrolling page) for the bar to blur;
  * - the [topBar] is drawn as a floating overlay **outside** the backdrop's capture
@@ -45,8 +51,9 @@ import androidx.compose.ui.unit.dp
  * @param blurConfig Blur preferences for this screen.
  * @param containerColor Background color of the scaffold.
  * @param topBar Floating top bar overlay (draws above the content, outside the backdrop).
- * @param content Full-screen body; receives the measured [topBar] height so it can insert
- * a leading [androidx.compose.foundation.layout.Spacer] instead of applying layout padding.
+ * @param content Body inside horizontal/bottom safe-drawing insets; receives the measured
+ * [topBar] height so it can insert a leading [androidx.compose.foundation.layout.Spacer]
+ * instead of applying top layout padding.
  */
 @Composable
 fun BlurScreenScaffold(
@@ -73,7 +80,16 @@ fun BlurScreenScaffold(
             // The body is the backdrop's blur source; it must never include the top bar
             // (that would sample the bar into itself and crash the render thread).
             val contentPlaceable = subcompose("abk-body") {
-                Box(Modifier.fillMaxSize().blurSourceBody()) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .blurSourceBody()
+                        .windowInsetsPadding(
+                            WindowInsets.safeDrawing.only(
+                                WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                            )
+                        )
+                ) {
                     content(with(density) { barHeightPx.toDp() })
                 }
             }.first().measure(constraints)

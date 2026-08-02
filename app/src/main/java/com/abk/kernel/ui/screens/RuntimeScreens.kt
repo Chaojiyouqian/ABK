@@ -639,6 +639,7 @@ fun InstalledModulesScreen(
             },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
                 .padding(end = 16.dp, bottom = 16.dp + outerPadding.calculateBottomPadding()),
             containerColor = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -1913,5 +1914,4 @@ private fun copyRuntimeModuleUriToCache(context: Context, uri: Uri): File {
     }
     return target
 }
-
 

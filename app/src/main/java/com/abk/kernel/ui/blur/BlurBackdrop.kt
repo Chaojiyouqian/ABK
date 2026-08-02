@@ -3,9 +3,14 @@ package com.abk.kernel.ui.blur
 import android.os.Build
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.painter.Painter
 import top.yukonga.miuix.kmp.blur.BlendColorEntry
 import top.yukonga.miuix.kmp.blur.BlurColors
@@ -14,6 +19,7 @@ import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
 import com.abk.kernel.ui.theme.LocalUiSurfaceAlpha
+import kotlin.math.max
 
 internal const val AbkBlurRadius = 25f
 internal const val AbkBlurCardAlpha = 0.87f
@@ -45,10 +51,32 @@ fun rememberBlurBackdrop(
     if (!enableBlur || !isBlurCapableDevice()) return null
     return rememberLayerBackdrop {
         backgroundPainter?.let { painter ->
-            with(painter) { draw(size = drawContext.size) }
+            drawCroppedPainter(painter)
         }
         drawRect(surfaceColor.copy(alpha = backgroundDim))
         drawContent()
+    }
+}
+
+private fun ContentDrawScope.drawCroppedPainter(painter: Painter) {
+    val targetSize = drawContext.size
+    val sourceSize = painter.intrinsicSize
+    if (!sourceSize.isSpecified || sourceSize.width <= 0f || sourceSize.height <= 0f) {
+        with(painter) { draw(size = targetSize) }
+        return
+    }
+
+    val scale = max(
+        targetSize.width / sourceSize.width,
+        targetSize.height / sourceSize.height,
+    )
+    val scaledSize = Size(sourceSize.width * scale, sourceSize.height * scale)
+    val left = (targetSize.width - scaledSize.width) / 2f
+    val top = (targetSize.height - scaledSize.height) / 2f
+    clipRect {
+        translate(left = left, top = top) {
+            with(painter) { draw(size = scaledSize) }
+        }
     }
 }
 
