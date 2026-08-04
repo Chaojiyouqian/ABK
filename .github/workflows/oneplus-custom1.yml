@@ -156,7 +156,7 @@ jobs:
 
   build-oneplus-kernel:
     name: "${{ inputs.device_manifest }}-${{ inputs.kernel_version }}-${{ inputs.ksu_variant }}"
-    uses: ./.github/workflows/oneplus-build1.yml
+    uses: ./.github/workflows/my-build1.yml
     secrets: inherit
     with:
       cpu: ${{ inputs.cpu }}
@@ -173,4 +173,3 @@ jobs:
       use_unicode_bypass: ${{ inputs.use_unicode_bypass }}
       use_ddk: ${{ inputs.use_ddk }}
       use_ntsync: ${{ inputs.use_ntsync }}
-      custom_kernel_options: ${{ inputs.custom_kernel_options }}
