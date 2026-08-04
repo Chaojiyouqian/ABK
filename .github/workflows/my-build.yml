@@ -696,13 +696,9 @@ jobs:
           PY
       - name: 替换为 BBRv3 源码
         run: |
-          set -e
-          WORKSPACE="${{ github.workspace }}"
-          KERNEL_DIR="$WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
-          cd "$KERNEL_DIR"
-          echo "当前目录: $(pwd)"
-          echo "下载 BBRv3 源码..."
-          wget -O net/ipv4/tcp_bbr.c "https://raw.githubusercontent.com/google/bbr/v3/net/ipv4/tcp_bbr.c"
+          set -x
+          cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
+          wget -O net/ipv4/tcp_bbr.c https://raw.githubusercontent.com/google/bbr/v3/net/ipv4/tcp_bbr.c
           echo "BBRv3 源码已替换"
     
            - name: 添加 BBR 等一系列拥塞控制算法
