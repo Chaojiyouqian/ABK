@@ -846,6 +846,35 @@ jobs:
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
 
+      - name: 合入 Oryon 优化补丁
+        run: |
+          cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
+    
+          # 1. 添加官方 Linux 内核仓库为上游（仅首次需要）
+          if ! git remote get-url upstream &>/dev/null; then
+            git remote add upstream https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+            git fetch upstream --tags
+          fi
+    
+          # 2. 查找并合入 Oryon 相关补丁（以 CPU 兼容性补丁为例）
+          # 注意：这些是示例提交哈希，你需要替换为你内核版本对应的实际哈希
+          # git cherry-pick <commit-hash-for-oryon-dt-bindings>
+          # git cherry-pick <commit-hash-for-oryon-arm64-dts>
+          # 示例（无效）：
+          # git cherry-pick 96e71f817b02caedbbaeffc916010ba68802612f   # dt-bindings: arm: cpus: Add qcom,oryon-2-1
+          # git cherry-pick 5044a0b0307a3377dabbb0a2a653a30e388d16cc   # arm64: dts: qcom: sm8750: Add Oryon CPU nodes
+    
+          # 3. 启用调度器和 CPU 调频优化配置（追加到 .config，此处使用 defconfig 留待后续生成）
+          # 但为了不干扰后续的 make defconfig，我们可以写入一个单独的文件，或者直接在现有的 defconfig 中追加。
+          echo "正在添加 Oryon 优化配置..."
+          echo "
+          CONFIG_SCHED_MC=y
+          CONFIG_SCHED_SMT=y
+          CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y
+          CONFIG_CPUFREQ_DT=y
+          " >> arch/arm64/configs/gki_defconfig
+          echo "✅ Oryon 优化准备完成"
+          
       - name: 应用 Networking 增强 (IPSet + BBR)
         if: ${{ inputs.use_networking }}
         working-directory: ${{ env.KERNEL_ROOT }}/common
