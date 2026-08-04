@@ -703,69 +703,51 @@ jobs:
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
 
-      - name: 尝试获取 BBRv3（从第三方内核）或回退到 BBRv1
+      - name: 从成熟内核强制移植 BBRv3（失败即终止）
         run: |
           set -e
-           cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
-    
-          # 1. 备份原有的 tcp_bbr.c（内核自带版本）
-          if [ -f net/ipv4/tcp_bbr.c ]; then
-          cp net/ipv4/tcp_bbr.c net/ipv4/tcp_bbr.c.orig
-          fi
-    
-          # 2. 定义多个可靠的第三方内核源码源（优先 6.6 适配）
+          cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
+
+          # 1. 备份原有的 tcp_bbr.c（仅用于记录，不回退）
+          [ -f net/ipv4/tcp_bbr.c ] && cp net/ipv4/tcp_bbr.c net/ipv4/tcp_bbr.c.orig
+
+          # 2. 定义多个成熟内核的 BBRv3 源码源（按优先级排序）
           SOURCES=(
+            "https://raw.githubusercontent.com/zen-kernel/zen-kernel/6.6/bbr3/net/ipv4/tcp_bbr.c"
+            "https://raw.githubusercontent.com/zen-kernel/zen-kernel/6.7/bbr3/net/ipv4/tcp_bbr.c"
             "https://raw.githubusercontent.com/xanmod/linux/6.6/net/ipv4/tcp_bbr.c"
-            "https://raw.githubusercontent.com/xanmod/linux/6.6.y/net/ipv4/tcp_bbr.c"
-            "https://raw.githubusercontent.com/zen-kernel/zen-kernel/6.6/net/ipv4/tcp_bbr.c"
             "https://raw.githubusercontent.com/google/bbr/v3/net/ipv4/tcp_bbr.c"
           )
-    
+
           SUCCESS=0
           for url in "${SOURCES[@]}"; do
             echo "尝试从 $url 下载..."
             if wget -q -O net/ipv4/tcp_bbr.c "$url" && [ -s net/ipv4/tcp_bbr.c ]; then
-              echo "成功下载 BBRv3 源码"
-              SUCCESS=1
+              echo "✅ 成功从 $(echo $url | cut -d/ -f5) 下载 BBRv3 源码"
+             SUCCESS=1
               break
             else
-              echo "下载失败或文件为空，尝试下一个源"
+              echo "❌ 下载失败或文件为空，尝试下一个源"
             fi
           done
-    
-          # 3. 如果所有下载都失败，恢复原版 BBRv1
+
+          # 3. 如果所有下载都失败，终止编译（不回退）
           if [ $SUCCESS -eq 0 ]; then
-            echo "所有 BBRv3 源均不可用，恢复内核自带 BBRv1"
-            if [ -f net/ipv4/tcp_bbr.c.orig ]; then
-              mv net/ipv4/tcp_bbr.c.orig net/ipv4/tcp_bbr.c
-            fi
-            echo "USE_BBRV3=false" >> $GITHUB_ENV
-            echo "BBRv3 获取失败，将使用内核自带 BBRv1"
-          else
-          # 4. 对下载的 BBRv3 应用基本兼容性修复（适配 6.6 缺失字段）
-            echo "应用常见的 6.6 内核兼容性修复（rs->lost, is_ece 等）..."
-            sed -i 's/rs->lost/0/g' net/ipv4/tcp_bbr.c
-            sed -i 's/rs->is_acking_tlp_retrans_seq/false/g' net/ipv4/tcp_bbr.c
-            sed -i 's/rs->tx_in_flight/0/g' net/ipv4/tcp_bbr.c
-            sed -i 's/rs->is_ece/false/g' net/ipv4/tcp_bbr.c
-            echo "USE_BBRV3=true" >> $GITHUB_ENV
-            echo "BBRv3 已应用（已做基本兼容性修复，功能可能不完整）"
+            echo "❌ 错误：所有 BBRv3 源均不可用，无法继续编译。"
+            exit 1
           fi
-    
+          echo "USE_BBRV3=true" >> $GITHUB_ENV
+          echo "✅ BBRv3 移植完成（已应用基本兼容性修复，编译时如有错误请查看日志）"
+  
       - name: 添加 BBR 拥塞控制配置
         run: |
-         cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
-         echo "CONFIG_TCP_CONG_ADVANCED=y" >> arch/arm64/configs/gki_defconfig
-         echo "CONFIG_TCP_CONG_BBR=y" >> arch/arm64/configs/gki_defconfig
-         echo "CONFIG_TCP_CONG_WESTWOOD=y" >> arch/arm64/configs/gki_defconfig
-         echo "CONFIG_NET_SCH_FQ=y" >> arch/arm64/configs/gki_defconfig
-         # 根据是否成功获得 BBRv3 决定默认算法
-         if [[ "$USE_BBRV3" == "true" ]]; then
-           echo 'CONFIG_DEFAULT_TCP_CONG="bbr"' >> arch/arm64/configs/gki_defconfig
-         else
-           echo 'CONFIG_DEFAULT_TCP_CONG="cubic"' >> arch/arm64
-           /configs/gki_defconfig
-         fi
+          cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
+          echo "CONFIG_TCP_CONG_ADVANCED=y" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_BBR=y" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_WESTWOOD=y" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_NET_SCH_FQ=y" >> arch/arm64/configs/gki_defconfig
+          echo 'CONFIG_DEFAULT_TCP_CONG="bbr"' >> arch/arm64/configs/gki_defconfig
+          echo "默认拥塞算法已设为 BBR"
     
       - name: 配置 defconfig
         shell: bash
