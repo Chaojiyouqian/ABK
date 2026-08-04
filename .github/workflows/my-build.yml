@@ -703,30 +703,69 @@ jobs:
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
 
-      - name: 替换为 BBRv3 源码
+      - name: 尝试获取 BBRv3（从第三方内核）或回退到 BBRv1
         run: |
-          set -x
-          cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
-          wget -O net/ipv4/tcp_bbr.c https://raw.githubusercontent.com/google/bbr/v3/net/ipv4/tcp_bbr.c
-          echo "BBRv3 源码已替换"
+          set -e
+           cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
     
-      - name: 添加 BBR 等一系列拥塞控制算法
-        run: |
-          if [[ "${{ github.event.inputs.bbr_enable }}" != "false" ]]; then
-          echo "正在添加BBR等拥塞控制算法..."
-          cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
-          echo "CONFIG_TCP_CONG_ADVANCED=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_BBR=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_WESTWOOD=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_BRUTAL=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_NET_SCH_FQ=y" >> arch/arm64/configs/gki_defconfig
-          if [[ "${{ github.event.inputs.bbr_enable }}" == "default" ]]; then
-            echo "正在将BBR设为默认拥塞控制算法..."
-            echo "CONFIG_DEFAULT_TCP_CONG=bbr" >> arch/arm64/configs/gki_defconfig
+          # 1. 备份原有的 tcp_bbr.c（内核自带版本）
+          if [ -f net/ipv4/tcp_bbr.c ]; then
+          cp net/ipv4/tcp_bbr.c net/ipv4/tcp_bbr.c.orig
+          fi
+    
+          # 2. 定义多个可靠的第三方内核源码源（优先 6.6 适配）
+          SOURCES=(
+            "https://raw.githubusercontent.com/xanmod/linux/6.6/net/ipv4/tcp_bbr.c"
+            "https://raw.githubusercontent.com/xanmod/linux/6.6.y/net/ipv4/tcp_bbr.c"
+            "https://raw.githubusercontent.com/zen-kernel/zen-kernel/6.6/net/ipv4/tcp_bbr.c"
+            "https://raw.githubusercontent.com/google/bbr/v3/net/ipv4/tcp_bbr.c"
+          )
+    
+          SUCCESS=0
+          for url in "${SOURCES[@]}"; do
+            echo "尝试从 $url 下载..."
+            if wget -q -O net/ipv4/tcp_bbr.c "$url" && [ -s net/ipv4/tcp_bbr.c ]; then
+              echo "成功下载 BBRv3 源码"
+              SUCCESS=1
+              break
+            else
+              echo "下载失败或文件为空，尝试下一个源"
+            fi
+          done
+    
+          # 3. 如果所有下载都失败，恢复原版 BBRv1
+          if [ $SUCCESS -eq 0 ]; then
+            echo "所有 BBRv3 源均不可用，恢复内核自带 BBRv1"
+            if [ -f net/ipv4/tcp_bbr.c.orig ]; then
+              mv net/ipv4/tcp_bbr.c.orig net/ipv4/tcp_bbr.c
+            fi
+            echo "USE_BBRV3=false" >> $GITHUB_ENV
+            echo "BBRv3 获取失败，将使用内核自带 BBRv1"
           else
-            echo "CONFIG_DEFAULT_TCP_CONG=cubic" >> arch/arm64/configs/gki_defconfig
+          # 4. 对下载的 BBRv3 应用基本兼容性修复（适配 6.6 缺失字段）
+            echo "应用常见的 6.6 内核兼容性修复（rs->lost, is_ece 等）..."
+            sed -i 's/rs->lost/0/g' net/ipv4/tcp_bbr.c
+            sed -i 's/rs->is_acking_tlp_retrans_seq/false/g' net/ipv4/tcp_bbr.c
+            sed -i 's/rs->tx_in_flight/0/g' net/ipv4/tcp_bbr.c
+            sed -i 's/rs->is_ece/false/g' net/ipv4/tcp_bbr.c
+            echo "USE_BBRV3=true" >> $GITHUB_ENV
+            echo "BBRv3 已应用（已做基本兼容性修复，功能可能不完整）"
           fi
-          fi
+    
+      - name: 添加 BBR 拥塞控制配置
+        run: |
+         cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
+         echo "CONFIG_TCP_CONG_ADVANCED=y" >> arch/arm64/configs/gki_defconfig
+         echo "CONFIG_TCP_CONG_BBR=y" >> arch/arm64/configs/gki_defconfig
+         echo "CONFIG_TCP_CONG_WESTWOOD=y" >> arch/arm64/configs/gki_defconfig
+         echo "CONFIG_NET_SCH_FQ=y" >> arch/arm64/configs/gki_defconfig
+         # 根据是否成功获得 BBRv3 决定默认算法
+         if [[ "$USE_BBRV3" == "true" ]]; then
+           echo 'CONFIG_DEFAULT_TCP_CONG="bbr"' >> arch/arm64/configs/gki_defconfig
+         else
+           echo 'CONFIG_DEFAULT_TCP_CONG="cubic"' >> arch/arm64
+           /configs/gki_defconfig
+         fi
     
       - name: 配置 defconfig
         shell: bash
