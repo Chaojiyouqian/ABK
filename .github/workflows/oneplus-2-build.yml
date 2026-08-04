@@ -89,7 +89,7 @@ jobs:
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
       CCACHE_MAXSIZE: 8G
-      steps:
+  steps:
          - name: 检出 ABK 补丁仓库
            uses: actions/checkout@v6
 
