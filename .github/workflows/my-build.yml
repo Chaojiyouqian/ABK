@@ -702,16 +702,6 @@ jobs:
               handle.write("ABK_KPM_KCONFIG_READY=true\n")
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
-
-      - name: 添加 BBR 拥塞控制配置
-        run: |
-          cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
-          echo "CONFIG_TCP_CONG_ADVANCED=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_BBR=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_WESTWOOD=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_NET_SCH_FQ=y" >> arch/arm64/configs/gki_defconfig
-          echo 'CONFIG_DEFAULT_TCP_CONG="bbr"' >> arch/arm64/configs/gki_defconfig
-          echo "默认拥塞算法已设为 BBR"
     
       - name: 配置 defconfig
         shell: bash
@@ -856,6 +846,81 @@ jobs:
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
 
+      - name: 应用 Networking 增强 (IPSet + BBR)
+        if: ${{ inputs.use_networking }}
+        working-directory: ${{ env.KERNEL_ROOT }}/common
+        run: |
+          set -euo pipefail
+
+          # 定义 defconfig 路径（基于当前工作目录）
+          DEFCONFIG="arch/arm64/configs/gki_defconfig"
+
+          ensure_defconfig_value() {
+            local cfg="$1"
+            local value="$2"
+            local line="${cfg}=${value}"
+
+            if grep -qxF "$line" "$DEFCONFIG"; then
+              return 0
+            fi
+
+            if grep -Eq "^${cfg}=|^# ${cfg} is not set$" "$DEFCONFIG"; then
+              sed -i -E "s|^${cfg}=.*|${line}|; s|^# ${cfg} is not set$|${line}|" "$DEFCONFIG"
+            else
+              echo "$line" >> "$DEFCONFIG"
+            fi
+          }
+
+          echo " 添加 IPSet & IPv6 NAT 支持"
+          ensure_defconfig_value CONFIG_IP_SET y
+          ensure_defconfig_value CONFIG_IP_SET_MAX 65534
+          ensure_defconfig_value CONFIG_IP_SET_BITMAP_IP y
+          ensure_defconfig_value CONFIG_IP_SET_BITMAP_IPMAC y
+          ensure_defconfig_value CONFIG_IP_SET_BITMAP_PORT y
+          ensure_defconfig_value CONFIG_IP_SET_HASH_IP y
+          ensure_defconfig_value CONFIG_IP_SET_HASH_IPMARK y
+          ensure_defconfig_value CONFIG_IP_SET_HASH_IPPORT y
+          ensure_defconfig_value CONFIG_IP_SET_HASH_IPPORTIP y
+          ensure_defconfig_value CONFIG_IP_SET_HASH_IPPORTNET y
+          ensure_defconfig_value CONFIG_IP_SET_HASH_IPMAC y
+          ensure_defconfig_value CONFIG_IP_SET_HASH_MAC y
+          ensure_defconfig_value CONFIG_IP_SET_HASH_NETPORTNET y
+          ensure_defconfig_value CONFIG_IP_SET_HASH_NET y
+          ensure_defconfig_value CONFIG_IP_SET_HASH_NETNET y
+          ensure_defconfig_value CONFIG_IP_SET_HASH_NETPORT y
+          ensure_defconfig_value CONFIG_IP_SET_HASH_NETIFACE y
+          ensure_defconfig_value CONFIG_IP_SET_LIST_SET y
+          ensure_defconfig_value CONFIG_NETFILTER_XT_MATCH_ADDRTYPE y
+          ensure_defconfig_value CONFIG_NETFILTER_XT_SET y
+          ensure_defconfig_value CONFIG_IP6_NF_NAT y
+          ensure_defconfig_value CONFIG_IP6_NF_TARGET_MASQUERADE y
+
+          # （可选）5.10 内核特殊处理，你的 6.6 无需此段
+          # if [ "${{ inputs.kernel_version }}" = "5.10" ]; then
+          #   echo "应用 5.10 特殊配置"
+          #   sed -i 's/CONFIG_IP_SET_MAX/65534/g' net/netfilter/ipset/ip_set_core.c
+          # fi
+
+          echo " 添加 TCP 拥塞控制 (BBR) 支持"
+          # 如果希望应用 BBRv3 补丁，可以在此处添加逻辑（但当前不启用）
+          # 目前使用内核自带的 BBRv1
+
+          ensure_defconfig_value CONFIG_TCP_CONG_ADVANCED y
+          # 如果 BIC 可用则启用（可选）
+          if [ -f net/ipv4/Kconfig ] && grep -q '^config TCP_CONG_BIC$' net/ipv4/Kconfig; then
+            ensure_defconfig_value CONFIG_TCP_CONG_BIC y
+          fi
+          ensure_defconfig_value CONFIG_TCP_CONG_BBR y
+          ensure_defconfig_value CONFIG_TCP_CONG_CUBIC y
+          ensure_defconfig_value CONFIG_TCP_CONG_WESTWOOD y
+          ensure_defconfig_value CONFIG_TCP_CONG_HTCP y
+          # 移除错误的 CONFIG_DEFAULT_BBR
+          # ensure_defconfig_value CONFIG_DEFAULT_BBR y  # ❌ 删除这行
+          ensure_defconfig_value CONFIG_DEFAULT_TCP_CONG '"bbr"'
+          ensure_defconfig_value CONFIG_NET_SCH_FQ y
+          ensure_defconfig_value CONFIG_NET_SCH_FQ_CODEL y
+          echo "✓ Networking 配置完成"
+    
       - name: 编译内核
         shell: bash
         run: |
