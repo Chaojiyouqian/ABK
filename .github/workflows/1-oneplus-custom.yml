@@ -157,7 +157,7 @@ jobs:
 
   build-oneplus-kernel:
     name: "${{ inputs.device_manifest }}-${{ inputs.kernel_version }}-${{ inputs.ksu_variant }}"
-    uses: ./.github/workflows/2-oneplus-build.yml   # 如果已改名为 oneplus-build.yml 则修改此处
+    uses: ./.github/workflows/2-oneplus-build.yml 
     secrets: inherit
     with:
       cpu: ${{ inputs.cpu }}
