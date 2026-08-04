@@ -1,17 +1,17 @@
-name: OnePlus 1-自改版内核构建-自定义
+一加2_b: 名字
 
-permissions:
-  contents: write
-  actions: write
+许可:
+内容: 写
+行动: 写
 
-on:
-  workflow_dispatch:
-    inputs:
-      cpu:
-        description: "OnePlus/Oplus CPU 分支"
-        required: true
-        type: choice
-        options:
+在:
+工作流_调度:
+输入:
+中央处理器:
+描述: "一加/Oplus CPU分支"
+需要: 真实的
+类型: 选择
+选择:
           - sm8750
           - sm8735
           - mt6991
@@ -25,29 +25,29 @@ on:
           - sm7635
           - sm7550
           - sm6375
-        default: sm8650
-      device_manifest:
-        description: "ABK 机型配置（值为上游 XML 名称，构建摘要会明确显示系统版本）"
-        required: true
-        type: choice
-        options:
-          - oneplus_13_b
+系统默认值: sm8650
+设备清单:
+描述: “ABK机型配置（值为上游可扩展标记语言名称,构建摘要会明确显示系统版本)"
+需要: 真实的
+类型: 选择
+选择:
+          - 一加13_b
           - oneplus_13s_b
           - oneplus_13t_b
           - oneplus_ace5_pro_b
           - oneplus_ace_6
           - oneplus_pad_2_pro_b
-          - oneplus_pad_3_b
+          - 一加_pad_3_b
           - oneplus_ace5_ultra_b
-          - oneplus_turbo_6
-          - oneplus_12_b
+          - 一加6涡轮增压
+          - 一加12_b
           - oneplus_ace3_pro_b
           - oneplus_ace5_b
-          - oneplus_13r_b
-          - oneplus_pad2_b
+          - 一加13r b
+          - 一加2_b
           - oneplus_pad_pro_b
           - oneplus_ace5_race_b
-          - oneplus_nord_5_b
+          - 一加诺德5 b
           - oneplus_11_b
           - oneplus_12r_b
           - oneplus_ace2_pro_b
@@ -157,7 +157,7 @@ jobs:
 
   build-oneplus-kernel:
     name: "${{ inputs.device_manifest }}-${{ inputs.kernel_version }}-${{ inputs.ksu_variant }}"
-    uses: ./.github/workflows/2-oneplus-build.yml 
+    uses: ./.github/workflows/2oneplus-build.yml 
     secrets: inherit
     with:
       cpu: ${{ inputs.cpu }}
