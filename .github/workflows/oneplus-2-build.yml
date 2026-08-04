@@ -90,33 +90,33 @@ jobs:
       CCACHE_HARDLINK: "true"
       CCACHE_MAXSIZE: 8G
       steps:
-      - name: 检出 ABK 补丁仓库
-        uses: actions/checkout@v6
+         - name: 检出 ABK 补丁仓库
+           uses: actions/checkout@v6
 
-      - name: 构建信息摘要
-        shell: bash
-        run: |
-          set -euo pipefail
+         - name: 构建信息摘要
+           shell: bash
+           run: |
+            set -euo pipefail
 
-          effective_kpm="$USE_KPM"
-          effective_lz4kd="$USE_LZ4KD"
-          if [ "$KSU_VARIANT" != "SukiSU" ] && [ "$KSU_VARIANT" != "ReSukiSU" ]; then
-            effective_kpm="false"
-          fi
-          if [ "$KSU_VARIANT" = "None" ]; then
-            ENABLE_SUSFS="false"
-          fi
-          if [ "$KERNEL_VERSION" = "5.10" ] || [ "$KERNEL_VERSION" = "5.15" ]; then
-            if [ "$ENABLE_SUSFS" = "true" ]; then
-              echo "::warning::OnePlus SUSFS only supports android14/6.1 and android15/6.6; disabling for $ANDROID_VERSION/$KERNEL_VERSION."
+            effective_kpm="$USE_KPM"
+            effective_lz4kd="$USE_LZ4KD"
+            if [ "$KSU_VARIANT" != "SukiSU" ] && [ "$KSU_VARIANT" != "ReSukiSU" ]; then
+             effective_kpm="false"
             fi
-            ENABLE_SUSFS="false"
-          fi
-          effective_proxy="$USE_PROXY_OPTIMIZATION"
-          if [[ "$CPU" == mt* ]]; then
-            effective_proxy="false"
-          fi
-          case "$DEVICE_MANIFEST" in
+            if [ "$KSU_VARIANT" = "None" ]; then
+              ENABLE_SUSFS="false"
+            fi
+            if [ "$KERNEL_VERSION" = "5.10" ] || [ "$KERNEL_VERSION" = "5.15" ]; then
+              if [ "$ENABLE_SUSFS" = "true" ]; then
+               echo "::warning::OnePlus SUSFS only supports android14/6.1 and android15/6.6; disabling for $ANDROID_VERSION/$KERNEL_VERSION."
+             fi
+              ENABLE_SUSFS="false"
+            fi
+            effective_proxy="$USE_PROXY_OPTIMIZATION"
+            if [[ "$CPU" == mt* ]]; then
+             effective_proxy="false"
+            fi
+            case "$DEVICE_MANIFEST" in
             oneplus_13_b) device_name="OnePlus 13"; system_version="ColorOS/OxygenOS 16" ;;
             oneplus_13s_b) device_name="OnePlus 13s"; system_version="ColorOS/OxygenOS 16" ;;
             oneplus_13t_b) device_name="OnePlus 13T"; system_version="ColorOS/OxygenOS 16" ;;
@@ -150,22 +150,22 @@ jobs:
             oneplus_nord_ce4_lite_5g) device_name="OnePlus Nord CE4 Lite 5G"; system_version="ColorOS/OxygenOS 15" ;;
             oneplus_nord_ce4_b) device_name="OnePlus Nord CE4"; system_version="ColorOS/OxygenOS 16" ;;
             *) device_name="$DEVICE_MANIFEST"; system_version="未知系统版本" ;;
-          esac
-          if [ "$effective_lz4kd" = "true" ] && [ "$KERNEL_VERSION" != "5.10" ] && [ "$KERNEL_VERSION" != "5.15" ] && [ "$KERNEL_VERSION" != "6.1" ] && [ "$KERNEL_VERSION" != "6.6" ]; then
+            esac
+            if [ "$effective_lz4kd" = "true" ] && [ "$KERNEL_VERSION" != "5.10" ] && [ "$KERNEL_VERSION" != "5.15" ] && [ "$KERNEL_VERSION" != "6.1" ] && [ "$KERNEL_VERSION" != "6.6" ]; then
             echo "::warning::当前 OnePlus 内核版本不在 lz4kd 支持矩阵内，已关闭 lz4kd。"
             effective_lz4kd="false"
-          fi
-          device_label="${device_name} · ${system_version} · ${ANDROID_VERSION}/${KERNEL_VERSION} · ${CPU}"
-          device_artifact_id="$(
-            printf '%s' "$device_label" |
-              sed 's#ColorOS/OxygenOS #COS-OOS#g; s#/#-#g; s# · #_#g; s# #_#g; s#[^A-Za-z0-9._-]#_#g'
-          )"
-          oryon_status="未启用"
-          if [[ "$DEVICE_MANIFEST" =~ ^(oneplus_13_b|oneplus_13s_b|oneplus_13t_b|oneplus_ace5_pro_b)$ ]]; then
-            oryon_status="已启用 (骁龙8 Elite)"
-          fi
+            fi
+            device_label="${device_name} · ${system_version} · ${ANDROID_VERSION}/${KERNEL_VERSION} · ${CPU}"
+            device_artifact_id="$(
+             printf '%s' "$device_label" |
+               sed 's#ColorOS/OxygenOS #COS-OOS#g; s#/#-#g; s# · #_#g; s# #_#g; s#[^A-Za-z0-9._-]#_#g'
+            )"
+            oryon_status="未启用"
+            if [[ "$DEVICE_MANIFEST" =~ ^(oneplus_13_b|oneplus_13s_b|oneplus_13t_b|oneplus_ace5_pro_b)$ ]]; then
+             oryon_status="已启用 (骁龙8 Elite)"
+            fi
 
-          {
+            {
             echo "EFFECTIVE_KPM=$effective_kpm"
             echo "EFFECTIVE_USE_LZ4KD=$effective_lz4kd"
             echo "EFFECTIVE_PROXY_OPTIMIZATION=$effective_proxy"
@@ -173,77 +173,78 @@ jobs:
             echo "DEVICE_LABEL=$device_label"
             echo "DEVICE_ARTIFACT_ID=$device_artifact_id"
             echo "ORYON_STATUS=$oryon_status"
-          } >> "$GITHUB_ENV"
+            } >> "$GITHUB_ENV"
 
-          echo "========================================"
-          echo "       内核构建配置摘要"
-          echo "========================================"
-          echo "构建目标      : OnePlus"
-          echo "机型配置      : $device_label"
-          echo "CPU 分支      : $CPU"
-          echo "上游 XML      : $DEVICE_MANIFEST"
-          echo "Android 版本  : $ANDROID_VERSION"
-          echo "内核版本      : $KERNEL_VERSION"
-          echo "子版本号      : OnePlus manifest"
-          echo "补丁级别      : OnePlus manifest"
-          echo "KSU 变体      : $KSU_VARIANT"
-          echo "KSU 分支      : OnePlus upstream"
-          echo "构建时间      : OnePlus upstream"
-          echo "SUSFS 状态    : $ENABLE_SUSFS"
-          echo "ZRAM 增强     : $effective_lz4kd"
-          echo "ZRAM 完整算法 : false"
-          echo "ZRAM 额外算法 : lz4kd=$effective_lz4kd"
-          echo "BBG 补丁      : $USE_BBG"
-          echo "DDK LSM       : $USE_DDK"
-          echo "NTsync 补丁   : $USE_NTSYNC"
-          echo "Networking 增强: BBR=$USE_BBR, proxy=$effective_proxy"
-          echo "KPM 功能      : $effective_kpm"
-          echo "KPM 密码      : 默认"
-          echo "Re-Kernel     : false"
-          echo "虚拟化支持   : off"
-          echo "自定义注入    : 无"
-          echo "Stock Config  : OnePlus manifest"
-          echo "Unicode 绕过  : $USE_UNICODE_BYPASS"
-          echo "自定义内核选项: $CUSTOM_KERNEL_OPTIONS"
-          echo "Oryon微码调优 : $oryon_status"
-          echo "========================================"
+            echo "========================================"
+            echo "       内核构建配置摘要"
+            echo "========================================"
+           echo "构建目标      : OnePlus"
+           echo "机型配置      : $device_label"
+           echo "CPU 分支      : $CPU"
+           echo "上游 XML      : $DEVICE_MANIFEST"
+           echo "Android 版本  : $ANDROID_VERSION"
+           echo "内核版本      : $KERNEL_VERSION"
+           echo "子版本号      : OnePlus manifest"
+           echo "补丁级别      : OnePlus manifest"
+           echo "KSU 变体      : $KSU_VARIANT"
+           echo "KSU 分支      : OnePlus upstream"
+           echo "构建时间      : OnePlus upstream"
+           echo "SUSFS 状态    : $ENABLE_SUSFS"
+           echo "ZRAM 增强     : $effective_lz4kd"
+           echo "ZRAM 完整算法 : false"
+           echo "ZRAM 额外算法 : lz4kd=$effective_lz4kd"
+           echo "BBG 补丁      : $USE_BBG"
+           echo "DDK LSM       : $USE_DDK"
+           echo "NTsync 补丁   : $USE_NTSYNC"
+           echo "Networking 增强: BBR=$USE_BBR, proxy=$effective_proxy"
+           echo "KPM 功能      : $effective_kpm"
+           echo "KPM 密码      : 默认"
+           echo "Re-Kernel     : false"
+           echo "虚拟化支持   : off"
+           echo "自定义注入    : 无"
+           echo "Stock Config  : OnePlus manifest"
+           echo "Unicode 绕过  : $USE_UNICODE_BYPASS"
+           echo "自定义内核选项: $CUSTOM_KERNEL_OPTIONS"
+           echo "Oryon微码调优 : $oryon_status"
+            echo "========================================"
 
-      - name: 校验 OnePlus 输入
-        shell: bash
-        run: |
-          set -euo pipefail
-          case "$KERNEL_VERSION" in
+         - name: 校验 OnePlus 输入
+          shell: bash
+          run: |
+           set -euo pipefail
+           case "$KERNEL_VERSION" in
             5.10|5.15|6.1|6.6) ;;
             *) echo "::error::不支持的 OnePlus 内核版本: $KERNEL_VERSION"; exit 1 ;;
-          esac
-          case "$ANDROID_VERSION/$KERNEL_VERSION" in
+           esac
+           case "$ANDROID_VERSION/$KERNEL_VERSION" in
             android12/5.10|android13/5.15|android14/6.1|android15/6.6) ;;
             *) echo "::warning::Android/KMI 与内核版本不是推荐组合: $ANDROID_VERSION/$KERNEL_VERSION" ;;
-          esac
-          if [[ "$CPU" == mt* && "$USE_PROXY_OPTIMIZATION" = "true" ]]; then
-            echo "::warning::MTK 分支已强制关闭代理相关网络优化。"
-          fi
-          if [ "$USE_KPM" = "true" ] && [ "$KSU_VARIANT" != "SukiSU" ] && [ "$KSU_VARIANT" != "ReSukiSU" ]; then
-            echo "::error::Official / None 变体不支持 KPM，请关闭 KPM 后重试。"
-            exit 1
-          fi
-          if [ "$USE_LZ4KD" = "true" ] && [ "$KERNEL_VERSION" != "5.10" ] && [ "$KERNEL_VERSION" != "5.15" ] && [ "$KERNEL_VERSION" != "6.1" ] && [ "$KERNEL_VERSION" != "6.6" ]; then
-            echo "::warning::当前 OnePlus 内核版本不在 lz4kd 支持矩阵内，已关闭 lz4kd。"
-          fi
+           esac
+           if [[ "$CPU" == mt* && "$USE_PROXY_OPTIMIZATION" = "true" ]]; then
+             echo "::warning::MTK 分支已强制关闭代理相关网络优化。"
+           fi
+           if [ "$USE_KPM" = "true" ] && [ "$KSU_VARIANT" != "SukiSU" ] && [ "$KSU_VARIANT" != "ReSukiSU" ]; then
+             echo "::error::Official / None 变体不支持 KPM，请关闭 KPM 后重试。"
+             exit 1
+           fi
+           if [ "$USE_LZ4KD" = "true" ] && [ "$KERNEL_VERSION" != "5.10" ] && [ "$KERNEL_VERSION" != "5.15" ] && [ "$KERNEL_VERSION" != "6.1" ] && [ "$KERNEL_VERSION" != "6.6" ]; then
+             echo "::warning::当前 OnePlus 内核版本不在 lz4kd 支持矩阵内，已关闭 lz4kd。"
+           fi
 
-      - name: 最大化构建空间
-        if: ${{ inputs.kernel_version == '5.10' || inputs.kernel_version == '5.15' }}
-        uses: easimon/maximize-build-space@master
-        with:
+           - name: 最大化构建空间
+          if: ${{ inputs.kernel_version == '5.10' || inputs.kernel_version == '5.15' }}
+          uses: easimon/maximize-build-space@master
+          with:
           root-reserve-mb: 8192
           temp-reserve-mb: 4096
           remove-dotnet: "true"
           remove-android: "true"
           remove-haskell: "true"
           remove-codeql: "true"
-            - name: 安装依赖
-        shell: bash
-        run: |
+              
+         - name: 安装依赖
+      shell: bash
+      run: |
           set -euo pipefail
           apt_update_retry() {
             local attempt
@@ -270,10 +271,10 @@ jobs:
             chmod a+x repo
             sudo mv repo /usr/local/bin/repo
           fi
-
-      - name: 配置 ccache
-        shell: bash
-        run: |
+         
+          - name: 配置 ccache
+          shell: bash
+          run: |
           set -euo pipefail
           export CCACHE_DIR="$HOME/.ccache_${DEVICE_MANIFEST}_${KSU_VARIANT}"
           echo "CCACHE_DIR=$CCACHE_DIR" >> "$GITHUB_ENV"
@@ -281,17 +282,18 @@ jobs:
           ccache -M "$CCACHE_MAXSIZE"
           ccache -z
 
-      - name: 恢复 ccache
-        uses: actions/cache@v5
-        with:
+          - name: 恢复 ccache
+          uses: actions/cache@v5
+          with:
           path: ~/.ccache_${{ inputs.device_manifest }}_${{ inputs.ksu_variant }}
           key: oneplus-ccache-${{ runner.os }}-${{ inputs.device_manifest }}-${{ inputs.ksu_variant }}-${{ inputs.enable_susfs }}
           restore-keys: |
             oneplus-ccache-${{ runner.os }}-${{ inputs.device_manifest }}-${{ inputs.ksu_variant }}-
             oneplus-ccache-${{ runner.os }}-
-      - name: 同步 OnePlus 内核源码
-        shell: bash
-        run: |
+        
+          - name: 同步 OnePlus 内核源码
+          shell: bash
+          run: |
           set -euo pipefail
           git config --global user.name "abk-builder"
           git config --global user.email "abk-builder@users.noreply.github.com"
@@ -304,9 +306,9 @@ jobs:
             --depth=1
           repo sync -c -j"$(nproc --all)" --no-tags --no-clone-bundle --force-sync
 
-      - name: 准备 KernelSU 和补丁
-        shell: bash
-        run: |
+          - name: 准备 KernelSU 和补丁
+          shell: bash
+          run: |
           set -euo pipefail
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
@@ -430,10 +432,10 @@ jobs:
             [ -f "50_add_susfs_in_gki-${ANDROID_VERSION}-${KERNEL_VERSION}.patch" ] && \
               patch -p1 < "50_add_susfs_in_gki-${ANDROID_VERSION}-${KERNEL_VERSION}.patch" || true
           fi
-      - name: 修复 SukiSU SUSFS 源码兼容
-        if: ${{ inputs.ksu_variant == 'SukiSU' }}
-        shell: bash
-        run: |
+          - name: 修复 SukiSU SUSFS 源码兼容
+          if: ${{ inputs.ksu_variant == 'SukiSU' }}
+          shell: bash
+          run: |
           set -euo pipefail
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
@@ -558,10 +560,11 @@ jobs:
           else:
               raise SystemExit(f"{root} does not contain a supported SELinux compatibility source file")
           PY
+         
           - name: 修复 SukiSU/ReSukiSU sulog 兼容
-        if: ${{ inputs.ksu_variant == 'SukiSU' || inputs.ksu_variant == 'ReSukiSU' }}
-        shell: bash
-        run: |
+          if: ${{ inputs.ksu_variant == 'SukiSU' || inputs.ksu_variant == 'ReSukiSU' }}
+          shell: bash
+          run: |
           set -euo pipefail
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
@@ -639,10 +642,11 @@ jobs:
           if marker in final_text and new not in final_text:
               raise SystemExit(f"{path} contains an incomplete ABK ksu_sulog_capture compatibility block")
           PY
+         
           - name: 注入 SukiSU/ReSukiSU KPM Kconfig
-        if: ${{ inputs.use_kpm && (inputs.ksu_variant == 'SukiSU' || inputs.ksu_variant == 'ReSukiSU') }}
-        shell: bash
-        run: |
+          if: ${{ inputs.use_kpm && (inputs.ksu_variant == 'SukiSU' || inputs.ksu_variant == 'ReSukiSU') }}
+          shell: bash
+          run: |
           set -euo pipefail
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
@@ -709,10 +713,11 @@ jobs:
               handle.write("ABK_KPM_KCONFIG_READY=true\n")
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
+         
           - name: 替换为 BBRv3 源码
-        if: ${{ inputs.use_bbr == 'true' }}
-        shell: bash
-        run: |
+          if: ${{ inputs.use_bbr == 'true' }}
+          shell: bash
+          run: |
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
           cd "$KERNEL_ROOT"
@@ -728,10 +733,10 @@ jobs:
           wget -O net/ipv4/tcp_bbr.c https://raw.githubusercontent.com/google/bbr/v3/net/ipv4/tcp_bbr.c
           echo "BBRv3 源码已替换"
 
-      - name: 应用骁龙8 Elite Oryon核心微码调优
-        if: contains(fromJson('["oneplus_13_b","oneplus_13s_b","oneplus_13t_b","oneplus_ace5_pro_b","oneplus_pad_2_pro_b"]'), env.DEVICE_MANIFEST)
-        shell: bash
-        run: |
+          - name: 应用骁龙8 Elite Oryon核心微码调优
+          if: contains(fromJson('["oneplus_13_b","oneplus_13s_b","oneplus_13t_b","oneplus_ace5_pro_b","oneplus_pad_2_pro_b"]'), env.DEVICE_MANIFEST)
+          shell: bash
+          run: |
           echo "检测到骁龙8 Elite设备，应用Oryon核心微码调优"
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           DEFCONFIG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/common/arch/arm64/configs/gki_defconfig"
@@ -749,9 +754,10 @@ jobs:
           echo "CONFIG_ARM64_AMU_EXTN=y" >> "$DEFCONFIG_PATH"
           echo "CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y" >> "$DEFCONFIG_PATH"
           echo "Oryon微码调优配置已注入"
+         
           - name: 配置 defconfig
-        shell: bash
-        run: |
+          shell: bash
+          run: |
           set -euo pipefail
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
@@ -877,13 +883,14 @@ jobs:
             grep -q '^CONFIG_LTO_CLANG_THIN=y' "$DEFCONFIG_PATH" || echo 'CONFIG_LTO_CLANG_THIN=y' >> "$DEFCONFIG_PATH"
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
+         
           - name: 应用自定义内核选项
-        if: ${{ inputs.custom_kernel_options != '' }}
-        working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform
-        env:
+          if: ${{ inputs.custom_kernel_options != '' }}
+          working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform
+          env:
           CUSTOM_KERNEL_OPTIONS: ${{ inputs.custom_kernel_options }}
           DEFCONFIG_PATH: common/arch/arm64/configs/gki_defconfig
-        run: |
+          run: |
           set -euo pipefail
           python3 - <<'PY'
           import os
@@ -983,9 +990,9 @@ jobs:
           print(f"自定义内核选项: 应用 {applied} 条")
           PY
           
-      - name: 编译内核
-        shell: bash
-        run: |
+          - name: 编译内核
+          shell: bash
+          run: |
           set -euo pipefail
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
@@ -1018,9 +1025,9 @@ jobs:
           esac
           ccache -s
           
-      - name: 打包 AnyKernel3
-        shell: bash
-        run: |
+          - name: 打包 AnyKernel3
+          shell: bash
+          run: |
           set -euo pipefail
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           cd "$WORKSPACE"
@@ -1068,9 +1075,9 @@ jobs:
           echo "ONEPLUS_ARTIFACT_NAME=$artifact_name" >> "$GITHUB_ENV"
           echo "ONEPLUS_IMAGE_ARTIFACT_NAME=$image_artifact_name" >> "$GITHUB_ENV"
 
-      - name: 上传 AnyKernel3 产物
-        uses: actions/upload-artifact@v6
-        with:
+          - name: 上传 AnyKernel3 产物
+          uses: actions/upload-artifact@v6
+          with:
           name: ${{ env.ONEPLUS_ARTIFACT_NAME }}
           path: |
             oneplus_workspace/*.zip
@@ -1078,9 +1085,9 @@ jobs:
             THIRD_PARTY_NOTICES.md
           if-no-files-found: error
 
-      - name: 上传内核 Image
-        uses: actions/upload-artifact@v6
-        with:
+          - name: 上传内核 Image
+          uses: actions/upload-artifact@v6
+          with:
           name: ${{ env.ONEPLUS_IMAGE_ARTIFACT_NAME }}
           path: oneplus_workspace/Image
           if-no-files-found: warn
