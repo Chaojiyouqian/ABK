@@ -1,4 +1,4 @@
-name: OnePlus 内核构建流程
+name: OnePlus 自改内核构建流程
 
 permissions:
   contents: write
@@ -705,26 +705,23 @@ jobs:
 
       
       - name: 替换 BBRv3 源码并添加配置
-  if: ${{ inputs.use_bbr == 'true' }}
-  shell: bash
-  run: |
-    cd $GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common
-
-    echo "正在下载 BBRv3 源码..."
-    wget -O net/ipv4/tcp_bbr.c https://raw.githubusercontent.com/google/bbr/v3/net/ipv4/tcp_bbr.c
-
-    echo "正在添加 TCP 拥塞控制配置..."
-    DEFCONFIG="arch/arm64/configs/gki_defconfig"
-    if [ ! -f "$DEFCONFIG" ] && [ -f "common/arch/arm64/configs/gki_defconfig" ]; then
-      DEFCONFIG="common/arch/arm64/configs/gki_defconfig"
-    fi
-    echo "CONFIG_TCP_CONG_ADVANCED=y" >> $DEFCONFIG
-    echo "CONFIG_TCP_CONG_BBR=y" >> $DEFCONFIG
-    echo "CONFIG_TCP_CONG_WESTWOOD=y" >> $DEFCONFIG
-    echo "CONFIG_NET_SCH_FQ=y" >> $DEFCONFIG
-    echo 'CONFIG_DEFAULT_TCP_CONG="bbr"' >> $DEFCONFIG
-
-    echo "BBRv3 替换和配置全部完成。"
+        if: ${{ inputs.use_bbr == 'true' }}
+        shell: bash
+        run: |
+          cd $GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common
+          echo "正在下载 BBRv3 源码..."
+          wget -O net/ipv4/tcp_bbr.c https://raw.githubusercontent.com/google/bbr/v3/net/ipv4/tcp_bbr.c
+       echo "正在添加 TCP 拥塞控制配置..."
+       DEFCONFIG="arch/arm64/configs/gki_defconfig"
+       if [ ! -f "$DEFCONFIG" ] && [ -f "common/arch/arm64/configs/gki_defconfig" ]; then
+       DEFCONFIG="common/arch/arm64/configs/gki_defconfig"
+       fi
+       echo "CONFIG_TCP_CONG_ADVANCED=y" >> $DEFCONFIG
+       echo "CONFIG_TCP_CONG_BBR=y" >> $DEFCONFIG
+       echo "CONFIG_TCP_CONG_WESTWOOD=y" >> $DEFCONFIG
+       echo "CONFIG_NET_SCH_FQ=y" >> $DEFCONFIG
+       echo 'CONFIG_DEFAULT_TCP_CONG="bbr"' >> $DEFCONFIG
+       echo "BBRv3 替换和配置全部完成。"
 
       - name: 配置 defconfig
         shell: bash
