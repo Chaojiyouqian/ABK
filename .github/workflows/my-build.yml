@@ -694,21 +694,16 @@ jobs:
               handle.write("ABK_KPM_KCONFIG_READY=true\n")
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
-         
       - name: 替换为 BBRv3 源码
         run: |
-           cd ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform
-           echo "=== kernel_platform 内容 ==="
-           ls -la
-           echo "=== common 内容 ==="
-           ls -la common
-           echo "=== 查找 net/ipv4 ==="
-           find . -type d -name "net" 2>/dev/null || echo "未找到 net 目录"
-           echo "=== 查找 tcp_bbr.c ==="
-           find . -name "tcp_bbr.c" 2>/dev/null || echo "未找到 tcp_bbr.c
-           cd ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-           wget -O net/ipv4/tcp_bbr.c https://raw.githubusercontent.com/google/bbr/v3/net/ipv4/tcp_bbr.c
-           echo "BBRv3 源码已替换"
+          set -e
+          WORKSPACE="${{ github.workspace }}"
+          KERNEL_DIR="$WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
+          cd "$KERNEL_DIR"
+          echo "当前目录: $(pwd)"
+          echo "下载 BBRv3 源码..."
+          wget -O net/ipv4/tcp_bbr.c "https://raw.githubusercontent.com/google/bbr/v3/net/ipv4/tcp_bbr.c"
+          echo "BBRv3 源码已替换"
     
            - name: 添加 BBR 等一系列拥塞控制算法
              run: |
