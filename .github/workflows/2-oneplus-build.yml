@@ -89,7 +89,7 @@ jobs:
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
       CCACHE_MAXSIZE: 8G
-          steps:
+      steps:
       - name: 检出 ABK 补丁仓库
         uses: actions/checkout@v6
 
@@ -160,7 +160,7 @@ jobs:
             printf '%s' "$device_label" |
               sed 's#ColorOS/OxygenOS #COS-OOS#g; s#/#-#g; s# · #_#g; s# #_#g; s#[^A-Za-z0-9._-]#_#g'
           )"
-oryon_status="未启用"
+          oryon_status="未启用"
           if [[ "$DEVICE_MANIFEST" =~ ^(oneplus_13_b|oneplus_13s_b|oneplus_13t_b|oneplus_ace5_pro_b)$ ]]; then
             oryon_status="已启用 (骁龙8 Elite)"
           fi
@@ -390,7 +390,7 @@ oryon_status="未启用"
                     if [ -f "$WORKSPACE/kernel_patches/sukisu/scope_min_manual_hooks_v1.9.patch" ]; then
                       MANUAL_HOOK_PATCH_NAME="scope_min_manual_hooks_v1.9.patch"
                     else
-MANUAL_HOOK_PATCH_NAME="scope_min_manual_hooks_v1.6.patch"
+                      MANUAL_HOOK_PATCH_NAME="scope_min_manual_hooks_v1.6.patch"
                     fi
                     ;;
                 esac
@@ -430,7 +430,7 @@ MANUAL_HOOK_PATCH_NAME="scope_min_manual_hooks_v1.6.patch"
             [ -f "50_add_susfs_in_gki-${ANDROID_VERSION}-${KERNEL_VERSION}.patch" ] && \
               patch -p1 < "50_add_susfs_in_gki-${ANDROID_VERSION}-${KERNEL_VERSION}.patch" || true
           fi
-- name: 修复 SukiSU SUSFS 源码兼容
+      - name: 修复 SukiSU SUSFS 源码兼容
         if: ${{ inputs.ksu_variant == 'SukiSU' }}
         shell: bash
         run: |
@@ -709,7 +709,7 @@ MANUAL_HOOK_PATCH_NAME="scope_min_manual_hooks_v1.6.patch"
               handle.write("ABK_KPM_KCONFIG_READY=true\n")
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
- - name: 替换为 BBRv3 源码
+          - name: 替换为 BBRv3 源码
         if: ${{ inputs.use_bbr == 'true' }}
         shell: bash
         run: |
@@ -749,7 +749,7 @@ MANUAL_HOOK_PATCH_NAME="scope_min_manual_hooks_v1.6.patch"
           echo "CONFIG_ARM64_AMU_EXTN=y" >> "$DEFCONFIG_PATH"
           echo "CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y" >> "$DEFCONFIG_PATH"
           echo "Oryon微码调优配置已注入"
-- name: 配置 defconfig
+          - name: 配置 defconfig
         shell: bash
         run: |
           set -euo pipefail
@@ -877,7 +877,7 @@ MANUAL_HOOK_PATCH_NAME="scope_min_manual_hooks_v1.6.patch"
             grep -q '^CONFIG_LTO_CLANG_THIN=y' "$DEFCONFIG_PATH" || echo 'CONFIG_LTO_CLANG_THIN=y' >> "$DEFCONFIG_PATH"
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
-- name: 应用自定义内核选项
+          - name: 应用自定义内核选项
         if: ${{ inputs.custom_kernel_options != '' }}
         working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform
         env:
@@ -982,7 +982,8 @@ MANUAL_HOOK_PATCH_NAME="scope_min_manual_hooks_v1.6.patch"
           defconfig.write_text("\n".join(text_lines) + "\n")
           print(f"自定义内核选项: 应用 {applied} 条")
           PY
- - name: 编译内核
+          
+      - name: 编译内核
         shell: bash
         run: |
           set -euo pipefail
@@ -1016,7 +1017,8 @@ MANUAL_HOOK_PATCH_NAME="scope_min_manual_hooks_v1.6.patch"
               ;;
           esac
           ccache -s
-    - name: 打包 AnyKernel3
+          
+      - name: 打包 AnyKernel3
         shell: bash
         run: |
           set -euo pipefail
