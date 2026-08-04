@@ -703,42 +703,6 @@ jobs:
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
 
-      - name: 从成熟内核强制移植 BBRv3（失败即终止）
-        run: |
-          set -e
-          cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
-
-          # 1. 备份原有的 tcp_bbr.c（仅用于记录，不回退）
-          [ -f net/ipv4/tcp_bbr.c ] && cp net/ipv4/tcp_bbr.c net/ipv4/tcp_bbr.c.orig
-
-          # 2. 定义多个成熟内核的 BBRv3 源码源（按优先级排序）
-          SOURCES=(
-            "https://raw.githubusercontent.com/zen-kernel/zen-kernel/6.6/bbr3/net/ipv4/tcp_bbr.c"
-            "https://raw.githubusercontent.com/zen-kernel/zen-kernel/6.7/bbr3/net/ipv4/tcp_bbr.c"
-            "https://raw.githubusercontent.com/xanmod/linux/6.6/net/ipv4/tcp_bbr.c"
-            "https://raw.githubusercontent.com/google/bbr/v3/net/ipv4/tcp_bbr.c"
-          )
-
-          SUCCESS=0
-          for url in "${SOURCES[@]}"; do
-            echo "尝试从 $url 下载..."
-            if wget -q -O net/ipv4/tcp_bbr.c "$url" && [ -s net/ipv4/tcp_bbr.c ]; then
-              echo "✅ 成功从 $(echo $url | cut -d/ -f5) 下载 BBRv3 源码"
-             SUCCESS=1
-              break
-            else
-              echo "❌ 下载失败或文件为空，尝试下一个源"
-            fi
-          done
-
-          # 3. 如果所有下载都失败，终止编译（不回退）
-          if [ $SUCCESS -eq 0 ]; then
-            echo "❌ 错误：所有 BBRv3 源均不可用，无法继续编译。"
-            exit 1
-          fi
-          echo "USE_BBRV3=true" >> $GITHUB_ENV
-          echo "✅ BBRv3 移植完成（已应用基本兼容性修复，编译时如有错误请查看日志）"
-  
       - name: 添加 BBR 拥塞控制配置
         run: |
           cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
