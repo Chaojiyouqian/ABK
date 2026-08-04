@@ -1,53 +1,53 @@
-名字: 名称:一加2自定义内核构建流程
+name: OnePlus 2自改版内核构建流程
 
-许可:
-内容: 写
-行动: 写
+permissions:
+  contents: write
+  actions: write
 
-在:
-工作流_呼叫:
-输入:
-中央处理器:
-需要: 真实的
-类型: 线
-设备清单:
-需要: 真实的
-类型: 线
-android _版本:
-需要: 真实的
-类型: 线
-内核版本:
-需要: 真实的
-类型: 线
-ksu _变量:
-需要: 真实的
-类型: 线
-启用_susfs:
-需要: 错误的
-类型: 布尔型
-系统默认值: 错误的
-使用_kpm:
-需要: 错误的
-类型: boolean
-系统默认值: 错误的
-使用_lz4kd:
-需要: 错误的
-类型: boolean
-系统默认值: 错误的
-使用_bbg:
-需要: 错误的
-类型: boolean
-系统默认值: 真实的
-使用_bbr:
-需要: 错误的
-类型: boolean
-系统默认值: 错误的
-使用_代理_优化:
-需要: 错误的
-类型: boolean
-系统默认值: 真实的
-使用_unicode_bypass:
-需要: 错误的
+on:
+  workflow_call:
+    inputs:
+      cpu:
+        required: true
+        type: string
+      device_manifest:
+        required: true
+        type: string
+      android_version:
+        required: true
+        type: string
+      kernel_version:
+        required: true
+        type: string
+      ksu_variant:
+        required: true
+        type: string
+      enable_susfs:
+        required: false
+        type: boolean
+        default: false
+      use_kpm:
+        required: false
+        type: boolean
+        default: false
+      use_lz4kd:
+        required: false
+        type: boolean
+        default: false
+      use_bbg:
+        required: false
+        type: boolean
+        default: true
+      use_bbr:
+        required: false
+        type: boolean
+        default: false
+      use_proxy_optimization:
+        required: false
+        type: boolean
+        default: true
+      use_unicode_bypass:
+        required: false
         type: boolean
         default: false
       use_ddk:
