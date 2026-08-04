@@ -876,7 +876,7 @@ jobs:
           echo "✅ Oryon 优化准备完成"
           
       - name: 应用 Networking 增强 (IPSet + BBR)
-        if: ${{ inputs.use_networking }}
+        #if: ${{ inputs.use_networking }}
         working-directory: ${{ env.KERNEL_ROOT }}/common
         run: |
           set -euo pipefail
