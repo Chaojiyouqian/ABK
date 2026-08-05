@@ -704,7 +704,6 @@ jobs:
           PY
      
       - name: 自动获取并应用最新 XanMod BBRv3 补丁
-        if: ${{ inputs.use_bbr == 'true' }}
         shell: bash
         run: |
           cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
