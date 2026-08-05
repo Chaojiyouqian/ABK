@@ -881,14 +881,13 @@ jobs:
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
       
-      - name: 应用 BBRv3 补丁（Google 官方，失败即停止）
+      - name: 应用 BBRv3 补丁（Google 官方，过滤非必要文件，失败即停）
         working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
         run: |
           set -euo pipefail
-          # 1. 获取 Google 官方 BBRv3 源码
+          # 1. 获取 Google 官方 BBRv3 补丁
           echo "克隆 Google BBR v3 分支..."
           git clone --depth=1 --branch=v3 https://github.com/google/bbr.git /tmp/google-bbr
-          # 2. 找到 BBRv3 相关的提交（取最近一个）
           cd /tmp/google-bbr
           BBR_COMMIT=$(git log --oneline --grep="bbr" -1 | cut -d' ' -f1)
           if [ -z "$BBR_COMMIT" ]; then
@@ -896,7 +895,6 @@ jobs:
             exit 1
           fi
           echo "找到 BBRv3 提交: $BBR_COMMIT"
-          # 3. 导出补丁文件
           git format-patch -1 $BBR_COMMIT -o /tmp/bbr3-patch
           PATCH_FILE=$(ls /tmp/bbr3-patch/*.patch | head -n1)
           if [ -z "$PATCH_FILE" ]; then
@@ -904,20 +902,28 @@ jobs:
             exit 1
           fi
           echo "补丁文件: $PATCH_FILE"
-          # 4. 进入内核源码目录，尝试应用补丁（严格模式）
+          # 2. 安装 patchutils（用于过滤补丁）
+          sudo apt-get update && sudo apt-get install -y patchutils
+          # 3. 只提取 net/ 和 include/ 目录的改动（忽略测试等）
+          echo "过滤补丁，只保留网络核心文件..."
+          filterdiff -i '*/net/*' -i '*/include/*' "$PATCH_FILE" > /tmp/bbr3-filtered.patch
+          # 检查过滤后的补丁是否为空
+          if [ ! -s /tmp/bbr3-filtered.patch ]; then
+            echo "::error::过滤后补丁为空，可能 BBRv3 未修改这些文件，请检查"
+            exit 1
+          fi
+          # 4. 进入内核源码目录，尝试应用过滤后的补丁
           cd ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-          echo "尝试应用 BBRv3 补丁..."
-          # 先试运行检测是否可干净应用，失败则尝试强制应用
-          if patch -p1 --dry-run -s < "$PATCH_FILE"; then
-            echo "补丁可干净应用，正在应用..."
-            patch -p1 < "$PATCH_FILE"
+          echo "尝试应用 BBRv3 补丁（仅网络部分）..."
+          # 先试运行检测是否可干净应用
+          if patch -p1 --dry-run -s < /tmp/bbr3-filtered.patch; then
+            patch -p1 < /tmp/bbr3-filtered.patch
           else
             echo "::warning::补丁存在冲突，尝试强制应用（忽略已存在的 hunk）..."
-            # 强制应用，如果失败则立即退出
-            patch -N -p1 < "$PATCH_FILE"
-            echo "强制应用成功（部分 hunk 可能已存在）"
+            # 强制应用，失败则退出（set -e 会捕获）
+            patch -N -p1 < /tmp/bbr3-filtered.patch
           fi
-          echo "✅ BBRv3 补丁已成功应用到内核源码"
+          echo "✅ BBRv3 补丁已成功应用到内核源码（仅网络核心）"
 
       - name: 合入 Oryon 优化补丁
         run: |
