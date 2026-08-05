@@ -737,7 +737,51 @@ jobs:
               fi
             fi
           fi   
-          
+
+      - name: 强制升级 TCP BBR 至 v3（6.6 内核）
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
+          COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
+          cd "$COMMON_ROOT"
+          # 添加参考仓库（若未添加）
+          if ! git remote get-url oneplus &>/dev/null; then
+            git remote add oneplus https://github.com/xkse4/android_kernel_common_oneplus_sm8750.git
+          fi
+          git fetch oneplus oneplus/sm8750_b_16.0.0_oneplus_13 --depth=1
+          # 尝试 Cherry-pick 官方提交（对于 6.6 通常可直接应用）
+          if git cherry-pick 45b3565; then
+            echo "✅ 成功 Cherry-pick BBRv3 提交"
+          else
+            echo "⚠️ Cherry-pick 冲突，执行手动替换"
+            git cherry-pick --abort 2>/dev/null || true
+            # 手动复制核心算法文件
+            git show oneplus:net/ipv4/tcp_bbr3.c > net/ipv4/tcp_bbr3.c
+            # 修改 Makefile
+            sed -i '/^obj-\$(CONFIG_TCP_CONG_BBR)/c\
+            obj-$(CONFIG_TCP_CONG_BBR) += tcp_bbr.o\
+            tcp_bbr-y := tcp_bbr3.o' net/ipv4/Makefile
+            # 更新 Kconfig 描述
+            sed -i 's/default "BBR TCP"/default "BBRv3 TCP"/' net/ipv4/Kconfig
+            # 提取并应用 tcp.h 补丁（仅针对 6.6 的改动）
+            git show oneplus:include/net/tcp.h > /tmp/tcp.h.new
+            if ! diff -u include/net/tcp.h /tmp/tcp.h.new | patch -p1; then
+              echo "::error::tcp.h 补丁失败，请手动合并以下文件："
+              echo "  参考: /tmp/tcp.h.new"
+              echo "  目标: include/net/tcp.h"
+              echo "  必须包含: CA_EVENT_TLP_RECOVERY, rate_sample 新增字段, bbr_shared_info 等"
+              exit 1
+            fi
+          fi
+          # 验证升级是否成功
+          if [ -f net/ipv4/tcp_bbr3.c ]; then
+            echo "✅ BBRv3 源码已注入（内核版本 6.6）"
+          else
+            echo "::error::BBRv3 注入失败"
+            exit 1
+          fi
+    
       - name: 配置 defconfig
         shell: bash
         run: |
@@ -881,50 +925,6 @@ jobs:
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
       
-      - name: 应用 BBRv3 补丁（Google 官方，过滤非必要文件，失败即停）
-        working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-        run: |
-          set -euo pipefail
-          # 1. 获取 Google 官方 BBRv3 补丁
-          echo "克隆 Google BBR v3 分支..."
-          git clone --depth=1 --branch=v3 https://github.com/google/bbr.git /tmp/google-bbr
-          cd /tmp/google-bbr
-          BBR_COMMIT=$(git log --oneline --grep="bbr" -1 | cut -d' ' -f1)
-          if [ -z "$BBR_COMMIT" ]; then
-            echo "::error::未找到 BBRv3 提交"
-            exit 1
-          fi
-          echo "找到 BBRv3 提交: $BBR_COMMIT"
-          git format-patch -1 $BBR_COMMIT -o /tmp/bbr3-patch
-          PATCH_FILE=$(ls /tmp/bbr3-patch/*.patch | head -n1)
-          if [ -z "$PATCH_FILE" ]; then
-            echo "::error::补丁导出失败"
-            exit 1
-          fi
-          echo "补丁文件: $PATCH_FILE"
-          # 2. 安装 patchutils（用于过滤补丁）
-          sudo apt-get update && sudo apt-get install -y patchutils
-          # 3. 只提取 net/ 和 include/ 目录的改动（忽略测试等）
-          echo "过滤补丁，只保留网络核心文件..."
-          filterdiff -i '*/net/*' -i '*/include/*' "$PATCH_FILE" > /tmp/bbr3-filtered.patch
-          # 检查过滤后的补丁是否为空
-          if [ ! -s /tmp/bbr3-filtered.patch ]; then
-            echo "::error::过滤后补丁为空，可能 BBRv3 未修改这些文件，请检查"
-            exit 1
-          fi
-          # 4. 进入内核源码目录，尝试应用过滤后的补丁
-          cd ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-          echo "尝试应用 BBRv3 补丁（仅网络部分）..."
-          # 先试运行检测是否可干净应用
-          if patch -p1 --dry-run -s < /tmp/bbr3-filtered.patch; then
-            patch -p1 < /tmp/bbr3-filtered.patch
-          else
-            echo "::warning::补丁存在冲突，尝试强制应用（忽略已存在的 hunk）..."
-            # 强制应用，失败则退出（set -e 会捕获）
-            patch -N -p1 < /tmp/bbr3-filtered.patch
-          fi
-          echo "✅ BBRv3 补丁已成功应用到内核源码（仅网络核心）"
-
       - name: 合入 Oryon 优化补丁
         run: |
           cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
