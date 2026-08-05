@@ -703,12 +703,17 @@ jobs:
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
      
-      - name: 应用 BBRv3 补丁（从 bbr3-debs 提取）
+      - name: 应用 BBRv3 补丁（从 CachyOS 提取）
         run: |
           cd ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-          git clone --depth 1 https://github.com/XDflight/bbr3-debs.git /tmp/bbr3-debs
-          patch -p1 -l -F3 < /tmp/bbr3-debs/debian/patches/bbrv3.patch
-          rm -rf /tmp/bbr3-debs
+          git clone --depth 1 https://github.com/CachyOS/kernel-patches.git /tmp/cachyos-patches
+          PATCH_FILE=$(find /tmp/cachyos-patches -name "*.patch" -exec grep -l -i "bbr" {} \; | head -n1)
+          if [ -z "$PATCH_FILE" ]; then
+            echo "::error::在 CachyOS 补丁集中未找到 BBRv3 补丁"
+            exit 1
+          fi
+          patch -p1 -l -F3 < "$PATCH_FILE"
+          rm -rf /tmp/cachyos-patches
           
       - name: 配置 defconfig
         shell: bash
