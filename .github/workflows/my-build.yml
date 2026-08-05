@@ -708,30 +708,41 @@ jobs:
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
      
-      - name: 应用 BBRv3 补丁（XDflight 自适应版）
+      - name: 应用 BBRv3 补丁（CachyOS 6.6 专用）
         working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
         run: |
-          set -euo pipefail 
-          # 1. 克隆仓库
-          git clone --depth=1 https://github.com/XDflight/bbr3-debs.git /tmp/bbr3-debs
-          # 2. 递归查找所有 .patch 文件（按文件名排序）
-          PATCH_FILES=$(find /tmp/bbr3-debs -type f -name "*.patch" | sort -V)
-          if [ -z "$PATCH_FILES" ]; then
-            echo "::error::未在仓库中找到任何 .patch 文件，请检查仓库结构。"
+          set -euo pipefail
+          # 1. 使用 git sparse-checkout 仅下载需要的补丁目录（节省时间）
+          git clone --depth=1 --filter=blob:none --sparse https://github.com/CachyOS/linux-cachyos.git /tmp/cachyos
+          cd /tmp/cachyos
+          git sparse-checkout set patches/6.6
+          # 2. 只选取与 BBR 相关的补丁文件
+          PATCH_DIR="/tmp/cachyos/patches/6.6"
+          if [ ! -d "$PATCH_DIR" ]; then
+            echo "::error::未找到 6.6 补丁目录"
             exit 1
           fi
-          # 3. 进入内核源码目录，依次应用补丁
+          # 找到所有包含 "bbr" 的补丁（按顺序排序）
+          BBR_PATCHES=$(find "$PATCH_DIR" -type f -name "*bbr*.patch" | sort -V)
+          if [ -z "$BBR_PATCHES" ]; then
+            echo "::error::未找到 BBRv3 相关补丁"
+            exit 1
+          fi
+          # 3. 进入内核源码，尝试应用每个补丁
           cd ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-          for patch in $PATCH_FILES; do
-            echo "正在应用补丁: $(basename $patch)"
+          for patch in $BBR_PATCHES; do
+            echo "正在应用: $(basename $patch)"
             # 先试运行检测是否已应用
             if patch -p1 --dry-run -s < "$patch"; then
               patch -p1 < "$patch"
+              echo "✅ $(basename $patch) 应用成功"
             else
-              echo "::warning::补丁 $(basename $patch) 可能已应用或存在冲突，跳过..."
+              # 如果试运行失败，可能已应用或冲突，尝试强制应用（忽略已存在的部分）
+              echo "::warning::$(basename $patch) 试运行失败，尝试强制应用..."
+              patch -p1 -f < "$patch" || echo "强制应用也失败，跳过"
             fi
           done
-          echo "✅ BBRv3 补丁应用完成（XDflight 来源）"
+          echo "✅ BBRv3 补丁处理完成（CachyOS 来源）"
           
       - name: 设置自定义构建时间
         shell: bash
