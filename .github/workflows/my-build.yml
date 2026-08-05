@@ -703,26 +703,19 @@ jobs:
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
      
-      - name: 应用 BBRv3 补丁（使用 bbr3-debs 独立补丁）
+      - name: 应用 BBRv3（直接替换为 XanMod 的 tcp_bbr.c）
         shell: bash
         run: |
           cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
-          # 使用 bbr3-debs 项目提供的稳定独立补丁
-          PATCH_URL="https://raw.githubusercontent.com/XDflight/bbr3-debs/main/debian/patches/bbrv3.patch"
-          echo "正在下载 bbr3-debs 的 BBRv3 补丁..."
-          curl -fsSL "$PATCH_URL" -o /tmp/bbrv3.patch || {
-            echo "::error::补丁下载失败"
+          # 备份原文件（可选）
+          cp net/ipv4/tcp_bbr.c net/ipv4/tcp_bbr.c.bak
+          # 下载 XanMod 6.6 分支的 tcp_bbr.c 覆盖
+          curl -fsSL https://raw.githubusercontent.com/xanmod/linux/6.6/net/ipv4/tcp_bbr.c -o net/ipv4/tcp_bbr.c || {
+            echo "::error::下载 tcp_bbr.c 失败"
             exit 1
           }
-          echo "正在应用补丁（宽松模式）..."
-          if patch -p1 -l -F3 < /tmp/bbrv3.patch; then
-            echo "✅ BBRv3 补丁应用成功"
-          else
-            echo "::error::补丁应用失败，请检查网络或手动适配"
-            exit 1
-          fi
-          rm -f /tmp/bbrv3.patch
-          echo "✅ BBRv3 集成完成"
+    
+          echo "✅ 已替换为 XanMod 的 BBRv3 实现"
    
       - name: 配置 defconfig
         shell: bash
