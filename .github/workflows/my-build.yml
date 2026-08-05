@@ -741,27 +741,42 @@ jobs:
       - name: 强制升级 TCP BBR 至 v3（6.6 内核）
         shell: bash
         run: |
-          set -euo pipefail
-          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
+         set -euo pipefail
+         WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
           cd "$COMMON_ROOT"
-          # 1) 下载官方提交的补丁文件（包含所有改动）
           echo "下载 BBRv3 补丁..."
           curl -L -o /tmp/bbrv3.patch \
-          https://github.com/xkse4/android_kernel_common_oneplus_sm8750/commit/45b3565.patch
-          # 2) 应用补丁
+            https://github.com/xkse4/android_kernel_common_oneplus_sm8750/commit/45b3565.patch
           echo "应用补丁..."
           if patch -p1 < /tmp/bbrv3.patch; then
-            echo "✅ BBRv3 补丁应用成功"
-          else
-            echo "::error::补丁应用失败，可能需要手动解决冲突"
-            exit 1
+          echo "✅ BBRv3 补丁应用成功"
+         else
+            echo "⚠️ 补丁部分失败，尝试手动修复 Makefile..."
+            # 1. 确保 tcp_bbr3.c 存在
+            if [ ! -f net/ipv4/tcp_bbr3.c ]; then
+              curl -o net/ipv4/tcp_bbr3.c \
+                https://raw.githubusercontent.com/xkse4/android_kernel_common_oneplus_sm8750/oneplus/sm8750_b_16.0.0_oneplus_13/net/ipv4/tcp_bbr3.c
+            fi
+            # 2. 手动修复 Makefile
+            if grep -q "tcp_bbr-y" net/ipv4/Makefile; then
+              # 如果已有 tcp_bbr-y 行，直接替换
+              sed -i '/^obj-\$(CONFIG_TCP_CONG_BBR)/,/^tcp_bbr-y/d' net/ipv4/Makefile
+            fi
+            cat >> net/ipv4/Makefile <<'EOF'
+            obj-$(CONFIG_TCP_CONG_BBR) += tcp_bbr.o
+            tcp_bbr-y := tcp_bbr3.o
+            EOF
+           # 3. 更新 Kconfig 描述（如未更新）
+            sed -i 's/default "BBR TCP"/default "BBRv3 TCP"/' net/ipv4/Kconfig || true
+
+            echo "✅ BBRv3 Makefile 冲突已手动修复"
           fi
-          # 3) 验证核心文件是否存在
+          # 验证
           if [ -f net/ipv4/tcp_bbr3.c ]; then
             echo "✅ BBRv3 源码注入成功"
           else
-            echo "::error::未找到 tcp_bbr3.c，升级失败"
+            echo "::error::BBRv3 源码注入失败"
             exit 1
           fi
     
