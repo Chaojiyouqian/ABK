@@ -703,32 +703,19 @@ jobs:
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
      
-      - name: 应用 BBRv3 补丁（从 bbr3-debs 仓库克隆获取）
+      - name: 应用 BBRv3（从 Google 官方仓库下载独立源码）
         shell: bash
         run: |
           set -euo pipefail
           cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
-
-          echo "正在克隆 bbr3-debs 仓库获取独立补丁..."
-          git clone --depth 1 https://github.com/XDflight/bbr3-debs.git /tmp/bbr3-debs
-
-          PATCH_FILE="/tmp/bbr3-debs/debian/patches/bbrv3.patch"
-          if [ ! -f "$PATCH_FILE" ]; then
-            echo "::error::补丁文件不存在，请检查仓库结构"
+          echo "正在下载 Google 官方 BBRv3 源码..."
+          curl -fsSL https://raw.githubusercontent.com/google/bbr/v3/net/ipv4/tcp_bbr.c -o net/ipv4/tcp_bbr.c || {
+            echo "::error::下载 tcp_bbr.c 失败"
             exit 1
-          fi
+          }
 
-          echo "正在应用补丁（宽松模式，忽略空白）..."
-          if patch -p1 -l -F3 < "$PATCH_FILE"; then
-            echo "✅ BBRv3 补丁应用成功"
-          else
-            echo "::error::补丁应用失败，请手动检查冲突"
-            exit 1
-          fi
-
-          rm -rf /tmp/bbr3-debs
-          echo "✅ BBRv3 集成完成"
-   
+          echo "✅ 已替换为 Google 官方的 BBRv3 实现（完全自包含）"
+    
       - name: 配置 defconfig
         shell: bash
         run: |
