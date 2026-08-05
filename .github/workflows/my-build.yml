@@ -723,6 +723,75 @@ jobs:
           fi
           patch -p1 -l -F3 < "$PATCH_FILE"
           rm -rf /tmp/cachyos-patches
+       
+      - name: 配置内核名称
+        working-directory: ${{ env.KERNEL_ROOT }}
+        run: |
+          if [ -f "build/build.sh" ]; then
+            sed -i 's/-dirty//' ./common/scripts/setlocalversion
+          else
+            sed -i '/^[[:space:]]*"protected_exports_list"[[:space:]]*:[[:space:]]*"android\/abi_gki_protected_exports_aarch64",$/d' ./common/BUILD.bazel
+            sed -i '/kmi_symbol_list_strict_mode/d' ./common/BUILD.bazel
+            rm -rf ./common/android/abi_gki_protected_exports_*
+            sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl
+          fi
+
+          VERSION_INPUT=$(echo "${{ inputs.version }}" | tr -d '[:space:]')
+          if [ -n "$VERSION_INPUT" ]; then
+            CLEAN_VERSION=$(echo "$VERSION_INPUT" | sed -E 's/^[0-9]+\.[0-9]+\.[0-9]+//')
+            perl -i -0777 -pe 's/(.*)echo "\$\{KERNELVERSION\}\$\{file_localversion\}\$\{config_localversion\}\$\{LOCALVERSION\}\$\{scm_version\}"/$1echo "\$\{KERNELVERSION\}'"${CLEAN_VERSION}"'"/s' ./common/scripts/setlocalversion 2>/dev/null || true
+            sed -i "\$s|echo \"\$res\"|echo \"${CLEAN_VERSION}\"|" ./common/scripts/setlocalversion 2>/dev/null || true
+            sed -i '/^CONFIG_LOCALVERSION=/ s/="\([^"]*\)"/="'"$CLEAN_VERSION"'"/' ./common/arch/arm64/configs/gki_defconfig
+          elif [ ! -f "build/build.sh" ]; then
+            cd ./common
+            BID="ab$((RANDOM % 90000000 + 10000000))"
+            GHASH=$(git rev-parse --verify HEAD | cut -c1-13)
+            case "${{ inputs.android_version }}-${{ inputs.kernel_version }}" in
+              "android14-6.1")  KMI_TAG="android14-11" ;;
+              "android15-6.6")  KMI_TAG="android15-8" ;;
+              "android16-6.12") KMI_TAG="android16-5" ;;
+              *) KMI_TAG="${{ inputs.android_version }}" ;;
+            esac
+
+            if [ "${{ inputs.kernel_version }}" = "6.1" ]; then
+              KMI_LOCAL="-${KMI_TAG}-g${GHASH}-${BID}-4k"
+              sed -i "\$s|echo \"\$res\"|echo \"${KMI_LOCAL}\"|" ./scripts/setlocalversion 2>/dev/null || true
+              sed -i "/^CONFIG_LOCALVERSION=/ s/=\"[^\"]*\"/=\"${KMI_LOCAL}\"/" ./arch/arm64/configs/gki_defconfig 2>/dev/null || true
+            else
+              SUFFIX="-${KMI_TAG}-g${GHASH}-${BID}"
+              perl -i -0777 -pe 's/(.*)echo "\$\{KERNELVERSION\}\$\{file_localversion\}\$\{config_localversion\}\$\{LOCALVERSION\}\$\{scm_version\}"/$1echo "\$\{KERNELVERSION\}'"${SUFFIX}"'\$\{config_localversion\}"/s' ./scripts/setlocalversion 2>/dev/null || true
+            fi
+          fi
+
+      - name: 设置自定义构建时间
+        shell: bash
+        run: |
+          INPUT_TIME="${{ inputs.build_time }}"
+          if [[ -n "$INPUT_TIME" && "$INPUT_TIME" != "N" && "$INPUT_TIME" != "n" ]]; then
+            DATESTR="$INPUT_TIME"
+          else
+            DATESTR="$(TZ='UTC' date +'%a %b %d %T %Z %Y')"
+          fi
+
+          echo "使用构建时间: $DATESTR"
+          echo "KBUILD_BUILD_TIMESTAMP=$DATESTR" >> "$GITHUB_ENV"
+          echo "KBUILD_BUILD_VERSION=1" >> "$GITHUB_ENV"
+
+          # 统一处理 mkcompile_h 补丁
+          f="$KERNEL_ROOT/common/scripts/mkcompile_h"
+          if [ -f "$f" ]; then
+            if [[ "${{ inputs.kernel_version }}" == "5.10" || "${{ inputs.kernel_version }}" == "5.15" ]]; then
+              echo "应用 5.x 经典时间戳补丁: $f"
+              perl -pi -e "s{UTS_VERSION=\"\\\$\(echo \\\$UTS_VERSION \\\$CONFIG_FLAGS \\\$TIMESTAMP \\| cut -b -\\\$UTS_LEN\)\"}{UTS_VERSION=\"#1 SMP PREEMPT $DATESTR\"}" "$f"
+            else
+              echo "应用 6.x mkcompile_h 补丁: $f"
+              if grep -q 'UTS_VERSION=' "$f"; then
+                perl -pi -e "s{UTS_VERSION=\"\\\$\\\(.*?\\\)\"}{UTS_VERSION=\"#1 SMP PREEMPT $DATESTR\"}" "$f"
+              else
+                perl -0777 -pi -e "s{cat <<EOF}{cat <<EOF\n#undef UTS_VERSION\n#define UTS_VERSION \"#1 SMP PREEMPT $DATESTR\" } unless /UTS_VERSION/" "$f"
+              fi
+            fi
+          fi   
           
       - name: 配置 defconfig
         shell: bash
