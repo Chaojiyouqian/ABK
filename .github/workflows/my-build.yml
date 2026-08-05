@@ -702,7 +702,62 @@ jobs:
               handle.write("ABK_KPM_KCONFIG_READY=true\n")
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
+     
+      - name: 自动获取并应用最新 XanMod BBRv3 补丁
+        if: ${{ inputs.use_bbr == 'true' }}
+        shell: bash
+        run: |
+          cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
     
+          # 固定已知稳定的备用提交哈希（首次成功后请更新此值）
+          FALLBACK_COMMIT="8e2c994a3f4c6d7e8f9a0b1c2d3e4f5a6b7c8d9e"  # ⚠️ 替换为你第一次成功应用时获取的哈希
+    
+          # 1. 克隆 XanMod 的 6.6 分支（浅克隆，仅最近记录）
+          TMP_DIR=$(mktemp -d)
+          echo "正在获取 XanMod 内核仓库最新信息..."
+          git clone --depth 50 --branch 6.6 https://github.com/xanmod/linux.git "$TMP_DIR"
+    
+          # 2. 查找修改了 tcp_bbr.c 且提交信息包含 "bbrv3" 的最新提交
+          COMMIT=$(cd "$TMP_DIR" && git log --grep="bbrv3" --grep="tcp_bbr.*v3" --pretty=format:"%H" -1 -- net/ipv4/tcp_bbr.c)
+    
+          if [ -z "$COMMIT" ]; then
+            echo "⚠️ 未通过关键词找到 BBRv3 提交，使用固定备用提交"
+            COMMIT="$FALLBACK_COMMIT"
+            # 验证备用提交是否存在于仓库
+            if ! (cd "$TMP_DIR" && git cat-file -e "$COMMIT" 2>/dev/null); then
+              echo "::error::备用提交 $COMMIT 不存在，请更新 FALLBACK_COMMIT"
+              exit 1
+            fi
+          else
+            echo "✅ 动态获取到最新 BBRv3 提交: $COMMIT"
+          fi
+    
+          # 3. 生成标准补丁文件
+          (cd "$TMP_DIR" && git show "$COMMIT" --format=email --stdout) > /tmp/bbrv3.patch
+    
+          # 4. 尝试应用补丁（宽松模式：忽略空白，增加上下文容忍度）
+          echo "正在应用补丁（宽松模式）..."
+          if patch -p1 -l -F3 < /tmp/bbrv3.patch 2>/dev/null; then
+            echo "✅ BBRv3 补丁应用成功 (patch -l -F3)"
+          else
+            echo "⚠️ patch 失败，尝试使用 git apply --3way..."
+            if git apply --3way /tmp/bbrv3.patch 2>/dev/null; then
+              echo "✅ BBRv3 补丁应用成功 (git apply --3way)"
+            else
+              echo "::error::所有自动方式均失败，请检查差异或手动适配。"
+              echo "::error::当前尝试的提交哈希: $COMMIT"
+              echo "::error::建议下载补丁文件并在本地手工解决冲突。"
+              exit 1
+            fi
+          fi
+    
+          # 5. 记录本次使用的提交哈希（便于日后更新回退值）
+          echo "BBRV3_COMMIT=$COMMIT" >> "$GITHUB_ENV"
+    
+          # 6. 清理
+          rm -rf "$TMP_DIR" /tmp/bbrv3.patch
+          echo "✅ BBRv3 集成完成"
+   
       - name: 配置 defconfig
         shell: bash
         run: |
