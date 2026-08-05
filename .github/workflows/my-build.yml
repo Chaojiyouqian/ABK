@@ -708,42 +708,24 @@ jobs:
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
      
-      - name: 应用 BBRv3 补丁（CachyOS 6.6 专用）
+      - name: 应用 BBRv3（Google 官方 merge）
         working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
         run: |
-          set -euo pipefail
-          # 1. 使用 git sparse-checkout 仅下载需要的补丁目录（节省时间）
-          git clone --depth=1 --filter=blob:none --sparse https://github.com/CachyOS/linux-cachyos.git /tmp/cachyos
-          cd /tmp/cachyos
-          git sparse-checkout set patches/6.6
-          # 2. 只选取与 BBR 相关的补丁文件
-          PATCH_DIR="/tmp/cachyos/patches/6.6"
-          if [ ! -d "$PATCH_DIR" ]; then
-            echo "::error::未找到 6.6 补丁目录"
-            exit 1
+          # 1. 提交所有未提交的改动（KernelSU、SUSFS 等）
+          git add -A
+          git commit -m "Temp commit before BBRv3" || echo "无改动可提交"
+          # 2. 添加 Google 官方 BBR 仓库并 fetch
+          git remote add bbr https://github.com/google/bbr.git || true
+          git fetch --depth=1 bbr v3
+          # 3. 尝试合并（允许冲突自动使用 bbr 版本）
+          if ! git merge --no-commit --no-ff bbr/v3; then
+            echo "::warning::合并冲突，自动接受 bbr 版本..."
+            git checkout --theirs .     # 全部接受 bbr 的改动
+            git add -A
           fi
-          # 找到所有包含 "bbr" 的补丁（按顺序排序）
-          BBR_PATCHES=$(find "$PATCH_DIR" -type f -name "*bbr*.patch" | sort -V)
-          if [ -z "$BBR_PATCHES" ]; then
-            echo "::error::未找到 BBRv3 相关补丁"
-            exit 1
-          fi
-          # 3. 进入内核源码，尝试应用每个补丁
-          cd ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-          for patch in $BBR_PATCHES; do
-            echo "正在应用: $(basename $patch)"
-            # 先试运行检测是否已应用
-            if patch -p1 --dry-run -s < "$patch"; then
-              patch -p1 < "$patch"
-              echo "✅ $(basename $patch) 应用成功"
-            else
-              # 如果试运行失败，可能已应用或冲突，尝试强制应用（忽略已存在的部分）
-              echo "::warning::$(basename $patch) 试运行失败，尝试强制应用..."
-              patch -p1 -f < "$patch" || echo "强制应用也失败，跳过"
-            fi
-          done
-          echo "✅ BBRv3 补丁处理完成（CachyOS 来源）"
-          
+          git commit -m "Merge BBRv3 from Google official" || echo "无新提交"
+          echo "✅ BBRv3 已合并"
+    
       - name: 设置自定义构建时间
         shell: bash
         run: |
