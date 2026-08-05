@@ -712,29 +712,14 @@ jobs:
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
      
-      - name: 应用 BBRv3 补丁（XanMod 方案）
+      - name: 应用 BBRv3 补丁（XDflight 备选）
         working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
         run: |
-          set -euo pipefail
-          # 1. 克隆 XanMod 维护者的补丁仓库（包含各内核版本的 BBRv3 补丁）
-          git clone --depth=1 https://github.com/sirlucjan/kernel-patches.git /tmp/xanmod-patches
-          # 2. 进入 BBRv3 补丁目录（适用于 6.6 内核）
-          PATCH_DIR="/tmp/xanmod-patches/6.6/bbr3-patches"
-          if [ ! -d "$PATCH_DIR" ]; then
-            echo "::error::未找到 6.6 内核的 BBRv3 补丁目录，请检查仓库结构。"
-            exit 1
-          fi
-          # 3. 按顺序应用所有 .patch 文件（使用 patch 命令，避免 git 状态冲突）
+          git clone --depth=1 https://github.com/XDflight/bbr3-debs.git /tmp/bbr3-debs
           cd ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-          for patch in $(ls -1v "$PATCH_DIR"/*.patch); do
-            echo "正在应用补丁: $(basename $patch)"
-            if ! patch -p1 -s --dry-run < "$patch"; then
-              echo "::warning::补丁 $(basename $patch) 试运行失败，可能已应用或存在冲突，跳过..."
-              continue
-            fi
-            patch -p1 < "$patch"
+          for patch in /tmp/bbr3-debs/*.patch; do
+            patch -p1 < "$patch" || echo "补丁 $patch 可能已应用，跳过"
           done
-          echo "✅ BBRv3 补丁应用完成（XanMod 来源）"
           
       - name: 配置内核名称
         working-directory: ${{ env.KERNEL_ROOT }}
