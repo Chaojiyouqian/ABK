@@ -707,41 +707,6 @@ jobs:
               handle.write("ABK_KPM_KCONFIG_READY=true\n")
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
-     
-      - name: 应用 BBRv3 补丁（zen-kernel 6.6，失败即停止）
-        working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-        run: |
-          set -euo pipefail
-          # 1. 克隆 zen-kernel 的 6.6/bbr3 分支
-          echo "正在克隆 zen-kernel 6.6/bbr3 分支..."
-          git clone --depth=1 --branch=6.6/bbr3 https://github.com/zen-kernel/zen-kernel.git /tmp/zen-kernel
-          # 2. 查找 BBRv3 相关的提交（取最近一个）
-          cd /tmp/zen-kernel
-          BBR_COMMIT=$(git log --oneline --grep="bbr3" -1 | cut -d' ' -f1)
-          if [ -z "$BBR_COMMIT" ]; then
-            echo "::error::zen-kernel 6.6/bbr3 分支中未找到 BBRv3 相关提交"
-            exit 1
-          fi
-          echo "找到 BBRv3 提交: $BBR_COMMIT"
-          # 3. 导出补丁文件
-          git format-patch -1 $BBR_COMMIT -o /tmp/bbr3-patch
-          if [ ! -f /tmp/bbr3-patch/*.patch ]; then
-            echo "::error::导出补丁文件失败"
-            exit 1
-          fi
-          # 4. 进入内核源码目录，严格应用补丁
-          cd ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-          # 对每个补丁，使用 patch -N 尝试应用（-N 忽略已应用的 hunk）
-          for patch in /tmp/bbr3-patch/*.patch; do
-            echo "正在应用: $(basename $patch)"
-            # 如果 patch 失败（返回非零），立即退出
-            if ! patch -N -p1 < "$patch"; then
-              echo "::error::补丁 $(basename $patch) 应用失败，停止构建。"
-              exit 1
-            fi
-            echo "✅ $(basename $patch) 应用成功"
-          done
-          echo "✅ BBRv3 补丁全部成功应用（zen-kernel 来源）"
     
       - name: 设置自定义构建时间
         shell: bash
@@ -915,6 +880,44 @@ jobs:
             grep -q '^CONFIG_LTO_CLANG_THIN=y' "$DEFCONFIG_PATH" || echo 'CONFIG_LTO_CLANG_THIN=y' >> "$DEFCONFIG_PATH"
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
+      
+      - name: 应用 BBRv3 补丁（Google 官方，失败即停止）
+        working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
+        run: |
+          set -euo pipefail
+          # 1. 获取 Google 官方 BBRv3 源码
+          echo "克隆 Google BBR v3 分支..."
+          git clone --depth=1 --branch=v3 https://github.com/google/bbr.git /tmp/google-bbr
+          # 2. 找到 BBRv3 相关的提交（取最近一个）
+          cd /tmp/google-bbr
+          BBR_COMMIT=$(git log --oneline --grep="bbr" -1 | cut -d' ' -f1)
+          if [ -z "$BBR_COMMIT" ]; then
+            echo "::error::未找到 BBRv3 提交"
+            exit 1
+          fi
+          echo "找到 BBRv3 提交: $BBR_COMMIT"
+          # 3. 导出补丁文件
+          git format-patch -1 $BBR_COMMIT -o /tmp/bbr3-patch
+          PATCH_FILE=$(ls /tmp/bbr3-patch/*.patch | head -n1)
+          if [ -z "$PATCH_FILE" ]; then
+            echo "::error::补丁导出失败"
+            exit 1
+          fi
+          echo "补丁文件: $PATCH_FILE"
+          # 4. 进入内核源码目录，尝试应用补丁（严格模式）
+          cd ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
+          echo "尝试应用 BBRv3 补丁..."
+          # 先试运行检测是否可干净应用，失败则尝试强制应用
+          if patch -p1 --dry-run -s < "$PATCH_FILE"; then
+            echo "补丁可干净应用，正在应用..."
+            patch -p1 < "$PATCH_FILE"
+          else
+            echo "::warning::补丁存在冲突，尝试强制应用（忽略已存在的 hunk）..."
+            # 强制应用，如果失败则立即退出
+            patch -N -p1 < "$PATCH_FILE"
+            echo "强制应用成功（部分 hunk 可能已存在）"
+          fi
+          echo "✅ BBRv3 补丁已成功应用到内核源码"
 
       - name: 合入 Oryon 优化补丁
         run: |
