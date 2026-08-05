@@ -708,32 +708,40 @@ jobs:
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
      
-      - name: 应用 BBRv3 补丁（sirlucjan 6.6 专用)
+      - name: 应用 BBRv3 补丁（zen-kernel 6.6，失败即停止）
         working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
         run: |
           set -euo pipefail
-          # 1. 克隆补丁仓库
-          git clone --depth=1 https://github.com/sirlucjan/kernel-patches.git /tmp/kernel-patches
-          # 2. 定位 6.6 的 BBRv3 补丁目录
-          PATCH_DIR="/tmp/kernel-patches/6.6/bbr3-patches"
-          if [ ! -d "$PATCH_DIR" ]; then
-            echo "::error::未找到 6.6 内核的 BBRv3 补丁目录，请检查仓库结构。"
+          # 1. 克隆 zen-kernel 的 6.6/bbr3 分支
+          echo "正在克隆 zen-kernel 6.6/bbr3 分支..."
+          git clone --depth=1 --branch=6.6/bbr3 https://github.com/zen-kernel/zen-kernel.git /tmp/zen-kernel
+          # 2. 查找 BBRv3 相关的提交（取最近一个）
+          cd /tmp/zen-kernel
+          BBR_COMMIT=$(git log --oneline --grep="bbr3" -1 | cut -d' ' -f1)
+          if [ -z "$BBR_COMMIT" ]; then
+            echo "::error::zen-kernel 6.6/bbr3 分支中未找到 BBRv3 相关提交"
             exit 1
           fi
-          # 3. 按顺序应用所有补丁
+          echo "找到 BBRv3 提交: $BBR_COMMIT"
+          # 3. 导出补丁文件
+          git format-patch -1 $BBR_COMMIT -o /tmp/bbr3-patch
+          if [ ! -f /tmp/bbr3-patch/*.patch ]; then
+            echo "::error::导出补丁文件失败"
+            exit 1
+          fi
+          # 4. 进入内核源码目录，严格应用补丁
           cd ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-          for patch in $(ls -1v "$PATCH_DIR"/*.patch); do
+          # 对每个补丁，使用 patch -N 尝试应用（-N 忽略已应用的 hunk）
+          for patch in /tmp/bbr3-patch/*.patch; do
             echo "正在应用: $(basename $patch)"
-            # 先试运行检测是否已应用
-            if patch -p1 --dry-run -s < "$patch"; then
-              patch -p1 < "$patch"
-              echo "✅ $(basename $patch) 成功"
-            else
-              echo "::warning::$(basename $patch) 可能已应用或冲突，尝试强制应用..."
-              patch -p1 -f < "$patch" || echo "强制应用也失败，跳过"
+            # 如果 patch 失败（返回非零），立即退出
+            if ! patch -N -p1 < "$patch"; then
+              echo "::error::补丁 $(basename $patch) 应用失败，停止构建。"
+              exit 1
             fi
+            echo "✅ $(basename $patch) 应用成功"
           done
-          echo "✅ BBRv3 补丁应用完成（sirlucjan 来源）"
+          echo "✅ BBRv3 补丁全部成功应用（zen-kernel 来源）"
     
       - name: 设置自定义构建时间
         shell: bash
