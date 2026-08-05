@@ -708,14 +708,24 @@ jobs:
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
      
-      - name: 应用 BBRv3 补丁（XDflight 备选）
+      - name: 应用 BBRv3 补丁（XDflight 修正版）
         working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
         run: |
           git clone --depth=1 https://github.com/XDflight/bbr3-debs.git /tmp/bbr3-debs
-          cd ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-          for patch in /tmp/bbr3-debs/*.patch; do
-            patch -p1 < "$patch" || echo "补丁 $patch 可能已应用，跳过"
-          done
+          PATCH_FILE="/tmp/bbr3-debs/debian/patches/bbrv3.patch"
+          if [ ! -f "$PATCH_FILE" ]; then
+            echo "::error::补丁文件不存在，请检查仓库结构"
+            exit 1
+          fi
+          echo "正在应用补丁：$PATCH_FILE"
+          patch -p1 -l -F3 < "$PATCH_FILE"
+          if [ $? -eq 0 ]; then
+            echo "✅ BBRv3 补丁应用成功"
+          else
+            echo "::error::补丁应用失败，请检查冲突"
+            exit 1
+          fi
+          rm -rf /tmp/bbr3-debs
           
       - name: 设置自定义构建时间
         shell: bash
