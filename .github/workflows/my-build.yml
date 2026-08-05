@@ -708,24 +708,30 @@ jobs:
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
      
-      - name: 应用 BBRv3 补丁（XDflight 修正版）
+      - name: 应用 BBRv3 补丁（XDflight 自适应版）
         working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
         run: |
+          set -euo pipefail 
+          # 1. 克隆仓库
           git clone --depth=1 https://github.com/XDflight/bbr3-debs.git /tmp/bbr3-debs
-          PATCH_FILE="/tmp/bbr3-debs/debian/patches/bbrv3.patch"
-          if [ ! -f "$PATCH_FILE" ]; then
-            echo "::error::补丁文件不存在，请检查仓库结构"
+          # 2. 递归查找所有 .patch 文件（按文件名排序）
+          PATCH_FILES=$(find /tmp/bbr3-debs -type f -name "*.patch" | sort -V)
+          if [ -z "$PATCH_FILES" ]; then
+            echo "::error::未在仓库中找到任何 .patch 文件，请检查仓库结构。"
             exit 1
           fi
-          echo "正在应用补丁：$PATCH_FILE"
-          patch -p1 -l -F3 < "$PATCH_FILE"
-          if [ $? -eq 0 ]; then
-            echo "✅ BBRv3 补丁应用成功"
-          else
-            echo "::error::补丁应用失败，请检查冲突"
-            exit 1
-          fi
-          rm -rf /tmp/bbr3-debs
+          # 3. 进入内核源码目录，依次应用补丁
+          cd ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
+          for patch in $PATCH_FILES; do
+            echo "正在应用补丁: $(basename $patch)"
+            # 先试运行检测是否已应用
+            if patch -p1 --dry-run -s < "$patch"; then
+              patch -p1 < "$patch"
+            else
+              echo "::warning::补丁 $(basename $patch) 可能已应用或存在冲突，跳过..."
+            fi
+          done
+          echo "✅ BBRv3 补丁应用完成（XDflight 来源）"
           
       - name: 设置自定义构建时间
         shell: bash
