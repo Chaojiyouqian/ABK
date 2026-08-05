@@ -129,7 +129,16 @@ on:
         required: false
         type: boolean
         default: false
-
+      version:
+        description: "自定义版本名 (可选)"
+        required: false
+        type: string
+      build_time:
+        description: "自定义构建时间 (可选，N或留空=当前UTC)"
+        required: false
+        type: string
+        default: "Sun Dec 01 08:10:00 UTC 2024"
+        
 jobs:
   get-manager:
     name: 上传管理器和 SUSFS 模块
