@@ -703,25 +703,11 @@ jobs:
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
      
-      - name: 应用 BBRv3 补丁（bbr3-debs 官方适配版）
-        shell: bash
+      - name: 应用 Zen Kernel 的 BBRv3
         run: |
-          cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
-          echo "正在下载 BBRv3 补丁（来自 bbr3-debs/build 分支）..."
-          curl -fsSL https://raw.githubusercontent.com/XDflight/bbr3-debs/build/debian/patches/bbrv3.patch -o /tmp/bbrv3.patch || {
-            echo "::error::补丁下载失败，请检查网络"
-            exit 1
-          }
-          echo "正在应用补丁（宽松模式，忽略空白差异）..."
-          if patch -p1 -l -F3 < /tmp/bbrv3.patch; then
-            echo "✅ BBRv3 补丁应用成功"
-          else
-            echo "::error::补丁应用失败，可能存在冲突，请手动检查"
-            exit 1
-          fi
-          rm -f /tmp/bbrv3.patch
-          echo "✅ BBRv3 集成完成"
-    
+          cd ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
+          curl -fsSL https://raw.githubusercontent.com/zen-kernel/zen-kernel/6.6/bbr3/net/ipv4/tcp_bbr.c -o net/ipv4/tcp_bbr.c || exit 1
+     
       - name: 配置 defconfig
         shell: bash
         run: |
