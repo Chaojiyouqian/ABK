@@ -703,53 +703,24 @@ jobs:
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
      
-      
-      - name: 自动获取并应用最新 XanMod BBRv3 补丁
+      - name: 应用 BBRv3 补丁（使用 bbr3-debs 独立补丁）
         shell: bash
         run: |
-          # 确保 jq 已安装（ubuntu-latest 默认自带，但仍检查）
-          if ! command -v jq &> /dev/null; then
-           sudo apt-get update && sudo apt-get install -y jq
-          fi
           cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
-          echo "正在通过 GitHub API 获取 XanMod 6.6 分支中修改 tcp_bbr.c 的最新提交..."
-          # 获取最新提交的 SHA
-          COMMIT=$(curl -s "https://api.github.com/repos/xanmod/linux/commits?sha=6.6&path=net/ipv4/tcp_bbr.c" | jq -r '.[0].sha')
-          if [ -z "$COMMIT" ] || [ "$COMMIT" = "null" ]; then
-            echo "::error::无法从 API 获取 BBRv3 提交，请检查网络或手动指定哈希"
-            exit 1
-          fi
-          echo "✅ 获取到最新 BBRv3 提交: $COMMIT"
-          # 可选：检查提交信息是否包含 "bbr"，以防万一
-          MESSAGE=$(curl -s "https://api.github.com/repos/xanmod/linux/commits/$COMMIT" | jq -r '.commit.message')
-          if [[ ! "$MESSAGE" =~ [bB][bB][rR] ]]; then
-            echo "::warning::获取到的提交可能不是 BBRv3，请检查: $MESSAGE"
-          fi
-
-          # 下载补丁文件
-          PATCH_URL="https://github.com/xanmod/linux/commit/$COMMIT.patch"
-          echo "正在下载补丁..."
+          # 使用 bbr3-debs 项目提供的稳定独立补丁
+          PATCH_URL="https://raw.githubusercontent.com/XDflight/bbr3-debs/main/debian/patches/bbrv3.patch"
+          echo "正在下载 bbr3-debs 的 BBRv3 补丁..."
           curl -fsSL "$PATCH_URL" -o /tmp/bbrv3.patch || {
-           echo "::error::下载补丁失败"
+            echo "::error::补丁下载失败"
             exit 1
           }
-
           echo "正在应用补丁（宽松模式）..."
-          if patch -p1 -l -F3 < /tmp/bbrv3.patch 2>/dev/null; then
-            echo "✅ BBRv3 补丁应用成功 (patch -l -F3)"
+          if patch -p1 -l -F3 < /tmp/bbrv3.patch; then
+            echo "✅ BBRv3 补丁应用成功"
           else
-            echo "⚠️ patch 失败，尝试使用 git apply --3way..."
-            if git apply --3way /tmp/bbrv3.patch 2>/dev/null; then
-              echo "✅ BBRv3 补丁应用成功 (git apply --3way)"
-            else
-              echo "::error::所有自动方式均失败，请检查差异或手动适配。"
-              echo "::error::当前尝试的提交哈希: $COMMIT"
-              echo "::error::建议访问 https://github.com/xanmod/linux/commits/6.6/ 查看相关补丁并手动解决。"
-              exit 1
-            fi
+            echo "::error::补丁应用失败，请检查网络或手动适配"
+            exit 1
           fi
-
-          echo "BBRV3_COMMIT=$COMMIT" >> "$GITHUB_ENV"
           rm -f /tmp/bbrv3.patch
           echo "✅ BBRv3 集成完成"
    
