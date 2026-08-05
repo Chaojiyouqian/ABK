@@ -745,40 +745,23 @@ jobs:
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
           cd "$COMMON_ROOT"
-          # 添加参考仓库（若未添加）
-          if ! git remote get-url oneplus &>/dev/null; then
-            git remote add oneplus https://github.com/xkse4/android_kernel_common_oneplus_sm8750.git
-          fi
-          git fetch oneplus oneplus/sm8750_b_16.0.0_oneplus_13 --depth=1
-          # 尝试 Cherry-pick 官方提交（对于 6.6 通常可直接应用）
-          if git cherry-pick 45b3565; then
-            echo "✅ 成功 Cherry-pick BBRv3 提交"
+          # 1) 下载官方提交的补丁文件（包含所有改动）
+          echo "下载 BBRv3 补丁..."
+          curl -L -o /tmp/bbrv3.patch \
+          https://github.com/xkse4/android_kernel_common_oneplus_sm8750/commit/45b3565.patch
+          # 2) 应用补丁
+          echo "应用补丁..."
+          if patch -p1 < /tmp/bbrv3.patch; then
+            echo "✅ BBRv3 补丁应用成功"
           else
-            echo "⚠️ Cherry-pick 冲突，执行手动替换"
-            git cherry-pick --abort 2>/dev/null || true
-            # 手动复制核心算法文件
-            git show oneplus:net/ipv4/tcp_bbr3.c > net/ipv4/tcp_bbr3.c
-            # 修改 Makefile
-            sed -i '/^obj-\$(CONFIG_TCP_CONG_BBR)/c\
-            obj-$(CONFIG_TCP_CONG_BBR) += tcp_bbr.o\
-            tcp_bbr-y := tcp_bbr3.o' net/ipv4/Makefile
-            # 更新 Kconfig 描述
-            sed -i 's/default "BBR TCP"/default "BBRv3 TCP"/' net/ipv4/Kconfig
-            # 提取并应用 tcp.h 补丁（仅针对 6.6 的改动）
-            git show oneplus:include/net/tcp.h > /tmp/tcp.h.new
-            if ! diff -u include/net/tcp.h /tmp/tcp.h.new | patch -p1; then
-              echo "::error::tcp.h 补丁失败，请手动合并以下文件："
-              echo "  参考: /tmp/tcp.h.new"
-              echo "  目标: include/net/tcp.h"
-              echo "  必须包含: CA_EVENT_TLP_RECOVERY, rate_sample 新增字段, bbr_shared_info 等"
-              exit 1
-            fi
+            echo "::error::补丁应用失败，可能需要手动解决冲突"
+            exit 1
           fi
-          # 验证升级是否成功
+          # 3) 验证核心文件是否存在
           if [ -f net/ipv4/tcp_bbr3.c ]; then
-            echo "✅ BBRv3 源码已注入（内核版本 6.6）"
+            echo "✅ BBRv3 源码注入成功"
           else
-            echo "::error::BBRv3 注入失败"
+            echo "::error::未找到 tcp_bbr3.c，升级失败"
             exit 1
           fi
     
