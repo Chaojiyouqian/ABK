@@ -712,17 +712,32 @@ jobs:
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
      
-      - name: 应用 BBRv3 补丁（从 CachyOS 提取）
+      - name: 应用 BBRv3 补丁 (从 Google 官方分支移植)
+        working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
         run: |
-          cd ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-          git clone --depth 1 https://github.com/CachyOS/kernel-patches.git /tmp/cachyos-patches
-          PATCH_FILE=$(find /tmp/cachyos-patches -name "*.patch" -exec grep -l -i "bbr" {} \; | head -n1)
-          if [ -z "$PATCH_FILE" ]; then
-            echo "::error::在 CachyOS 补丁集中未找到 BBRv3 补丁"
-            exit 1
+          set -euo pipefail
+          # 1. 将 Google 官方 BBR 仓库添加为远程源 (只获取 v3 分支)
+          git remote add bbr https://github.com/google/bbr.git || true
+          git fetch --depth=1 bbr v3
+          # 2. 尝试直接变基 (rebase) 到 BBRv3
+          #    这是 Google 推荐的方式，能保留完整的提交历史
+          if git rebase bbr/v3; then
+            echo "✅ BBRv3 补丁通过 rebase 应用成功"
+          else
+            # 3. 如果 rebase 失败，放弃并尝试 cherry-pick
+            echo "::warning::Rebase 失败，尝试使用 cherry-pick..."
+            git rebase --abort
+            # 获取 BBRv3 分支上的所有提交哈希，并按顺序 cherry-pick
+            COMMITS=$(git rev-list --reverse bbr/v3)
+            for commit in $COMMITS; do
+              if ! git cherry-pick $commit; then
+                echo "::error::Cherry-pick 提交 $commit 时发生冲突，请手动解决。"
+                git cherry-pick --abort
+                exit 1
+              fi
+            done
+            echo "✅ BBRv3 补丁通过 cherry-pick 应用成功"
           fi
-          patch -p1 -l -F3 < "$PATCH_FILE"
-          rm -rf /tmp/cachyos-patches
        
       - name: 配置内核名称
         working-directory: ${{ env.KERNEL_ROOT }}
