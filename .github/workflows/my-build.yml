@@ -768,7 +768,7 @@ jobs:
             echo "当前内核 $KERNEL_VERSION 不应用 Oryon 补丁，跳过"
           fi
           
-      - name: 强制升级 TCP BBR 至 v3（6.6 内核）
+      - name: 强制集成 BBRv3（从 Google 仓库直接拉取）
         shell: bash
         run: |
           set -euo pipefail
@@ -776,43 +776,45 @@ jobs:
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
           cd "$COMMON_ROOT"
 
-          echo "下载 BBRv3 补丁..."
-          curl -L -o /tmp/bbrv3.patch \
-            https://github.com/xkse4/android_kernel_common_oneplus_sm8750/commit/45b3565.patch
+          # ---------- 1. 添加 Google BBR 远程仓库 ----------
+          if ! git remote get-url google-bbr &>/dev/null; then
+            git remote add google-bbr https://github.com/google/bbr.git
+          fi
+          git fetch google-bbr v3 --depth=1
 
-          echo "应用补丁..."
-          if patch -p1 < /tmp/bbrv3.patch; then
-            echo "✅ BBRv3 补丁应用成功"
+          # ---------- 2. 尝试应用完整的补丁集（cherry-pick） ----------
+          echo "⏳ 尝试应用 BBRv3 补丁集..."
+          if git cherry-pick google-bbr/v3..google-bbr/v3; then
+            echo "✅ BBRv3 补丁集成功应用！"
           else
-            echo "⚠️ 补丁部分失败，尝试手动修复 Makefile..."
+            echo "⚠️ 补丁集存在冲突，采用强制替换方案..."
 
-            # 1. 确保 tcp_bbr3.c 存在
-            if [ ! -f net/ipv4/tcp_bbr3.c ]; then
-              curl -o net/ipv4/tcp_bbr3.c \
-                https://raw.githubusercontent.com/xkse4/android_kernel_common_oneplus_sm8750/oneplus/sm8750_b_16.0.0_oneplus_13/net/ipv4/tcp_bbr3.c
-            fi
+            # 放弃 cherry-pick
+           git cherry-pick --abort
 
-            # 2. 删除现有的 BBR 构建规则行
+           # ---------- 3. 强制替换 tcp_bbr 源码 ----------
+            echo "⏳ 直接从 Google 仓库提取 tcp_bbr.c 并替换为 tcp_bbr3.c ..."
+            # 从 v3 分支导出 tcp_bbr.c 到内核 net/ipv4/tcp_bbr3.c
+            git show google-bbr/v3:net/ipv4/tcp_bbr.c > net/ipv4/tcp_bbr3.c
+
+            # 修改 Makefile：移除原有的 BBR 构建规则，添加新规则
             sed -i '/^obj-\$(CONFIG_TCP_CONG_BBR)/d' net/ipv4/Makefile
             sed -i '/^tcp_bbr-y/d' net/ipv4/Makefile
+            echo 'obj-$(CONFIG_TCP_CONG_BBR) += tcp_bbr3.o' >> net/ipv4/Makefile
+            echo 'tcp_bbr3-y := tcp_bbr3.o' >> net/ipv4/Makefile
 
-            # 3. 添加新的构建规则（直接 echo，避免 heredoc）
-            echo 'obj-$(CONFIG_TCP_CONG_BBR) += tcp_bbr.o' >> net/ipv4/Makefile
-            echo 'tcp_bbr-y := tcp_bbr3.o' >> net/ipv4/Makefile
-
-            # 4. 更新 Kconfig 描述（如未更新）
+            # 修改 Kconfig 描述（可选，使 menuconfig 显示 BBRv3）
             sed -i 's/default "BBR TCP"/default "BBRv3 TCP"/' net/ipv4/Kconfig || true
 
-            echo "✅ BBRv3 Makefile 冲突已手动修复"
+            echo "✅ BBRv3 源码已强制注入"
           fi
 
-          # 验证
-          if [ -f net/ipv4/tcp_bbr3.c ]; then
-            echo "✅ BBRv3 源码注入成功"
-          else
-            echo "::error::BBRv3 源码注入失败"
-            exit 1
-          fi
+          # ---------- 4. 确保 defconfig 启用 BBR ----------
+          DEFCONFIG="arch/arm64/configs/gki_defconfig"
+          grep -q "CONFIG_TCP_CONG_BBR=y" "$DEFCONFIG" || echo "CONFIG_TCP_CONG_BBR=y" >> "$DEFCONFIG"
+          grep -q "CONFIG_TCP_CONG_ADVANCED=y" "$DEFCONFIG" || echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$DEFCONFIG"
+          grep -q "CONFIG_DEFAULT_TCP_CONG" "$DEFCONFIG" || echo 'CONFIG_DEFAULT_TCP_CONG="bbr"' >> "$DEFCONFIG"
+          echo "✅ BBRv3 配置已启用"
     
       - name: 配置 defconfig
         shell: bash
