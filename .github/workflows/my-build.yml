@@ -1045,7 +1045,33 @@ jobs:
           ensure_defconfig_value CONFIG_NET_SCH_FQ y
           ensure_defconfig_value CONFIG_NET_SCH_FQ_CODEL y
           echo "✓ Networking 配置完成"
-    
+     
+      - name: 下载并设置最新 Clang（所有内核版本）
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
+          KERNEL_PLATFORM="$WORKSPACE/kernel_workspace/kernel_platform"
+          CLANG_VERSION="clang-r522817"  # 支持 -mcpu=oryon 的版本，可选更高
+          CLANG_DIR="$KERNEL_PLATFORM/prebuilts/clang/host/linux-x86/$CLANG_VERSION"
+
+          if [ -d "$CLANG_DIR" ]; then
+            echo "✅ Clang $CLANG_VERSION 已存在，跳过下载"
+            echo "NEW_CLANG_PATH=$CLANG_DIR/bin" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          echo "⏳ 下载 Clang $CLANG_VERSION ..."
+          mkdir -p "$(dirname "$CLANG_DIR")"
+          cd "$(dirname "$CLANG_DIR")"
+          wget -q "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/${CLANG_VERSION}.tar.gz" -O clang.tar.gz
+          mkdir -p "$CLANG_VERSION"
+          tar -xzf clang.tar.gz -C "$CLANG_VERSION"
+          rm clang.tar.gz
+
+          echo "NEW_CLANG_PATH=$CLANG_DIR/bin" >> $GITHUB_ENV
+          echo "✅ Clang $CLANG_VERSION 下载完成"
+      
       - name: 编译内核
         shell: bash
         run: |
@@ -1059,27 +1085,47 @@ jobs:
           export KBUILD_BUILD_HOST="abk"
           export KBUILD_BUILD_VERSION=1
 
-          # 公共编译参数（所有版本统一）
-          MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all)
+          # ---------- 1. 优先使用新下载的 Clang（如果存在） ----------
+          if [ -n "${NEW_CLANG_PATH:-}" ] && [ -d "$NEW_CLANG_PATH" ]; then
+            export PATH="$NEW_CLANG_PATH:$PATH"
+            echo "✅ 使用新下载的 Clang: $NEW_CLANG_PATH"
+          fi
 
+          # ---------- 2. 设置各版本的默认工具链路径（作为回退） ----------
           case "$KERNEL_VERSION" in
-           6.1)
+            6.1)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
-              "${MAKE_COMMON[@]}" KCFLAGS+=-O2 KCFLAGS+=-mcpu=oryon
               ;;
             6.6)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
-              "${MAKE_COMMON[@]}" KCFLAGS+=-O2 KCFLAGS+=-mcpu=oryon
               ;;
             5.15)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
-              "${MAKE_COMMON[@]}" KCFLAGS+=-mcpu=oryon
               ;;
             5.10)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
-              make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all KCFLAGS+=-mcpu=oryon
               ;;
           esac
+
+          # ---------- 3. 检测 Clang 是否支持 -mcpu=oryon ----------
+          if clang -mcpu=oryon -E - < /dev/null > /dev/null 2>&1; then
+            echo "✅ Clang 支持 -mcpu=oryon，启用 Oryon 编译器优化"
+            KCFLAGS_EXTRA="-O2 -mcpu=oryon"
+          else
+            echo "⚠️ Clang 不支持 -mcpu=oryon，仅使用 -O2 优化"
+            KCFLAGS_EXTRA="-O2"
+          fi
+
+          # ---------- 4. 公共编译参数 ----------
+          MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all)
+
+          # ---------- 5. 执行编译 ----------
+          if [ "$KERNEL_VERSION" = "5.10" ]; then
+            make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all KCFLAGS+="$KCFLAGS_EXTRA"
+          else
+            "${MAKE_COMMON[@]}" KCFLAGS+="$KCFLAGS_EXTRA"
+          fi
+
           ccache -s
 
       - name: 打包 AnyKernel3
