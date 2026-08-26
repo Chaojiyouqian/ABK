@@ -1,56 +1,56 @@
-name: OnePlus 内核构建流程
+名字: 一加内核构建流程
 
-permissions:
-  contents: write
-  actions: write
+许可:
+内容: 写
+行动: 写
 
-on:
-  workflow_call:
-    inputs:
-      cpu:
-        required: true
-        type: string
-      device_manifest:
-        required: true
-        type: string
-      android_version:
-        required: true
-        type: string
-      kernel_version:
-        required: true
-        type: string
-      ksu_variant:
-        required: true
-        type: string
-      enable_susfs:
-        required: false
-        type: boolean
-        default: false
-      use_kpm:
-        required: false
-        type: boolean
-        default: false
-      use_lz4kd:
-        required: false
-        type: boolean
-        default: false
-      use_bbg:
-        required: false
-        type: boolean
-        default: true
-      use_bbr:
-        required: false
-        type: boolean
-        default: false
-      use_proxy_optimization:
-        required: false
-        type: boolean
-        default: true
-      use_unicode_bypass:
-        required: false
-        type: boolean
-        default: false
-      use_ddk:
+在:
+工作流_呼叫:
+输入:
+中央处理器:
+需要: 真实的
+类型: 线
+设备清单:
+需要: 真实的
+类型: 线
+android _版本:
+需要: 真实的
+类型: 线
+内核版本:
+需要: 真实的
+类型: 线
+ksu _变量:
+需要: 真实的
+类型: 线
+启用_susfs:
+需要: 错误的
+类型: 布尔型
+系统默认值: 错误的
+使用_kpm:
+需要: 错误的
+类型: 布尔型
+系统默认值: 错误的
+使用_lz4kd:
+需要: 错误的
+类型: 布尔型
+系统默认值: 错误的
+使用_bbg:
+需要: 错误的
+类型: 布尔型
+系统默认值: 真实的
+使用_bbr:
+需要: 错误的
+类型: 布尔型
+系统默认值: 错误的
+使用_代理_优化:
+需要: 错误的
+类型: 布尔型
+使用_ddk系统默认值真实的
+使用_ unicode _旁路:
+需要: 错误的
+类型: 布尔型
+系统默认值: 错误的
+使用_ddk:
         required: false
         type: boolean
         default: false
@@ -926,64 +926,22 @@ jobs:
             grep -q '^CONFIG_LTO_CLANG_THIN=y' "$DEFCONFIG_PATH" || echo 'CONFIG_LTO_CLANG_THIN=y' >> "$DEFCONFIG_PATH"
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
+            # ---------- 全版本添加调度、能效和 AMU 配置 ----------
+          echo "正在添加调度、能效模型和 AMU 优化配置（所有版本）..."
+          for opt in \
+            CONFIG_SCHED_MC=y \
+            CONFIG_SCHED_SMT=y \
+            CONFIG_SCHED_CLUSTER=y \
+            CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y \
+            CONFIG_CPUFREQ_DT=y \
+            CONFIG_ARM64_AMU_EXTN=y \
+            CONFIG_ENERGY_MODEL=y; do
+            if ! grep -qxF "$opt" "$DEFCONFIG_PATH"; then
+              echo "$opt" >> "$DEFCONFIG_PATH"
+           fi
+          done
+          echo "✅ 调度与能效配置添加完成"
       
-      - name: 合入 Oryon 优化补丁（自动）
-        run: |
-          set -euo pipefail
-          cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
-          # 1. 添加 Linux 主线上游（仅首次需要）
-          if ! git remote get-url upstream &>/dev/null; then
-            git remote add upstream https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
-            git fetch upstream --tags
-          fi
-          echo "⏳ 从上游查找所有 Oryon 相关补丁..."
-          git fetch upstream master
-          # 2. 查找所有相关的 Oryon 提交（按时间顺序，从旧到新）
-          # 使用多种关键词组合以覆盖所有相关补丁
-          commits=$(git log --reverse --oneline upstream/master \
-              --grep="oryon" --grep="qcom,oryon" --grep="sm8750" --grep="Oryon" \
-              --all-match --format="%H" 2>/dev/null || true)
-          # 如果上面没找到，再尝试更宽泛的（只包含 oryon）
-          if [ -z "$commits" ]; then
-              commits=$(git log --reverse --oneline upstream/master --grep="oryon" --format="%H" 2>/dev/null || true)
-          fi
-          if [ -z "$commits" ]; then
-            echo "::warning::未找到任何 Oryon 相关补丁，跳过合入。"
-          else
-            for commit in $commits; do
-              # 检查该提交是否已存在于当前分支（避免重复合入）
-              if git branch --contains "$commit" --format="%(refname:short)" 2>/dev/null | grep -q "."; then
-                echo "✅ 提交 $commit 已存在于当前分支，跳过"
-                continue
-              fi
-             echo "正在尝试合入 $commit ..."
-              # 尝试 cherry-pick，如果失败则检查是否因“已存在”或“空”导致
-              if ! git cherry-pick --no-commit "$commit" 2>cherry_error.log; then
-                if grep -q "empty\|already" cherry_error.log; then
-                  echo "✅ 提交 $commit 已应用或为空，跳过"
-                  git cherry-pick --abort 2>/dev/null || true
-                else
-                  echo "::warning::合入 $commit 产生冲突，尝试跳过..."
-                  git cherry-pick --abort || true
-                fi
-              else
-                git commit -m "自动合入 Oryon 补丁: $commit"
-                echo "✅ 成功合入 $commit"
-              fi
-              rm -f cherry_error.log
-            done
-          fi
-          # 3. 追加调度集群、能效模型和 AMU 优化配置（使用 echo 避免 EOF 缩进问题）
-          echo "正在添加 Oryon 调度与能效优化配置..."
-          echo "CONFIG_SCHED_MC=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_SCHED_SMT=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_SCHED_CLUSTER=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_CPUFREQ_DT=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_ARM64_AMU_EXTN=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_ENERGY_MODEL=y" >> arch/arm64/configs/gki_defconfig
-          echo "✅ Oryon 优化准备完成"
-
       - name: 应用 Networking 增强 (IPSet + BBR)
         working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
         run: |
@@ -1071,24 +1029,25 @@ jobs:
           export KBUILD_BUILD_HOST="abk"
           export KBUILD_BUILD_VERSION=1
 
-          MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all)
+          # 公共编译参数（所有版本统一）
+          MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all)
+
           case "$KERNEL_VERSION" in
-            6.1)
-              export KBUILD_BUILD_TIMESTAMP="Tue Mar 10 03:53:33 UTC 2026"
+           6.1)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
-              "${MAKE_COMMON[@]}" KCFLAGS+=-O2
+              "${MAKE_COMMON[@]}" KCFLAGS+=-O2 KCFLAGS+=-mcpu=oryon
               ;;
             6.6)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
-              "${MAKE_COMMON[@]}" KCFLAGS+=-O2
+              "${MAKE_COMMON[@]}" KCFLAGS+=-O2 KCFLAGS+=-mcpu=oryon
               ;;
             5.15)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
-              "${MAKE_COMMON[@]}"
+              "${MAKE_COMMON[@]}" KCFLAGS+=-mcpu=oryon
               ;;
             5.10)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
-              make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all
+              make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all KCFLAGS+=-mcpu=oryon
               ;;
           esac
           ccache -s
