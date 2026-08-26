@@ -739,7 +739,35 @@ jobs:
               fi
             fi
           fi   
+      - name: 应用 Oryon 性能补丁（内核层面）
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
+          COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
+          cd "$COMMON_ROOT"
 
+          # 仅对 6.6 内核尝试应用（Oryon 补丁大多针对 6.6）
+          if [ "$KERNEL_VERSION" = "6.6" ]; then
+            echo "正在尝试应用 Oryon 性能补丁..."
+            # 从 kernel_patches 中复制 Oryon 补丁（如有）
+            if [ -f "$WORKSPACE/kernel_patches/oryon/oryon_memcpy.patch" ]; then
+              patch -p1 < "$WORKSPACE/kernel_patches/oryon/oryon_memcpy.patch" || echo "⚠️ memcpy 补丁应用失败，跳过"
+            else
+              # 若本地没有，可从已知仓库下载（示例）
+              curl -L -o /tmp/oryon_memcpy.patch \
+                https://raw.githubusercontent.com/some-org/kernel_patches/main/oryon/oryon_memcpy.patch || true
+              if [ -f /tmp/oryon_memcpy.patch ]; then
+                patch -p1 < /tmp/oryon_memcpy.patch || echo "⚠️ 下载的 memcpy 补丁应用失败，跳过"
+              else
+                echo "未找到 Oryon memcpy 补丁，跳过"
+              fi
+            fi
+            echo "✅ Oryon 补丁处理完成"
+          else
+            echo "当前内核 $KERNEL_VERSION 不应用 Oryon 补丁，跳过"
+          fi
+          
       - name: 强制升级 TCP BBR 至 v3（6.6 内核）
         shell: bash
         run: |
