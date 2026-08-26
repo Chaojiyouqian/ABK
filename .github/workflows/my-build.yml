@@ -1052,7 +1052,7 @@ jobs:
           set -euo pipefail
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           KERNEL_PLATFORM="$WORKSPACE/kernel_workspace/kernel_platform"
-          CLANG_VERSION="clang-r522817"  # 支持 -mcpu=oryon 的版本，可选更高
+          CLANG_VERSION="clang-r522817"
           CLANG_DIR="$KERNEL_PLATFORM/prebuilts/clang/host/linux-x86/$CLANG_VERSION"
 
           if [ -d "$CLANG_DIR" ]; then
@@ -1064,13 +1064,15 @@ jobs:
           echo "⏳ 下载 Clang $CLANG_VERSION ..."
           mkdir -p "$(dirname "$CLANG_DIR")"
           cd "$(dirname "$CLANG_DIR")"
-          wget -q "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/${CLANG_VERSION}.tar.gz" -O clang.tar.gz
+          wget "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/${CLANG_VERSION}.tar.gz" -O clang.tar.gz
           mkdir -p "$CLANG_VERSION"
           tar -xzf clang.tar.gz -C "$CLANG_VERSION"
           rm clang.tar.gz
 
           echo "NEW_CLANG_PATH=$CLANG_DIR/bin" >> $GITHUB_ENV
           echo "✅ Clang $CLANG_VERSION 下载完成"
+          # 验证版本
+          $CLANG_DIR/bin/clang --version
       
       - name: 编译内核
         shell: bash
@@ -1085,27 +1087,30 @@ jobs:
           export KBUILD_BUILD_HOST="abk"
           export KBUILD_BUILD_VERSION=1
 
-          # ---------- 1. 优先使用新下载的 Clang（如果存在） ----------
-          if [ -n "${NEW_CLANG_PATH:-}" ] && [ -d "$NEW_CLANG_PATH" ]; then
-            export PATH="$NEW_CLANG_PATH:$PATH"
-            echo "✅ 使用新下载的 Clang: $NEW_CLANG_PATH"
-          fi
-
-          # ---------- 2. 设置各版本的默认工具链路径（作为回退） ----------
+          # ---------- 1. 根据内核版本设置默认 Clang 路径 ----------
           case "$KERNEL_VERSION" in
             6.1)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
+              DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin"
               ;;
             6.6)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
+              DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin"
               ;;
             5.15)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
+              DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin"
               ;;
             5.10)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
+              DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin"
               ;;
           esac
+
+          # ---------- 2. 优先使用新下载的 Clang（如果存在），否则使用默认 ----------
+          if [ -n "${NEW_CLANG_PATH:-}" ] && [ -d "$NEW_CLANG_PATH" ]; then
+            export PATH="$NEW_CLANG_PATH:$DEFAULT_CLANG_PATH:$PATH"
+            echo "✅ 使用新下载的 Clang: $NEW_CLANG_PATH"
+          else
+            export PATH="$DEFAULT_CLANG_PATH:$PATH"
+            echo "⚠️ 未找到新 Clang，使用默认: $DEFAULT_CLANG_PATH"
+          fi
 
           # ---------- 3. 检测 Clang 是否支持 -mcpu=oryon ----------
           if clang -mcpu=oryon -E - < /dev/null > /dev/null 2>&1; then
