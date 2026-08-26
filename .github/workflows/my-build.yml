@@ -739,6 +739,7 @@ jobs:
               fi
             fi
           fi   
+    
       - name: 应用 Oryon 性能补丁（内核层面）
         shell: bash
         run: |
@@ -747,25 +748,11 @@ jobs:
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
           cd "$COMMON_ROOT"
 
-          # 仅对 6.6 内核尝试应用（Oryon 补丁大多针对 6.6）
-          if [ "$KERNEL_VERSION" = "6.6" ]; then
-            echo "正在尝试应用 Oryon 性能补丁..."
-            # 从 kernel_patches 中复制 Oryon 补丁（如有）
-            if [ -f "$WORKSPACE/kernel_patches/oryon/oryon_memcpy.patch" ]; then
-              patch -p1 < "$WORKSPACE/kernel_patches/oryon/oryon_memcpy.patch" || echo "⚠️ memcpy 补丁应用失败，跳过"
-            else
-              # 若本地没有，可从已知仓库下载（示例）
-              curl -L -o /tmp/oryon_memcpy.patch \
-                https://raw.githubusercontent.com/some-org/kernel_patches/main/oryon/oryon_memcpy.patch || true
-              if [ -f /tmp/oryon_memcpy.patch ]; then
-                patch -p1 < /tmp/oryon_memcpy.patch || echo "⚠️ 下载的 memcpy 补丁应用失败，跳过"
-              else
-                echo "未找到 Oryon memcpy 补丁，跳过"
-              fi
-            fi
+          if [ -f "$WORKSPACE/kernel_patches/oryon/oryon_memcpy.patch" ]; then
+             patch -p1 < "$WORKSPACE/kernel_patches/oryon/oryon_memcpy.patch" || echo "⚠️ 补丁应用失败，跳过"
             echo "✅ Oryon 补丁处理完成"
           else
-            echo "当前内核 $KERNEL_VERSION 不应用 Oryon 补丁，跳过"
+            echo "⚠️ 未找到 Oryon 补丁文件，跳过"
           fi
           
       - name: 强制集成 BBRv3（从 Google 仓库直接拉取）
@@ -782,34 +769,23 @@ jobs:
           fi
           git fetch google-bbr v3 --depth=1
 
-          # ---------- 2. 尝试应用完整的补丁集（cherry-pick） ----------
-          echo "⏳ 尝试应用 BBRv3 补丁集..."
-          if git cherry-pick google-bbr/v3..google-bbr/v3; then
-            echo "✅ BBRv3 补丁集成功应用！"
-          else
-            echo "⚠️ 补丁集存在冲突，采用强制替换方案..."
+          # ---------- 2. 强制替换 tcp_bbr 源码 ----------
+          echo "⏳ 直接从 Google 仓库提取 tcp_bbr.c 并替换为 tcp_bbr3.c ..."
+          # 从 v3 分支导出 tcp_bbr.c 到内核 net/ipv4/tcp_bbr3.c
+          git show google-bbr/v3:net/ipv4/tcp_bbr.c > net/ipv4/tcp_bbr3.c
 
-            # 放弃 cherry-pick
-           git cherry-pick --abort
+           # 修改 Makefile：移除原有的 BBR 构建规则，添加新规则
+          sed -i '/^obj-\$(CONFIG_TCP_CONG_BBR)/d' net/ipv4/Makefile
+          sed -i '/^tcp_bbr-y/d' net/ipv4/Makefile
+          echo 'obj-$(CONFIG_TCP_CONG_BBR) += tcp_bbr3.o' >> net/ipv4/Makefile
+          echo 'tcp_bbr3-y := tcp_bbr3.o' >> net/ipv4/Makefile
 
-           # ---------- 3. 强制替换 tcp_bbr 源码 ----------
-            echo "⏳ 直接从 Google 仓库提取 tcp_bbr.c 并替换为 tcp_bbr3.c ..."
-            # 从 v3 分支导出 tcp_bbr.c 到内核 net/ipv4/tcp_bbr3.c
-            git show google-bbr/v3:net/ipv4/tcp_bbr.c > net/ipv4/tcp_bbr3.c
+          # 修改 Kconfig 描述（可选，使 menuconfig 显示 BBRv3）
+           sed -i 's/default "BBR TCP"/default "BBRv3 TCP"/' net/ipv4/Kconfig || true
 
-            # 修改 Makefile：移除原有的 BBR 构建规则，添加新规则
-            sed -i '/^obj-\$(CONFIG_TCP_CONG_BBR)/d' net/ipv4/Makefile
-            sed -i '/^tcp_bbr-y/d' net/ipv4/Makefile
-            echo 'obj-$(CONFIG_TCP_CONG_BBR) += tcp_bbr3.o' >> net/ipv4/Makefile
-            echo 'tcp_bbr3-y := tcp_bbr3.o' >> net/ipv4/Makefile
+          echo "✅ BBRv3 源码已强制注入"
 
-            # 修改 Kconfig 描述（可选，使 menuconfig 显示 BBRv3）
-            sed -i 's/default "BBR TCP"/default "BBRv3 TCP"/' net/ipv4/Kconfig || true
-
-            echo "✅ BBRv3 源码已强制注入"
-          fi
-
-          # ---------- 4. 确保 defconfig 启用 BBR ----------
+          # ---------- 3. 确保 defconfig 启用 BBR ----------
           DEFCONFIG="arch/arm64/configs/gki_defconfig"
           grep -q "CONFIG_TCP_CONG_BBR=y" "$DEFCONFIG" || echo "CONFIG_TCP_CONG_BBR=y" >> "$DEFCONFIG"
           grep -q "CONFIG_TCP_CONG_ADVANCED=y" "$DEFCONFIG" || echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$DEFCONFIG"
