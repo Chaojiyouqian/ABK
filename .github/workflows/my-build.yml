@@ -740,58 +740,91 @@ jobs:
             fi
           fi   
     
-      - name: 应用 Oryon 性能补丁（内核层面）
-        shell: bash
+      - name: Apply LZ4 1.10.0 & ZSTD 1.5.7 Patches
         run: |
-          set -euo pipefail
-          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
-          COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
-          cd "$COMMON_ROOT"
-
-          if [ -f "$WORKSPACE/kernel_patches/oryon/oryon_memcpy.patch" ]; then
-             patch -p1 < "$WORKSPACE/kernel_patches/oryon/oryon_memcpy.patch" || echo "⚠️ 补丁应用失败，跳过"
-            echo "✅ Oryon 补丁处理完成"
+          echo "Adding LZ4 & ZSTD patches..."
+          cd kernel_workspace/common
+          mkdir -p lib/lz4/lz4armv8
+          cp ../kernel_patches/zram/001-lz4.patch ./
+          cp ../kernel_patches/zram/lz4armv8.S lib/lz4/lz4armv8.S
+          cp ../kernel_patches/zram/lz4armv8.S lib/lz4/lz4armv8/lz4armv8.S
+          cp ../kernel_patches/zram/002-zstd.patch ./
+          git apply -p1 < 001-lz4.patch || echo "LZ4 Patch failed or already applied"
+          patch -p1 < 002-zstd.patch || echo "ZSTD Patch failed or already applied" 
+     
+      - name: Prepare CPU Optimizations (Oryon SM8750)
+        run: |
+          if [[ "${{ github.event.inputs.clang_version }}" == "clang18" ]]; then
+            echo "EXTRA_CFLAGS=-march=armv9-a+crypto+dotprod" >> $GITHUB_ENV
           else
-            echo "⚠️ 未找到 Oryon 补丁文件，跳过"
+            echo "EXTRA_CFLAGS=-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
           fi
-          
-      - name: 强制集成 BBRv3（从 Google 仓库直接拉取）
+          cd kernel_workspace/common
+          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_ARM64_ERRATUM_2658417=y
+          CONFIG_ARCH_QCOM=y
+          CONFIG_HZ_300=y
+          CONFIG_PREEMPT=y
+          CONFIG_NO_HZ_IDLE=y
+          EOF
+          echo "✅ Oryon flags prepared."
+
+      - name: F2FS Optimizations
+        working-directory: kernel_workspace
+        run: |
+          cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_F2FS_FS=y
+          CONFIG_F2FS_STAT_FS=y
+          CONFIG_F2FS_FS_XATTR=y
+          CONFIG_F2FS_FS_POSIX_ACL=y
+          CONFIG_F2FS_FS_SECURITY=y
+          CONFIG_F2FS_FS_COMPRESSION=y
+          CONFIG_F2FS_FS_LZO=y
+          CONFIG_F2FS_FS_LZ4=y
+          CONFIG_F2FS_FS_ZSTD=y
+          EOF
+
+      - name: 强制应用 BBRv3 补丁（从 WildKernels 仓库）
         shell: bash
         run: |
           set -euo pipefail
-          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
-          COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
-          cd "$COMMON_ROOT"
+          echo "======================================"
+          echo "  应用 BBRv3 补丁"
+          echo "======================================"
 
-          # ---------- 1. 添加 Google BBR 远程仓库 ----------
-          if ! git remote get-url google-bbr &>/dev/null; then
-            git remote add google-bbr https://github.com/google/bbr.git
+          cd "$GITHUB_WORKSPACE/kernel_workspace/common"
+
+          # 1. 从 GitHub 下载补丁文件（使用 raw 直链，无需 token）
+          PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android15-6.6.patch"
+          echo "⏳ 下载补丁: $PATCH_URL"
+          curl -fsSL --retry 3 --retry-delay 5 -o bbrv3.patch "$PATCH_URL"
+
+          if [ ! -s bbrv3.patch ]; then
+            echo "::error::BBRv3 补丁下载失败（文件为空或404）"
+            exit 1
           fi
-          git fetch google-bbr v3 --depth=1
 
-          # ---------- 2. 强制替换 tcp_bbr 源码 ----------
-          echo "⏳ 直接从 Google 仓库提取 tcp_bbr.c 并替换为 tcp_bbr3.c ..."
-          # 从 v3 分支导出 tcp_bbr.c 到内核 net/ipv4/tcp_bbr3.c
-          git show google-bbr/v3:net/ipv4/tcp_bbr.c > net/ipv4/tcp_bbr3.c
+          # 2. 尝试应用补丁（先 git apply，失败则 patch）
+          echo "⏳ 应用补丁..."
+          if git apply -p1 < bbrv3.patch 2>/dev/null; then
+            echo "✅ BBRv3 git apply 成功"
+          elif patch -p1 -F 3 < bbrv3.patch 2>/dev/null; then
+            echo "✅ BBRv3 patch 成功"
+          else
+            echo "::error::BBRv3 补丁应用失败，中止构建"
+            exit 1
+          fi
 
-           # 修改 Makefile：移除原有的 BBR 构建规则，添加新规则
-          sed -i '/^obj-\$(CONFIG_TCP_CONG_BBR)/d' net/ipv4/Makefile
-          sed -i '/^tcp_bbr-y/d' net/ipv4/Makefile
-          echo 'obj-$(CONFIG_TCP_CONG_BBR) += tcp_bbr3.o' >> net/ipv4/Makefile
-          echo 'tcp_bbr3-y := tcp_bbr3.o' >> net/ipv4/Makefile
-
-          # 修改 Kconfig 描述（可选，使 menuconfig 显示 BBRv3）
-           sed -i 's/default "BBR TCP"/default "BBRv3 TCP"/' net/ipv4/Kconfig || true
-
-          echo "✅ BBRv3 源码已强制注入"
-
-          # ---------- 3. 确保 defconfig 启用 BBR ----------
+          # 3. 启用 defconfig 中的 BBRv3
           DEFCONFIG="arch/arm64/configs/gki_defconfig"
-          grep -q "CONFIG_TCP_CONG_BBR=y" "$DEFCONFIG" || echo "CONFIG_TCP_CONG_BBR=y" >> "$DEFCONFIG"
-          grep -q "CONFIG_TCP_CONG_ADVANCED=y" "$DEFCONFIG" || echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$DEFCONFIG"
-          grep -q "CONFIG_DEFAULT_TCP_CONG" "$DEFCONFIG" || echo 'CONFIG_DEFAULT_TCP_CONG="bbr"' >> "$DEFCONFIG"
-          echo "✅ BBRv3 配置已启用"
-    
+          echo "CONFIG_TCP_CONG_BBR3=y" >> "$DEFCONFIG"
+          echo "CONFIG_DEFAULT_BBR3=y" >> "$DEFCONFIG"
+          echo "✅ BBRv3 配置已写入 defconfig"
+
+          echo "======================================"
+          echo "  BBRv3 集成完成"
+          echo "======================================"    
+          
       - name: 配置 defconfig
         shell: bash
         run: |
@@ -1024,34 +1057,51 @@ jobs:
           ensure_defconfig_value CONFIG_NET_SCH_FQ_CODEL y
           echo "✓ Networking 配置完成"
      
-      - name: 下载并设置最新 Clang（所有内核版本）
+      - name: 下载并设置最新 Clang（使用缓存 + aria2c）
         shell: bash
         run: |
           set -euo pipefail
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           KERNEL_PLATFORM="$WORKSPACE/kernel_workspace/kernel_platform"
-          CLANG_VERSION="clang-r522817"
+          # 使用更新的版本
+          CLANG_VERSION="clang-r563880c"
           CLANG_DIR="$KERNEL_PLATFORM/prebuilts/clang/host/linux-x86/$CLANG_VERSION"
 
+          # 如果已存在，直接设置环境变量并跳过
           if [ -d "$CLANG_DIR" ]; then
             echo "✅ Clang $CLANG_VERSION 已存在，跳过下载"
             echo "NEW_CLANG_PATH=$CLANG_DIR/bin" >> $GITHUB_ENV
             exit 0
           fi
 
+          # 尝试从缓存恢复（actions/cache 在之前步骤已恢复，但若没命中则下载）
+          # 注意：缓存恢复步骤应在之前单独配置，这里只做下载
           echo "⏳ 下载 Clang $CLANG_VERSION ..."
           mkdir -p "$(dirname "$CLANG_DIR")"
           cd "$(dirname "$CLANG_DIR")"
-          wget "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/${CLANG_VERSION}.tar.gz" -O clang.tar.gz
+
+          # 安装 aria2（如果未安装）
+          sudo apt-get update && sudo apt-get install -y aria2
+
+          # 多线程下载
+          aria2c -x16 -s16 -k1M -j16 --retry-wait=5 --max-tries=10 \
+            -d . -o clang.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android16-qpr2-release/${CLANG_VERSION}.tar.gz"
+
           mkdir -p "$CLANG_VERSION"
           tar -xzf clang.tar.gz -C "$CLANG_VERSION"
           rm clang.tar.gz
 
           echo "NEW_CLANG_PATH=$CLANG_DIR/bin" >> $GITHUB_ENV
           echo "✅ Clang $CLANG_VERSION 下载完成"
-          # 验证版本
-          $CLANG_DIR/bin/clang --version
-      
+
+      - name: 缓存 Clang
+        uses: actions/cache@v4
+        id: clang-cache
+        with:
+          path: oneplus_workspace/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r563880c
+          key: clang-${{ runner.os }}-clang-r563880c
+          
       - name: 编译内核
         shell: bash
         run: |
