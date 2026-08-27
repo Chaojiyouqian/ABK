@@ -1109,7 +1109,15 @@ jobs:
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
           cd "$COMMON_ROOT"
+          # ---------- 0. 准备 RAM Disk 和 LTO 缓存 ----------
+            mkdir -p /dev/shm/kout
+            mkdir -p /dev/shm/ldcache
 
+          # 创建 ld-wrapper（使用 RAM Disk 作为 LTO 缓存）
+           echo '#!/bin/bash' > ld-wrapper
+           echo 'ld.lld "$@" --thinlto-cache-dir=/dev/shm/ldcache --thinlto-jobs=$(($(nproc --all) / 2))' >> ld-wrapper
+           chmod +x ld-wrapper
+           
           export PATH="/usr/lib/ccache:$PATH"
           export KBUILD_BUILD_USER="abk"
           export KBUILD_BUILD_HOST="abk"
