@@ -419,8 +419,6 @@ jobs:
           elif [ "$KERNEL_VERSION" = "6.1" ]; then
             [ -f 001-lz4.patch ] && git apply -p1 < 001-lz4.patch || true
             [ -f 002-zstd.patch ] && patch -p1 < 002-zstd.patch || true
-          elif [ "$KERNEL_VERSION" = "6.6" ]; then
-            [ -f 001-lz4.patch ] && git apply -p1 < 001-lz4.patch || true
           fi
           if [ "$EFFECTIVE_ENABLE_SUSFS" = "true" ]; then
             [ -f "50_add_susfs_in_gki-${ANDROID_VERSION}-${KERNEL_VERSION}.patch" ] && \
@@ -750,7 +748,6 @@ jobs:
           CONFIG_ARM64_ERRATUM_2658417=y
           CONFIG_ARCH_QCOM=y
           CONFIG_HZ_300=y
-          CONFIG_PREEMPT=y
           CONFIG_NO_HZ_IDLE=y
           EOF
           echo "✅ Oryon flags prepared."
@@ -764,10 +761,6 @@ jobs:
           CONFIG_F2FS_FS_XATTR=y
           CONFIG_F2FS_FS_POSIX_ACL=y
           CONFIG_F2FS_FS_SECURITY=y
-          CONFIG_F2FS_FS_COMPRESSION=y
-          CONFIG_F2FS_FS_LZO=y
-          CONFIG_F2FS_FS_LZ4=y
-          CONFIG_F2FS_FS_ZSTD=y
           EOF
 
       - name: 强制应用 BBRv3 补丁（从 WildKernels 仓库）
@@ -780,6 +773,7 @@ jobs:
 
           cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
 
+          # 1. 下载补丁
           PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android15-6.6.patch"
           echo "⏳ 下载补丁: $PATCH_URL"
           curl -fsSL --retry 3 --retry-delay 5 -o bbrv3.patch "$PATCH_URL"
@@ -789,6 +783,7 @@ jobs:
             exit 1
           fi
 
+          # 2. 应用补丁
           echo "⏳ 应用补丁..."
           if git apply -p1 < bbrv3.patch 2>/dev/null; then
             echo "✅ BBRv3 git apply 成功"
@@ -799,12 +794,28 @@ jobs:
             exit 1
           fi
 
-          # 仅添加 BBRv3 配置项（不添加无效的 DEFAULT_BBR3）
-          echo "CONFIG_TCP_CONG_BBR3=y" >> arch/arm64/configs/gki_defconfig
+          # 3. 清理旧配置并添加 BBRv3
+          DEFCONFIG="arch/arm64/configs/gki_defconfig"
+          # 删除可能冲突的旧 BBR 配置
+          sed -i '/^CONFIG_TCP_CONG_BBR=/d' "$DEFCONFIG"
+          sed -i '/^CONFIG_TCP_CONG_ADVANCED=/d' "$DEFCONFIG"
+          sed -i '/^CONFIG_DEFAULT_TCP_CONG=/d' "$DEFCONFIG"
+          sed -i '/^CONFIG_TCP_CONG_BIC=/d' "$DEFCONFIG"
+          sed -i '/^CONFIG_TCP_CONG_CUBIC=/d' "$DEFCONFIG"
+          sed -i '/^CONFIG_TCP_CONG_WESTWOOD=/d' "$DEFCONFIG"
+          sed -i '/^CONFIG_TCP_CONG_HTCP=/d' "$DEFCONFIG"
+
+          # 添加 BBRv3 配置及推荐的队列调度
+          echo "CONFIG_TCP_CONG_BBR3=y" >> "$DEFCONFIG"
+          echo 'CONFIG_DEFAULT_TCP_CONG="bbr"' >> "$DEFCONFIG"
+          echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$DEFCONFIG"
+          echo "CONFIG_NET_SCH_FQ=y" >> "$DEFCONFIG"
+          echo "CONFIG_NET_SCH_FQ_CODEL=y" >> "$DEFCONFIG"
+
           echo "✅ BBRv3 配置已写入 defconfig"
           echo "======================================"
           echo "  BBRv3 集成完成"
-          echo "======================================" 
+          echo "======================================"
           
       - name: 配置 defconfig
         shell: bash
@@ -895,14 +906,8 @@ jobs:
           EOF
           fi
           if [ "$USE_BBR" = "true" ]; then
-              cat >> "$DEFCONFIG_PATH" <<'EOF'
-          CONFIG_TCP_CONG_ADVANCED=y
-          CONFIG_TCP_CONG_BBR=y
-          CONFIG_NET_SCH_FQ=y
-          CONFIG_TCP_CONG_BIC=n
-          CONFIG_TCP_CONG_WESTWOOD=n
-          CONFIG_TCP_CONG_HTCP=n
-          EOF
+          # BBRv3 补丁会处理拥塞控制，此处不再添加任何 BBR 相关配置
+          echo "BBRv3 will be used for TCP congestion control."
           fi
           if [ "$EFFECTIVE_USE_LZ4KD" = "true" ]; then
               cat >> "$DEFCONFIG_PATH" <<'EOF'
@@ -964,16 +969,15 @@ jobs:
           done
           echo "✅ 调度与能效配置添加完成"
       
-      - name: 应用 Networking 增强 (IPSet + BBR)
+      - name: 应用 Networking 增强 (IPSet + IPv6 NAT)
         working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
         run: |
           set -euo pipefail
 
-          # 定义 defconfig 路径（基于当前工作目录）
           DEFCONFIG="arch/arm64/configs/gki_defconfig"
 
           ensure_defconfig_value() {
-            local cfg="$1"
+           local cfg="$1"
             local value="$2"
             local line="${cfg}=${value}"
 
@@ -988,7 +992,7 @@ jobs:
             fi
           }
 
-          echo " 添加 IPSet & IPv6 NAT 支持"
+          echo "添加 IPSet & IPv6 NAT 支持"
           ensure_defconfig_value CONFIG_IP_SET y
           ensure_defconfig_value CONFIG_IP_SET_MAX 65534
           ensure_defconfig_value CONFIG_IP_SET_BITMAP_IP y
@@ -1012,31 +1016,7 @@ jobs:
           ensure_defconfig_value CONFIG_IP6_NF_NAT y
           ensure_defconfig_value CONFIG_IP6_NF_TARGET_MASQUERADE y
 
-          # （可选）5.10 内核特殊处理，你的 6.6 无需此段
-          # if [ "${{ inputs.kernel_version }}" = "5.10" ]; then
-          #   echo "应用 5.10 特殊配置"
-          #   sed -i 's/CONFIG_IP_SET_MAX/65534/g' net/netfilter/ipset/ip_set_core.c
-          # fi
-
-          echo " 添加 TCP 拥塞控制 (BBR) 支持"
-          # 如果希望应用 BBRv3 补丁，可以在此处添加逻辑（但当前不启用）
-          # 目前使用内核自带的 BBRv1
-
-          ensure_defconfig_value CONFIG_TCP_CONG_ADVANCED y
-          # 如果 BIC 可用则启用（可选）
-          if [ -f net/ipv4/Kconfig ] && grep -q '^config TCP_CONG_BIC$' net/ipv4/Kconfig; then
-            ensure_defconfig_value CONFIG_TCP_CONG_BIC y
-          fi
-          ensure_defconfig_value CONFIG_TCP_CONG_BBR y
-          ensure_defconfig_value CONFIG_TCP_CONG_CUBIC y
-          ensure_defconfig_value CONFIG_TCP_CONG_WESTWOOD y
-          ensure_defconfig_value CONFIG_TCP_CONG_HTCP y
-          # 移除错误的 CONFIG_DEFAULT_BBR
-          # ensure_defconfig_value CONFIG_DEFAULT_BBR y  # ❌ 删除这行
-          ensure_defconfig_value CONFIG_DEFAULT_TCP_CONG '"bbr"'
-          ensure_defconfig_value CONFIG_NET_SCH_FQ y
-          ensure_defconfig_value CONFIG_NET_SCH_FQ_CODEL y
-          echo "✓ Networking 配置完成"
+          echo "✓ IPSet & IPv6 NAT 配置完成"
 
       - name: 缓存 Clang
         uses: actions/cache@v4
