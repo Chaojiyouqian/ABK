@@ -745,10 +745,10 @@ jobs:
           echo "Adding LZ4 & ZSTD patches..."
           cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
           mkdir -p lib/lz4/lz4armv8
-          cp "$GITHUB_WORKSPACE/oneplus_workspace/kernel_patches/zram/001-lz4.patch" ./
-          cp "$GITHUB_WORKSPACE/oneplus_workspace/kernel_patches/zram/lz4armv8.S" lib/lz4/lz4armv8.S
-          cp "$GITHUB_WORKSPACE/oneplus_workspace/kernel_patches/zram/lz4armv8.S" lib/lz4/lz4armv8/lz4armv8.S
-          cp "$GITHUB_WORKSPACE/oneplus_workspace/kernel_patches/zram/002-zstd.patch" ./
+          cp "$GITHUB_WORKSPACE/oneplus_workspace/kernel_patches/zram_patches/001-lz4.patch" ./
+          cp "$GITHUB_WORKSPACE/oneplus_workspace/kernel_patches/zram_patches/lz4armv8.S" lib/lz4/lz4armv8.S
+          cp "$GITHUB_WORKSPACE/oneplus_workspace/kernel_patches/zram_patches/lz4armv8.S" lib/lz4/lz4armv8/lz4armv8.S
+          cp "$GITHUB_WORKSPACE/oneplus_workspace/kernel_patches/zram_patches/002-zstd.patch" ./
           git apply -p1 < 001-lz4.patch || echo "LZ4 Patch failed or already applied"
           patch -p1 < 002-zstd.patch || echo "ZSTD Patch failed or already applied"
      
