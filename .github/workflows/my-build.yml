@@ -743,23 +743,18 @@ jobs:
       - name: Apply LZ4 1.10.0 & ZSTD 1.5.7 Patches
         run: |
           echo "Adding LZ4 & ZSTD patches..."
-          cd kernel_workspace/common
+          cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
           mkdir -p lib/lz4/lz4armv8
-          cp ../kernel_patches/zram/001-lz4.patch ./
-          cp ../kernel_patches/zram/lz4armv8.S lib/lz4/lz4armv8.S
-          cp ../kernel_patches/zram/lz4armv8.S lib/lz4/lz4armv8/lz4armv8.S
-          cp ../kernel_patches/zram/002-zstd.patch ./
+          cp "$GITHUB_WORKSPACE/oneplus_workspace/kernel_patches/zram/001-lz4.patch" ./
+          cp "$GITHUB_WORKSPACE/oneplus_workspace/kernel_patches/zram/lz4armv8.S" lib/lz4/lz4armv8.S
+          cp "$GITHUB_WORKSPACE/oneplus_workspace/kernel_patches/zram/lz4armv8.S" lib/lz4/lz4armv8/lz4armv8.S
+          cp "$GITHUB_WORKSPACE/oneplus_workspace/kernel_patches/zram/002-zstd.patch" ./
           git apply -p1 < 001-lz4.patch || echo "LZ4 Patch failed or already applied"
-          patch -p1 < 002-zstd.patch || echo "ZSTD Patch failed or already applied" 
+          patch -p1 < 002-zstd.patch || echo "ZSTD Patch failed or already applied"
      
       - name: Prepare CPU Optimizations (Oryon SM8750)
         run: |
-          if [[ "${{ github.event.inputs.clang_version }}" == "clang18" ]]; then
-            echo "EXTRA_CFLAGS=-march=armv9-a+crypto+dotprod" >> $GITHUB_ENV
-          else
-            echo "EXTRA_CFLAGS=-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
-          fi
-          cd kernel_workspace/common
+          cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
           cat >> arch/arm64/configs/gki_defconfig << 'EOF'
           CONFIG_ARM64_ERRATUM_2658417=y
           CONFIG_ARCH_QCOM=y
@@ -770,9 +765,9 @@ jobs:
           echo "✅ Oryon flags prepared."
 
       - name: F2FS Optimizations
-        working-directory: kernel_workspace
+        working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
         run: |
-          cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
+          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
           CONFIG_F2FS_FS=y
           CONFIG_F2FS_STAT_FS=y
           CONFIG_F2FS_FS_XATTR=y
@@ -792,9 +787,8 @@ jobs:
           echo "  应用 BBRv3 补丁"
           echo "======================================"
 
-          cd "$GITHUB_WORKSPACE/kernel_workspace/common"
+          cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
 
-          # 1. 从 GitHub 下载补丁文件（使用 raw 直链，无需 token）
           PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android15-6.6.patch"
           echo "⏳ 下载补丁: $PATCH_URL"
           curl -fsSL --retry 3 --retry-delay 5 -o bbrv3.patch "$PATCH_URL"
@@ -804,7 +798,6 @@ jobs:
             exit 1
           fi
 
-          # 2. 尝试应用补丁（先 git apply，失败则 patch）
           echo "⏳ 应用补丁..."
           if git apply -p1 < bbrv3.patch 2>/dev/null; then
             echo "✅ BBRv3 git apply 成功"
@@ -815,15 +808,12 @@ jobs:
             exit 1
           fi
 
-          # 3. 启用 defconfig 中的 BBRv3
-          DEFCONFIG="arch/arm64/configs/gki_defconfig"
-          echo "CONFIG_TCP_CONG_BBR3=y" >> "$DEFCONFIG"
-          echo "CONFIG_DEFAULT_BBR3=y" >> "$DEFCONFIG"
+          # 仅添加 BBRv3 配置项（不添加无效的 DEFAULT_BBR3）
+          echo "CONFIG_TCP_CONG_BBR3=y" >> arch/arm64/configs/gki_defconfig
           echo "✅ BBRv3 配置已写入 defconfig"
-
           echo "======================================"
           echo "  BBRv3 集成完成"
-          echo "======================================"    
+          echo "======================================" 
           
       - name: 配置 defconfig
         shell: bash
@@ -1056,7 +1046,14 @@ jobs:
           ensure_defconfig_value CONFIG_NET_SCH_FQ y
           ensure_defconfig_value CONFIG_NET_SCH_FQ_CODEL y
           echo "✓ Networking 配置完成"
-     
+
+      - name: 缓存 Clang
+        uses: actions/cache@v4
+        id: clang-cache
+        with:
+          path: oneplus_workspace/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r563880c
+          key: clang-${{ runner.os }}-clang-r563880c
+          
       - name: 下载并设置最新 Clang（使用缓存 + aria2c）
         shell: bash
         run: |
@@ -1094,30 +1091,24 @@ jobs:
 
           echo "NEW_CLANG_PATH=$CLANG_DIR/bin" >> $GITHUB_ENV
           echo "✅ Clang $CLANG_VERSION 下载完成"
-
-      - name: 缓存 Clang
-        uses: actions/cache@v4
-        id: clang-cache
-        with:
-          path: oneplus_workspace/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r563880c
-          key: clang-${{ runner.os }}-clang-r563880c
           
-      - name: 编译内核
+      - name: 编译内核（RAM Disk + LTO 缓存）
         shell: bash
         run: |
           set -euo pipefail
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
           cd "$COMMON_ROOT"
+
           # ---------- 0. 准备 RAM Disk 和 LTO 缓存 ----------
-            mkdir -p /dev/shm/kout
-            mkdir -p /dev/shm/ldcache
+          mkdir -p /dev/shm/kout
+          mkdir -p /dev/shm/ldcache
 
           # 创建 ld-wrapper（使用 RAM Disk 作为 LTO 缓存）
-           echo '#!/bin/bash' > ld-wrapper
-           echo 'ld.lld "$@" --thinlto-cache-dir=/dev/shm/ldcache --thinlto-jobs=$(($(nproc --all) / 2))' >> ld-wrapper
-           chmod +x ld-wrapper
-           
+          echo '#!/bin/bash' > ld-wrapper
+          echo 'ld.lld "$@" --thinlto-cache-dir=/dev/shm/ldcache --thinlto-jobs=$(($(nproc --all) / 2))' >> ld-wrapper
+          chmod +x ld-wrapper
+
           export PATH="/usr/lib/ccache:$PATH"
           export KBUILD_BUILD_USER="abk"
           export KBUILD_BUILD_HOST="abk"
@@ -1157,17 +1148,22 @@ jobs:
             KCFLAGS_EXTRA="-O2"
           fi
 
-          # ---------- 4. 公共编译参数 ----------
-          MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all)
+          # ---------- 4. 公共编译参数（输出到 RAM Disk，使用 ld-wrapper） ----------
+          MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" O=/dev/shm/kout gki_defconfig all)
 
           # ---------- 5. 执行编译 ----------
           if [ "$KERNEL_VERSION" = "5.10" ]; then
-            make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all KCFLAGS+="$KCFLAGS_EXTRA"
+            make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" O=/dev/shm/kout gki_defconfig all KCFLAGS+="$KCFLAGS_EXTRA"
           else
             "${MAKE_COMMON[@]}" KCFLAGS+="$KCFLAGS_EXTRA"
           fi
 
+          # ---------- 6. 将编译产物复制回常规 out/ 目录（供后续步骤使用） ----------
+           mkdir -p out
+          cp -r /dev/shm/kout/* out/
+
           ccache -s
+          df -h
 
       - name: 打包 AnyKernel3
         shell: bash
