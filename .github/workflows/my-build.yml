@@ -743,6 +743,8 @@ jobs:
      
       - name: Prepare CPU Optimizations (Oryon SM8750)
         run: |
+          # 直接设置 Oryon 编译器优化（与 Build ReSukiSU.yml 一致）
+          echo "EXTRA_CFLAGS=-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
           cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
           cat >> arch/arm64/configs/gki_defconfig << 'EOF'
           CONFIG_ARM64_ERRATUM_2658417=y
@@ -1084,7 +1086,7 @@ jobs:
           echo "Clang version:"
           $CLANG_DIR/bin/clang --version | head -1
           
-      - name: 编译内核（RAM Disk + LTO 缓存 + Oryon 动态检测）
+      - name: 编译内核（RAM Disk + LTO 缓存 + Oryon 强制优化）
         shell: bash
         run: |
           set -euo pipefail
@@ -1106,81 +1108,42 @@ jobs:
           export KBUILD_BUILD_HOST="abk"
           export KBUILD_BUILD_VERSION=1
 
-          # ---------- 1. 根据内核版本设置默认 Clang 路径 ----------
-          case "$KERNEL_VERSION" in
-            6.1)
-              DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin"
-              ;;
-            6.6)
-              DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin"
-              ;;
-            5.15)
-              DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin"
-              ;;
-            5.10)
-              DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin"
-              ;;
-          esac
-
-          # ---------- 2. 优先使用新下载的 Clang（如果存在），否则使用默认 ----------
+          # ---------- 1. 设置 Clang 路径（优先使用新下载的） ----------
           if [ -n "${NEW_CLANG_PATH:-}" ] && [ -d "$NEW_CLANG_PATH" ]; then
-            export PATH="$NEW_CLANG_PATH:$DEFAULT_CLANG_PATH:$PATH"
+            export PATH="$NEW_CLANG_PATH:$PATH"
             echo "✅ 使用新下载的 Clang: $NEW_CLANG_PATH"
-          else
-            export PATH="$DEFAULT_CLANG_PATH:$PATH"
-            echo "⚠️ 未找到新 Clang，使用默认: $DEFAULT_CLANG_PATH"
           fi
 
-          # 打印 Clang 版本以便排查
+          # ---------- 2. 打印 Clang 版本 ----------
           echo "Clang version: $(clang --version | head -1)"
 
-          # ---------- 3. 动态检测 Oryon 优化参数 ----------
-          # 参考 Build ReSukiSU.yml 中的 EXTRA_CFLAGS 设置，但改为自动检测
-          if clang -mcpu=oryon-1 -E - < /dev/null > /dev/null 2>&1; then
-            echo "✅ Clang 支持 -mcpu=oryon-1，启用 Oryon 编译器优化"
-            EXTRA_CFLAGS="-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks"
-          elif clang -mcpu=oryon -E - < /dev/null > /dev/null 2>&1; then
-            echo "✅ Clang 支持 -mcpu=oryon，启用 Oryon 编译器优化"
-            EXTRA_CFLAGS="-mcpu=oryon -fno-strict-aliasing -fno-delete-null-pointer-checks"
-          else
-            echo "⚠️ Clang 不支持任何 Oryon 参数，仅使用 -O2 优化"
-            EXTRA_CFLAGS=""
-          fi
-
-          # ---------- 4. 定义通用编译选项（与 Build ReSukiSU.yml 风格一致） ----------
-          # 基础 KCFLAGS（包含 -O2 和必要的警告抑制）
+          # ---------- 3. 准备 KCFLAGS ----------
+          # 基础标志（与 Build ReSukiSU.yml 保持一致）
           BASE_KCFLAGS="-O2 -pipe -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option"
-  
-          # 添加 EXTRA_CFLAGS（如果非空）
-          if [ -n "$EXTRA_CFLAGS" ]; then
-            KCFLAGS="$BASE_KCFLAGS $EXTRA_CFLAGS"
-          else
-            KCFLAGS="$BASE_KCFLAGS"
-          fi
+          # 添加 EXTRA_CFLAGS（由 Prepare CPU Optimizations 设置）
+          KCFLAGS="$BASE_KCFLAGS ${EXTRA_CFLAGS:-}"
 
-          # ---------- 5. 编译 defconfig ----------
+          # ---------- 4. 编译 defconfig ----------
           make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CC="ccache clang" LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" \
             O=/dev/shm/kout \
             KCFLAGS="$KCFLAGS" \
             gki_defconfig
 
-          # ---------- 6. 编译内核 Image ----------
+          # ---------- 5. 编译内核 Image ----------
           make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CC="ccache clang" LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" \
             O=/dev/shm/kout \
             KCFLAGS="$KCFLAGS" \
             Image
 
-          # ---------- 7. 将产物复制到常规 out/ 目录（供打包步骤使用） ----------
+          # ---------- 6. 复制产物到 out/ ----------
           mkdir -p out
           cp -r /dev/shm/kout/* out/
 
-          # ---------- 8. 显示 ccache 统计 ----------
           ccache -s
           df -h
-
-
+        
 
 
       - name: 打包 AnyKernel3
