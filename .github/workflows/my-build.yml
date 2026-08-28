@@ -1070,8 +1070,8 @@ jobs:
           # 验证版本
           echo "Clang version:"
           $CLANG_DIR/bin/clang --version | head -1
-          
-      - name: 编译内核（RAM Disk + LTO 缓存 + Oryon 强制优化）
+              
+      - name: 🔨 Build Kernel (RAM Disk + LTO + Oryon)
         shell: bash
         run: |
           set -euo pipefail
@@ -1079,53 +1079,83 @@ jobs:
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
           cd "$COMMON_ROOT"
 
-          # ---------- 0. 准备 RAM Disk 和 LTO 缓存 ----------
-          mkdir -p /dev/shm/kout
-          mkdir -p /dev/shm/ldcache
-
-          echo '#!/bin/bash' > ld-wrapper
-          echo 'ld.lld "$@" --thinlto-cache-dir=/dev/shm/ldcache --thinlto-jobs=$(($(nproc --all) / 2))' >> ld-wrapper
-          chmod +x ld-wrapper
-
+          # ---------- 环境变量 ----------
           export PATH="/usr/lib/ccache:$PATH"
           export KBUILD_BUILD_USER="abk"
           export KBUILD_BUILD_HOST="abk"
           export KBUILD_BUILD_VERSION=1
+          export CCACHE_DIR="$HOME/.ccache_${DEVICE_MANIFEST}_${KSU_VARIANT}"
+          export CCACHE_LOGFILE="$WORKSPACE/ccache.log"
+          export CCACHE_IS_KERNEL_COMPILING=true
 
-          # ---------- 1. 优先使用新下载的 Clang ----------
+          # ---------- 优先使用新下载的 Clang ----------
           if [ -n "${NEW_CLANG_PATH:-}" ] && [ -d "$NEW_CLANG_PATH" ]; then
             export PATH="$NEW_CLANG_PATH:$PATH"
             echo "✅ 使用新下载的 Clang: $NEW_CLANG_PATH"
+          else
+            # 如果未下载，回退到默认预置 Clang
+            case "$KERNEL_VERSION" in
+              6.1)
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
+                ;;
+              6.6)
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
+                ;;
+              5.15)
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
+                ;;
+              5.10)
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
+                ;;
+            esac
+            echo "⚠️ 未找到新 Clang，使用默认: $(which clang)"
           fi
 
           echo "Clang version: $(clang --version | head -1)"
 
-          # ---------- 2. 准备 KCFLAGS ----------
+          # ---------- 准备 RAM Disk 和 LTO 缓存 ----------
+          mkdir -p /dev/shm/kout
+          mkdir -p /dev/shm/ldcache
+
+          # 创建 ld-wrapper（使用 RAM Disk 作为 LTO 缓存）
+          echo '#!/bin/bash' > ld-wrapper
+          echo 'ld.lld "$@" --thinlto-cache-dir=/dev/shm/ldcache --thinlto-jobs=$(($(nproc --all) / 2))' >> ld-wrapper
+          chmod +x ld-wrapper
+
+          # ---------- 准备 KCFLAGS ----------
+          # 与 Build ReSukiSU 完全一致
           BASE_KCFLAGS="-O2 -pipe -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option"
+          # 添加 EXTRA_CFLAGS（由 Prepare CPU Optimizations 设置）
           KCFLAGS="$BASE_KCFLAGS ${EXTRA_CFLAGS:-}"
 
-          # ---------- 3. 编译 defconfig ----------
+          # 可选：添加路径映射（使调试信息可重现，与 Build ReSukiSU 一致）
+          MAP="-fdebug-prefix-map=${GITHUB_WORKSPACE}=. -fmacro-prefix-map=${GITHUB_WORKSPACE}=. -ffile-prefix-map=${GITHUB_WORKSPACE}=."
+
+          # ---------- 编译 defconfig ----------
           make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CC="ccache clang" LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" \
             O=/dev/shm/kout \
             KCFLAGS="$KCFLAGS" \
             gki_defconfig
 
-          # ---------- 4. 编译内核 Image ----------
+          # ---------- 编译内核 Image ----------
           make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CC="ccache clang" LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" \
             O=/dev/shm/kout \
-            KCFLAGS="$KCFLAGS" \
+            KCFLAGS="$KCFLAGS $MAP" \
             Image
 
-          # ---------- 5. 复制产物到 out/ ----------
+          # ---------- 复制产物到常规 out/ 目录 ----------
           mkdir -p out
           cp -r /dev/shm/kout/* out/
 
+          # ---------- 清理旧缓存（Build ReSukiSU 风格） ----------
+          ccache -c
+          ccache --evict-older-than 10800s
+
+          echo "Kernel Compilation Complete!"
           ccache -s
-          df -h
-            
-          
+          df -h      
 
 
       - name: 打包 AnyKernel3
