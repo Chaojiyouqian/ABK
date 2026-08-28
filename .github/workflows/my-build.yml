@@ -1018,54 +1018,6 @@ jobs:
 
           echo "✓ IPSet & IPv6 NAT 配置完成"
 
-      - name: 缓存 Clang
-        uses: actions/cache@v4
-        id: clang-cache
-        with:
-          path: oneplus_workspace/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r563880c
-          key: clang-${{ runner.os }}-clang-r563880c
-          
-      - name: 下载并设置最新 Clang（使用缓存 + aria2c）
-        shell: bash
-        run: |
-          set -euo pipefail
-          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
-          KERNEL_PLATFORM="$WORKSPACE/kernel_workspace/kernel_platform"
-          # 使用更新的版本
-          CLANG_VERSION="clang-r563880c"
-          CLANG_DIR="$KERNEL_PLATFORM/prebuilts/clang/host/linux-x86/$CLANG_VERSION"
-
-          # 如果已存在，直接设置环境变量并跳过
-          if [ -d "$CLANG_DIR" ]; then
-            echo "✅ Clang $CLANG_VERSION 已存在，跳过下载"
-            echo "NEW_CLANG_PATH=$CLANG_DIR/bin" >> $GITHUB_ENV
-            exit 0
-          fi
-
-          # 尝试从缓存恢复（actions/cache 在之前步骤已恢复，但若没命中则下载）
-          # 注意：缓存恢复步骤应在之前单独配置，这里只做下载
-          echo "⏳ 下载 Clang $CLANG_VERSION ..."
-          mkdir -p "$(dirname "$CLANG_DIR")"
-          cd "$(dirname "$CLANG_DIR")"
-
-          # 安装 aria2（如果未安装）
-          sudo apt-get update && sudo apt-get install -y aria2
-
-          # 多线程下载
-          aria2c -x16 -s16 -k1M -j16 --retry-wait=5 --max-tries=10 \
-            -d . -o clang.tar.gz \
-            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android16-qpr2-release/${CLANG_VERSION}.tar.gz"
-
-          mkdir -p "$CLANG_VERSION"
-          tar -xzf clang.tar.gz -C "$CLANG_VERSION"
-          rm clang.tar.gz
-
-          echo "NEW_CLANG_PATH=$CLANG_DIR/bin" >> $GITHUB_ENV
-          echo "✅ Clang $CLANG_VERSION 下载完成"
-          # 验证版本
-          echo "Clang version:"
-          $CLANG_DIR/bin/clang --version | head -1
-          
       - name: 编译内核（RAM Disk + LTO 缓存 + Oryon 强制优化）
         shell: bash
         run: |
@@ -1088,42 +1040,49 @@ jobs:
           export KBUILD_BUILD_HOST="abk"
           export KBUILD_BUILD_VERSION=1
 
-          # ---------- 1. 设置 Clang 路径（优先使用新下载的） ----------
-          if [ -n "${NEW_CLANG_PATH:-}" ] && [ -d "$NEW_CLANG_PATH" ]; then
-            export PATH="$NEW_CLANG_PATH:$PATH"
-            echo "✅ 使用新下载的 Clang: $NEW_CLANG_PATH"
-          fi
+          # ---------- 1. 根据内核版本设置默认 Clang 路径 ----------
+          case "$KERNEL_VERSION" in
+            6.1)
+              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
+              ;;
+            6.6)
+              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
+              ;;
+            5.15)
+              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
+              ;;
+            5.10)
+              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
+              ;;
+          esac
 
-          # ---------- 2. 打印 Clang 版本 ----------
-          echo "Clang version: $(clang --version | head -1)"
-
-          # ---------- 3. 准备 KCFLAGS ----------
-          # 基础标志（与 Build ReSukiSU.yml 保持一致）
+          # ---------- 2. 准备 KCFLAGS ----------
+          # 基础标志（与之前一致）
           BASE_KCFLAGS="-O2 -pipe -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option"
-          # 添加 EXTRA_CFLAGS（由 Prepare CPU Optimizations 设置）
+          # 添加 EXTRA_CFLAGS（由 Prepare CPU Optimizations 步骤设置，若不存在则为空）
           KCFLAGS="$BASE_KCFLAGS ${EXTRA_CFLAGS:-}"
 
-          # ---------- 4. 编译 defconfig ----------
+          # ---------- 3. 编译 defconfig ----------
           make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CC="ccache clang" LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" \
             O=/dev/shm/kout \
             KCFLAGS="$KCFLAGS" \
             gki_defconfig
 
-          # ---------- 5. 编译内核 Image ----------
+          # ---------- 4. 编译内核 Image ----------
           make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CC="ccache clang" LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" \
             O=/dev/shm/kout \
             KCFLAGS="$KCFLAGS" \
             Image
 
-          # ---------- 6. 复制产物到 out/ ----------
+          # ---------- 5. 复制产物到常规 out/ 目录（供打包步骤使用） ----------
           mkdir -p out
           cp -r /dev/shm/kout/* out/
 
           ccache -s
           df -h
-        
+          
 
 
       - name: 打包 AnyKernel3
