@@ -1114,56 +1114,56 @@ jobs:
           ccache -s
           df -h
        
-            - name: 打包 AnyKernel3
-              shell: bash
-              run: |
-                set -euo pipefail
-                WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
-                cd "$WORKSPACE"
-                git clone https://github.com/Xiaomichael/AnyKernel3 --depth=1
-               rm -rf AnyKernel3/.git
+      - name: 打包 AnyKernel3
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
+          cd "$WORKSPACE"
+          git clone https://github.com/Xiaomichael/AnyKernel3 --depth=1
+          rm -rf AnyKernel3/.git
 
-                IMAGE_PATH="$(find "$WORKSPACE/kernel_workspace/kernel_platform/common/out" -name Image | head -n 1)"
-                if [ -z "$IMAGE_PATH" ]; then
-                  echo "::error::编译完成后未找到 Image"
-                 exit 1
-                fi
-                cp "$IMAGE_PATH" AnyKernel3/Image
-                cp "$IMAGE_PATH" Image
+          IMAGE_PATH="$(find "$WORKSPACE/kernel_workspace/kernel_platform/common/out" -name Image | head -n 1)"
+          if [ -z "$IMAGE_PATH" ]; then
+            echo "::error::编译完成后未找到 Image"
+            exit 1
+          fi
+          cp "$IMAGE_PATH" AnyKernel3/Image
+          cp "$IMAGE_PATH" Image
 
-                if [ "$EFFECTIVE_KPM" = "true" ]; then
-                  mkdir -p kpm_patch_temp
-                  cd kpm_patch_temp
-                  curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.13.0/patch_linux
-                  chmod +x patch_linux
-                 cp "$WORKSPACE/AnyKernel3/Image" ./Image
-                  ./patch_linux
-                  mv oImage "$WORKSPACE/AnyKernel3/Image"
-                  cd "$WORKSPACE"
-                  rm -rf kpm_patch_temp
-                fi
- 
-               case "$KSU_VARIANT" in
-                  None) variant_label="Kernel_Only" ;;
-                  SukiSU) variant_label="SukiSU_Ultra" ;;
-                  *) variant_label="$KSU_VARIANT" ;;
-                esac
-                if [ "$EFFECTIVE_USE_LZ4KD" = "true" ]; then
-                  algo_label="lz4kd"
-                else
-                  algo_label="base"
-                fi
-                artifact_name="${DEVICE_ARTIFACT_ID}_${variant_label}_${algo_label}_AnyKernel3"
-                if [ "$EFFECTIVE_ENABLE_SUSFS" = "true" ]; then
-                  artifact_name="${artifact_name}_with-SUSFS"
-                fi
-                image_artifact_name="${DEVICE_ARTIFACT_ID}_${variant_label}_${algo_label}_raw-image-debug"
-                cd AnyKernel3
-                zip -q -r9 "../${artifact_name}.zip" ./*
-                cd "$WORKSPACE"
-                echo "ONEPLUS_ARTIFACT_NAME=$artifact_name" >> "$GITHUB_ENV"
-                echo "ONEPLUS_IMAGE_ARTIFACT_NAME=$image_artifact_name" >> "$GITHUB_ENV"
-      
+          if [ "$EFFECTIVE_KPM" = "true" ]; then
+            mkdir -p kpm_patch_temp
+            cd kpm_patch_temp
+            curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.13.0/patch_linux
+            chmod +x patch_linux
+            cp "$WORKSPACE/AnyKernel3/Image" ./Image
+            ./patch_linux
+            mv oImage "$WORKSPACE/AnyKernel3/Image"
+            cd "$WORKSPACE"
+            rm -rf kpm_patch_temp
+          fi
+
+          case "$KSU_VARIANT" in
+            None) variant_label="Kernel_Only" ;;
+            SukiSU) variant_label="SukiSU_Ultra" ;;
+            *) variant_label="$KSU_VARIANT" ;;
+          esac
+          if [ "$EFFECTIVE_USE_LZ4KD" = "true" ]; then
+            algo_label="lz4kd"
+          else
+            algo_label="base"
+          fi
+          artifact_name="${DEVICE_ARTIFACT_ID}_${variant_label}_${algo_label}_AnyKernel3"
+          if [ "$EFFECTIVE_ENABLE_SUSFS" = "true" ]; then
+            artifact_name="${artifact_name}_with-SUSFS"
+          fi
+          image_artifact_name="${DEVICE_ARTIFACT_ID}_${variant_label}_${algo_label}_raw-image-debug"
+          cd AnyKernel3
+          zip -q -r9 "../${artifact_name}.zip" ./*
+          cd "$WORKSPACE"
+          echo "ONEPLUS_ARTIFACT_NAME=$artifact_name" >> "$GITHUB_ENV"
+          echo "ONEPLUS_IMAGE_ARTIFACT_NAME=$image_artifact_name" >> "$GITHUB_ENV"
+          
       - name: 上传 AnyKernel3 产物
         uses: actions/upload-artifact@v6
         with:
