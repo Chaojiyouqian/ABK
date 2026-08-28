@@ -723,32 +723,32 @@ jobs:
      
       - name: Prepare CPU Optimizations (Oryon SM8750)
         run: |
-          # 直接设置 Oryon 编译器优化（与 Build ReSukiSU.yml 一致，使用 oryon）
-          echo "EXTRA_CFLAGS=-mcpu=oryon -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
+         # 直接设置 Oryon 编译器优化（与 Build ReSukiSU.yml 一致）
+          echo "EXTRA_CFLAGS=-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
           cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
           cat >> arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_ARM64_ERRATUM_2658417=y
+           CONFIG_ARM64_ERRATUM_2658417=y
           CONFIG_ARCH_QCOM=y
           CONFIG_HZ_300=y
+          CONFIG_PREEMPT=y
           CONFIG_NO_HZ_IDLE=y
-          # CONFIG_PREEMPT=y   # 如果已删除，保持注释；若需要可取消注释
           EOF
           echo "✅ Oryon flags prepared."
 
-      - name: F2FS Optimizations
-        working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-        run: |
-          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_F2FS_FS=y
-          CONFIG_F2FS_STAT_FS=y
-          CONFIG_F2FS_FS_XATTR=y
-          CONFIG_F2FS_FS_POSIX_ACL=y
-          CONFIG_F2FS_FS_SECURITY=y
-          CONFIG_F2FS_FS_COMPRESSION=y
-          CONFIG_F2FS_FS_LZO=y
-          CONFIG_F2FS_FS_LZ4=y
-          CONFIG_F2FS_FS_ZSTD=y
-          EOF
+      #- name: F2FS Optimizations
+        #working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
+        #run: |
+          #cat >> arch/arm64/configs/gki_defconfig << 'EOF'
+          #CONFIG_F2FS_FS=y
+          #CONFIG_F2FS_STAT_FS=y
+          #CONFIG_F2FS_FS_XATTR=y
+          #CONFIG_F2FS_FS_POSIX_ACL=y
+          #CONFIG_F2FS_FS_SECURITY=y
+          #CONFIG_F2FS_FS_COMPRESSION=y
+          #CONFIG_F2FS_FS_LZO=y
+          #CONFIG_F2FS_FS_LZ4=y
+          #CONFIG_F2FS_FS_ZSTD=y
+          #EOF
 
       - name: 强制应用 BBRv3 补丁（从 WildKernels 仓库）
         shell: bash
@@ -1053,53 +1053,15 @@ jobs:
           echo "Clang version:"
           $CLANG_DIR/bin/clang --version | head -1
               
-      - name: 🔨 Build Kernel (RAM Disk + LTO + Oryon)
+      - name: 编译内核（RAM Disk + LTO 缓存 + Oryon 强制优化）
         shell: bash
         run: |
           set -euo pipefail
-
-          # ---------- 强制确保自定义构建时间生效 ----------
-          export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
-          export KBUILD_BUILD_VERSION="${KBUILD_BUILD_VERSION:-1}"
-
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
           cd "$COMMON_ROOT"
 
-          # ---------- 环境变量 ----------
-          export PATH="/usr/lib/ccache:$PATH"
-          export KBUILD_BUILD_USER="abk"
-          export KBUILD_BUILD_HOST="abk"
-          export CCACHE_DIR="$HOME/.ccache_${DEVICE_MANIFEST}_${KSU_VARIANT}"
-          export CCACHE_LOGFILE="$WORKSPACE/ccache.log"
-          export CCACHE_IS_KERNEL_COMPILING=true
-
-          # ---------- 优先使用新下载的 Clang ----------
-          if [ -n "${NEW_CLANG_PATH:-}" ] && [ -d "$NEW_CLANG_PATH" ]; then
-            export PATH="$NEW_CLANG_PATH:$PATH"
-            echo "✅ 使用新下载的 Clang: $NEW_CLANG_PATH"
-          else
-            # 如果未下载，回退到默认预置 Clang
-            case "$KERNEL_VERSION" in
-              6.1)
-                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
-                ;;
-              6.6)
-                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
-                ;;
-              5.15)
-                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
-                ;;
-              5.10)
-                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
-                ;;
-            esac
-            echo "⚠️ 未找到新 Clang，使用默认: $(which clang)"
-          fi
-
-          echo "Clang version: $(clang --version | head -1)"
-
-          # ---------- 准备 RAM Disk 和 LTO 缓存 ----------
+          # ---------- 0. 准备 RAM Disk 和 LTO 缓存 ----------
           mkdir -p /dev/shm/kout
           mkdir -p /dev/shm/ldcache
 
@@ -1108,38 +1070,47 @@ jobs:
           echo 'ld.lld "$@" --thinlto-cache-dir=/dev/shm/ldcache --thinlto-jobs=$(($(nproc --all) / 2))' >> ld-wrapper
           chmod +x ld-wrapper
 
-          # ---------- 准备 KCFLAGS ----------
-          # 与 Build ReSukiSU 完全一致
+          export PATH="/usr/lib/ccache:$PATH"
+          export KBUILD_BUILD_USER="abk"
+          export KBUILD_BUILD_HOST="abk"
+          export KBUILD_BUILD_VERSION=1
+
+          #自定义构建时间
+          export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
+
+          # ---------- 1. 设置 Clang 路径（优先使用新下载的） ----------
+          if [ -n "${NEW_CLANG_PATH:-}" ] && [ -d "$NEW_CLANG_PATH" ]; then
+            export PATH="$NEW_CLANG_PATH:$PATH"
+            echo "✅ 使用新下载的 Clang: $NEW_CLANG_PATH"
+          fi
+
+          # ---------- 2. 打印 Clang 版本 ----------
+          echo "Clang version: $(clang --version | head -1)"
+
+          # ---------- 3. 准备 KCFLAGS ----------
+          # 基础标志（与 Build ReSukiSU.yml 保持一致）
           BASE_KCFLAGS="-O2 -pipe -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option"
-          # 添加 EXTRA_CFLAGS（由 Prepare CPU Optimizations 设置，包含 -mcpu=oryon）
+          # 添加 EXTRA_CFLAGS（由 Prepare CPU Optimizations 设置）
           KCFLAGS="$BASE_KCFLAGS ${EXTRA_CFLAGS:-}"
 
-          # 可选：添加路径映射（使调试信息可重现，与 Build ReSukiSU 一致）
-          MAP="-fdebug-prefix-map=${GITHUB_WORKSPACE}=. -fmacro-prefix-map=${GITHUB_WORKSPACE}=. -ffile-prefix-map=${GITHUB_WORKSPACE}=."
-
-          # ---------- 编译 defconfig ----------
+          # ---------- 4. 编译 defconfig ----------
           make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CC="ccache clang" LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" \
             O=/dev/shm/kout \
             KCFLAGS="$KCFLAGS" \
             gki_defconfig
 
-          # ---------- 编译内核 Image ----------
+          # ---------- 5. 编译内核 Image ----------
           make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CC="ccache clang" LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" \
             O=/dev/shm/kout \
-            KCFLAGS="$KCFLAGS $MAP" \
+            KCFLAGS="$KCFLAGS" \
             Image
 
-          # ---------- 复制产物到常规 out/ 目录 ----------
+          # ---------- 6. 复制产物到 out/ ----------
           mkdir -p out
           cp -r /dev/shm/kout/* out/
 
-          # ---------- 清理旧缓存（Build ReSukiSU 风格） ----------
-          ccache -c
-          ccache --evict-older-than 10800s
-
-          echo "Kernel Compilation Complete!"
           ccache -s
           df -h
 
