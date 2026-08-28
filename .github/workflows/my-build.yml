@@ -717,31 +717,13 @@ jobs:
           else
             DATESTR="$(TZ='UTC' date +'%a %b %d %T %Z %Y')"
           fi
-
           echo "使用构建时间: $DATESTR"
           echo "KBUILD_BUILD_TIMESTAMP=$DATESTR" >> "$GITHUB_ENV"
           echo "KBUILD_BUILD_VERSION=1" >> "$GITHUB_ENV"
-
-          # 统一处理 mkcompile_h 补丁
-          f="$KERNEL_ROOT/common/scripts/mkcompile_h"
-          if [ -f "$f" ]; then
-            if [[ "${{ inputs.kernel_version }}" == "5.10" || "${{ inputs.kernel_version }}" == "5.15" ]]; then
-              echo "应用 5.x 经典时间戳补丁: $f"
-              perl -pi -e "s{UTS_VERSION=\"\\\$\(echo \\\$UTS_VERSION \\\$CONFIG_FLAGS \\\$TIMESTAMP \\| cut -b -\\\$UTS_LEN\)\"}{UTS_VERSION=\"#1 SMP PREEMPT $DATESTR\"}" "$f"
-            else
-              echo "应用 6.x mkcompile_h 补丁: $f"
-              if grep -q 'UTS_VERSION=' "$f"; then
-                perl -pi -e "s{UTS_VERSION=\"\\\$\\\(.*?\\\)\"}{UTS_VERSION=\"#1 SMP PREEMPT $DATESTR\"}" "$f"
-              else
-                perl -0777 -pi -e "s{cat <<EOF}{cat <<EOF\n#undef UTS_VERSION\n#define UTS_VERSION \"#1 SMP PREEMPT $DATESTR\" } unless /UTS_VERSION/" "$f"
-              fi
-            fi
-          fi   
-    
      
       - name: Prepare CPU Optimizations (Oryon SM8750)
         run: |
-          # 使用 Oryon 官方编译器优化（与 Build ReSukiSU 一致，但使用 oryon 而非 oryon-1）
+          # 直接设置 Oryon 编译器优化（与 Build ReSukiSU.yml 一致，使用 oryon）
           echo "EXTRA_CFLAGS=-mcpu=oryon -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
           cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
           cat >> arch/arm64/configs/gki_defconfig << 'EOF'
@@ -749,7 +731,7 @@ jobs:
           CONFIG_ARCH_QCOM=y
           CONFIG_HZ_300=y
           CONFIG_NO_HZ_IDLE=y
-          # CONFIG_PREEMPT=y   # 如果您已删除，保持删除；若保留，请确保兼容
+          # CONFIG_PREEMPT=y   # 如果已删除，保持注释；若需要可取消注释
           EOF
           echo "✅ Oryon flags prepared."
 
@@ -1157,56 +1139,95 @@ jobs:
           ccache -s
           df -h      
 
-
-      - name: 打包 AnyKernel3
+      - name: 🔨 Build Kernel (RAM Disk + LTO + Oryon)
         shell: bash
         run: |
           set -euo pipefail
+
+          # ---------- 强制确保自定义构建时间生效 ----------
+          export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
+          export KBUILD_BUILD_VERSION="${KBUILD_BUILD_VERSION:-1}"
+
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
-          cd "$WORKSPACE"
-          git clone https://github.com/Xiaomichael/AnyKernel3 --depth=1
-          rm -rf AnyKernel3/.git
+          COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
+          cd "$COMMON_ROOT"
 
-          IMAGE_PATH="$(find "$WORKSPACE/kernel_workspace/kernel_platform/common/out" -name Image | head -n 1)"
-          if [ -z "$IMAGE_PATH" ]; then
-            echo "::error::编译完成后未找到 Image"
-            exit 1
-          fi
-          cp "$IMAGE_PATH" AnyKernel3/Image
-          cp "$IMAGE_PATH" Image
+          # ---------- 环境变量 ----------
+          export PATH="/usr/lib/ccache:$PATH"
+          export KBUILD_BUILD_USER="abk"
+          export KBUILD_BUILD_HOST="abk"
+          export CCACHE_DIR="$HOME/.ccache_${DEVICE_MANIFEST}_${KSU_VARIANT}"
+          export CCACHE_LOGFILE="$WORKSPACE/ccache.log"
+          export CCACHE_IS_KERNEL_COMPILING=true
 
-          if [ "$EFFECTIVE_KPM" = "true" ]; then
-            mkdir -p kpm_patch_temp
-            cd kpm_patch_temp
-            curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.13.0/patch_linux
-            chmod +x patch_linux
-            cp "$WORKSPACE/AnyKernel3/Image" ./Image
-            ./patch_linux
-            mv oImage "$WORKSPACE/AnyKernel3/Image"
-            cd "$WORKSPACE"
-            rm -rf kpm_patch_temp
-          fi
-
-          case "$KSU_VARIANT" in
-            None) variant_label="Kernel_Only" ;;
-            SukiSU) variant_label="SukiSU_Ultra" ;;
-            *) variant_label="$KSU_VARIANT" ;;
-          esac
-          if [ "$EFFECTIVE_USE_LZ4KD" = "true" ]; then
-            algo_label="lz4kd"
+          # ---------- 优先使用新下载的 Clang ----------
+          if [ -n "${NEW_CLANG_PATH:-}" ] && [ -d "$NEW_CLANG_PATH" ]; then
+            export PATH="$NEW_CLANG_PATH:$PATH"
+            echo "✅ 使用新下载的 Clang: $NEW_CLANG_PATH"
           else
-            algo_label="base"
+            # 如果未下载，回退到默认预置 Clang
+            case "$KERNEL_VERSION" in
+              6.1)
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
+                ;;
+              6.6)
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
+                ;;
+              5.15)
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
+                ;;
+              5.10)
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
+                ;;
+            esac
+            echo "⚠️ 未找到新 Clang，使用默认: $(which clang)"
           fi
-          artifact_name="${DEVICE_ARTIFACT_ID}_${variant_label}_${algo_label}_AnyKernel3"
-          if [ "$EFFECTIVE_ENABLE_SUSFS" = "true" ]; then
-            artifact_name="${artifact_name}_with-SUSFS"
-          fi
-          image_artifact_name="${DEVICE_ARTIFACT_ID}_${variant_label}_${algo_label}_raw-image-debug"
-          cd AnyKernel3
-          zip -q -r9 "../${artifact_name}.zip" ./*
-          cd "$WORKSPACE"
-          echo "ONEPLUS_ARTIFACT_NAME=$artifact_name" >> "$GITHUB_ENV"
-          echo "ONEPLUS_IMAGE_ARTIFACT_NAME=$image_artifact_name" >> "$GITHUB_ENV"
+
+          echo "Clang version: $(clang --version | head -1)"
+
+          # ---------- 准备 RAM Disk 和 LTO 缓存 ----------
+          mkdir -p /dev/shm/kout
+          mkdir -p /dev/shm/ldcache
+
+          # 创建 ld-wrapper（使用 RAM Disk 作为 LTO 缓存）
+          echo '#!/bin/bash' > ld-wrapper
+          echo 'ld.lld "$@" --thinlto-cache-dir=/dev/shm/ldcache --thinlto-jobs=$(($(nproc --all) / 2))' >> ld-wrapper
+          chmod +x ld-wrapper
+
+          # ---------- 准备 KCFLAGS ----------
+          # 与 Build ReSukiSU 完全一致
+          BASE_KCFLAGS="-O2 -pipe -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option"
+          # 添加 EXTRA_CFLAGS（由 Prepare CPU Optimizations 设置，包含 -mcpu=oryon）
+          KCFLAGS="$BASE_KCFLAGS ${EXTRA_CFLAGS:-}"
+
+          # 可选：添加路径映射（使调试信息可重现，与 Build ReSukiSU 一致）
+          MAP="-fdebug-prefix-map=${GITHUB_WORKSPACE}=. -fmacro-prefix-map=${GITHUB_WORKSPACE}=. -ffile-prefix-map=${GITHUB_WORKSPACE}=."
+
+          # ---------- 编译 defconfig ----------
+          make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+            CC="ccache clang" LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" \
+            O=/dev/shm/kout \
+            KCFLAGS="$KCFLAGS" \
+            gki_defconfig
+
+          # ---------- 编译内核 Image ----------
+          make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+            CC="ccache clang" LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" \
+            O=/dev/shm/kout \
+            KCFLAGS="$KCFLAGS $MAP" \
+            Image
+
+          # ---------- 复制产物到常规 out/ 目录 ----------
+          mkdir -p out
+          cp -r /dev/shm/kout/* out/
+
+          # ---------- 清理旧缓存（Build ReSukiSU 风格） ----------
+          ccache -c
+          ccache --evict-older-than 10800s
+
+          echo "Kernel Compilation Complete!"
+          ccache -s
+          df -h
 
       - name: 上传 AnyKernel3 产物
         uses: actions/upload-artifact@v6
