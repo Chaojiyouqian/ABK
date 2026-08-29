@@ -734,38 +734,6 @@ jobs:
          #EOF
          #echo "✅ Oryon flags prepared."
 
-      - name: 强制应用 BBRv3 补丁（仅补丁）
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "======================================"
-          echo "  应用 BBRv3 补丁"
-          echo "======================================"
-
-          cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
-
-           PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android15-6.6.patch"
-          echo "⏳ 下载补丁: $PATCH_URL"
-          curl -fsSL --retry 3 --retry-delay 5 -o bbrv3.patch "$PATCH_URL"
-
-          if [ ! -s bbrv3.patch ]; then
-            echo "::error::BBRv3 补丁下载失败（文件为空或404）"
-            exit 1
-          fi
-
-          echo "⏳ 应用补丁..."
-          if git apply -p1 < bbrv3.patch 2>/dev/null; then
-            echo "✅ BBRv3 git apply 成功"
-          elif patch -p1 -F 3 < bbrv3.patch 2>/dev/null; then
-            echo "✅ BBRv3 patch 成功"
-          else
-            echo "::error::BBRv3 补丁应用失败，中止构建"
-           exit 1
-          fi
-
-          echo "✅ BBRv3 补丁应用完成（配置项在 defconfig 步骤中统一添加）"
-          echo "======================================"
-     
       - name: Configure LTO (Thin)
         run: |
           cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
@@ -921,15 +889,6 @@ jobs:
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
           cd "$COMMON_ROOT"
-
-          # ---------- 新增：准备 RAM Disk 和 LTO 缓存 ----------
-          mkdir -p /dev/shm/kout
-          mkdir -p /dev/shm/ldcache
-
-          # 创建 ld-wrapper（使用 RAM Disk 作为 LTO 缓存）
-          echo '#!/bin/bash' > ld-wrapper
-          echo 'ld.lld "$@" --thinlto-cache-dir=/dev/shm/ldcache --thinlto-jobs=$(($(nproc --all) / 2))' >> ld-wrapper
-          chmod +x ld-wrapper
 
           # ---------- 保留原有环境变量 ----------
           export PATH="/usr/lib/ccache:$PATH"
