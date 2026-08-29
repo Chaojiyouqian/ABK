@@ -797,84 +797,11 @@ jobs:
           echo "  BBRv3 集成完成"
           echo "======================================"
       
-      - name: 配置 defconfig
-        shell: bash
+      - name: Configure LTO (Thin)
         run: |
-          set -euo pipefail
-          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
-          KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
-          COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
-          DEFCONFIG_PATH="$COMMON_ROOT/arch/arm64/configs/gki_defconfig"
-          kpm_kconfig_status="${ABK_KPM_KCONFIG_STATUS:-unknown}"
-          kpm_kconfig_ready="${ABK_KPM_KCONFIG_READY:-false}"
-          kpm_kconfig_path="${ABK_KPM_KCONFIG_PATH:-}"
-          test -f "$DEFCONFIG_PATH"
-
-          if [ "$KSU_VARIANT" != "None" ]; then
-            if [ "$EFFECTIVE_ENABLE_SUSFS" = "true" ]; then
-              cat >> "$DEFCONFIG_PATH" <<'EOF'
-          CONFIG_KSU_SUSFS=y
-          CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
-          CONFIG_KSU_SUSFS_SUS_PATH=y
-          CONFIG_KSU_SUSFS_SUS_MOUNT=y
-          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
-          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
-          CONFIG_KSU_SUSFS_SUS_KSTAT=y
-          CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y
-          CONFIG_KSU_SUSFS_TRY_UMOUNT=y
-          CONFIG_KSU_SUSFS_SPOOF_UNAME=y
-          CONFIG_KSU_SUSFS_ENABLE_LOG=y
-          CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
-          CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
-          CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
-          CONFIG_KSU_SUSFS_SUS_MAP=y
-          EOF
-            else
-              cat >> "$DEFCONFIG_PATH" <<'EOF'
-          CONFIG_KSU_SUSFS=n
-          CONFIG_KSU_MANUAL_HOOK=y
-          EOF
-            fi
-          fi
-
-          cat >> "$DEFCONFIG_PATH" <<'EOF'
-          CONFIG_TMPFS_XATTR=y
-          CONFIG_TMPFS_POSIX_ACL=y
-          CONFIG_HEADERS_INSTALL=n
-          EOF
-
-          kpm_config_supported="false"
-          if [ "$KSU_VARIANT" = "SukiSU" ] || [ "$KSU_VARIANT" = "ReSukiSU" ]; then
-            if [ "$kpm_kconfig_ready" = "true" ] && [ -f "$kpm_kconfig_path" ]; then
-              kpm_config_supported="true"
-            else
-              for dir in KernelSU/kernel common/drivers/kernelsu drivers/kernelsu kernel; do
-                if [ -f "$KERNEL_ROOT/$dir/Kconfig" ] && rg -n '^[[:space:]]*config[[:space:]]+KPM\b' "$KERNEL_ROOT/$dir/Kconfig" >/dev/null 2>&1; then
-                  kpm_config_supported="true"
-                  break
-                fi
-              done
-            fi
-          fi
-
-          if [ "$EFFECTIVE_KPM" = "true" ] && [ "$kpm_config_supported" = "true" ]; then
-            echo "CONFIG_KPM=y" >> "$DEFCONFIG_PATH"
-            case "$kpm_kconfig_status" in
-              native)
-                echo "检测到原生 KPM Kconfig，已启用 CONFIG_KPM。"
-                ;;
-              injected)
-                echo "源码未暴露 KPM Kconfig，已自动注入并启用 CONFIG_KPM。"
-                ;;
-              *)
-                echo "检测到 KPM Kconfig，已启用 CONFIG_KPM。"
-                ;;
-            esac
-          elif [ "$EFFECTIVE_KPM" = "true" ]; then
-            echo "::error::请求启用 KPM，但当前 $KSU_VARIANT 源码树仍未提供 config KPM。"
-            exit 1
-          elif [ "$KSU_VARIANT" = "SukiSU" ] || [ "$KSU_VARIANT" = "ReSukiSU" ]; then
-            if [ "$kpm_config_supported" = "true" ]; then
+          cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
+          echo "CONFIG_LTO_CLANG_THIN=y" >> arch/arm64/configs/gki_defconfig
+    
       
     
       - name: 应用 Networking 增强 (IPSet + IPv6 NAT)
