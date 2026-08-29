@@ -722,17 +722,17 @@ jobs:
           echo "KBUILD_BUILD_TIMESTAMP=$DATESTR" >> "$GITHUB_ENV"
           echo "KBUILD_BUILD_VERSION=1" >> "$GITHUB_ENV"
      
-      #- name: Prepare CPU Optimizations (Oryon SM8750)
-        #run: |
-         #echo "EXTRA_CFLAGS=-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
-         #cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
-         #cat >> arch/arm64/configs/gki_defconfig << 'EOF'
-         #CONFIG_ARM64_ERRATUM_2658417=y
-         #CONFIG_ARCH_QCOM=y
-         #CONFIG_HZ_300=y
-         #CONFIG_NO_HZ_IDLE=y
-         #EOF
-         #echo "✅ Oryon flags prepared."
+      - name: Prepare CPU Optimizations (Oryon SM8750)
+        run: |
+         echo "EXTRA_CFLAGS=-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
+         cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
+         cat >> arch/arm64/configs/gki_defconfig << 'EOF'
+         CONFIG_ARM64_ERRATUM_2658417=y
+         CONFIG_ARCH_QCOM=y
+         CONFIG_HZ_300=y
+         CONFIG_NO_HZ_IDLE=y
+         EOF
+         echo "✅ Oryon flags prepared."
 
       - name: Configure LTO (Thin)
         run: |
@@ -882,7 +882,50 @@ jobs:
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
 
-      - name: 编译内核
+      - name: 缓存 Clang
+        id: clang-cache
+        uses: actions/cache@v4
+        with:
+          path: oneplus_workspace/kernel_workspace/clang-r563880c
+          key: Linux-aosp-clang-clang-r563880c
+          
+      - name: 下载并设置最新 Clang（使用缓存 + aria2c）
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace"
+          mkdir -p "$WORKSPACE"
+          cd "$WORKSPACE"
+
+          CLANG_VERSION="clang-r563880c"
+          CLANG_DIR="$WORKSPACE/$CLANG_VERSION"
+
+          # 如果已存在，直接设置环境变量并跳过
+          if [ -d "$CLANG_DIR" ]; then
+           echo "✅ Clang $CLANG_VERSION 已存在，跳过下载"
+            echo "NEW_CLANG_PATH=$CLANG_DIR/bin" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          echo "⏳ 下载 Clang $CLANG_VERSION ..."
+          # 安装 aria2（如果未安装）
+          sudo apt-get update && sudo apt-get install -y aria2
+
+          # 多线程下载
+          aria2c -x16 -s16 -k1M -j16 --retry-wait=5 --max-tries=10 \
+            -d /dev/shm -o clang.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android16-qpr2-release/${CLANG_VERSION}.tar.gz"
+
+          mkdir -p "$CLANG_VERSION"
+          tar -C "$CLANG_VERSION" -zxf /dev/shm/clang.tar.gz
+          rm -f /dev/shm/clang.tar.gz
+
+          echo "NEW_CLANG_PATH=$CLANG_DIR/bin" >> $GITHUB_ENV
+          echo "✅ Clang $CLANG_VERSION 下载完成"
+          echo "Clang version:"
+          $CLANG_DIR/bin/clang --version | head -1
+          
+      - name: 编译内核（RAM Disk + LTO 缓存 + Oryon 强制优化）
         shell: bash
         run: |
           set -euo pipefail
@@ -890,35 +933,73 @@ jobs:
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
           cd "$COMMON_ROOT"
 
-          # 自定义构建时间
-          export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
-          
+          # ---------- 0. 准备 RAM Disk 和 LTO 缓存 ----------
+          mkdir -p /dev/shm/kout
+          mkdir -p /dev/shm/ldcache
+
+          # 创建 ld-wrapper（使用 RAM Disk 作为 LTO 缓存）
+          echo '#!/bin/bash' > ld-wrapper
+          echo 'ld.lld "$@" --thinlto-cache-dir=/dev/shm/ldcache --thinlto-jobs=$(($(nproc --all) / 2))' >> ld-wrapper
+          chmod +x ld-wrapper
+
           export PATH="/usr/lib/ccache:$PATH"
           export KBUILD_BUILD_USER="abk"
           export KBUILD_BUILD_HOST="abk"
           export KBUILD_BUILD_VERSION=1
 
-          MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all)
-          case "$KERNEL_VERSION" in
-            6.1)
-              export KBUILD_BUILD_TIMESTAMP="Tue Mar 10 03:53:33 UTC 2026"
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
-              "${MAKE_COMMON[@]}" KCFLAGS+=-O2
-              ;;
-            6.6)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
-              "${MAKE_COMMON[@]}" KCFLAGS+=-O2
-              ;;
-            5.15)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
-              "${MAKE_COMMON[@]}"
-              ;;
-            5.10)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
-              make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all
-              ;;
-          esac
+          # 自定义构建时间
+          export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
+
+          # ---------- 1. 设置 Clang 路径（优先使用新下载的） ----------
+          if [ -n "${NEW_CLANG_PATH:-}" ] && [ -d "$NEW_CLANG_PATH" ]; then
+            export PATH="$NEW_CLANG_PATH:$PATH"
+            echo "✅ 使用新下载的 Clang: $NEW_CLANG_PATH"
+          else
+            # 如果未下载，回退到默认预置 Clang
+            case "$KERNEL_VERSION" in
+              6.1)
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
+                ;;
+              6.6)
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
+                ;;
+              5.15)
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
+                ;;
+              5.10)
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
+                 ;;
+            esac
+            echo "⚠️ 未找到新 Clang，使用默认: $(which clang)"
+          fi
+
+          echo "Clang version: $(clang --version | head -1)"
+
+          # ---------- 2. 准备 KCFLAGS ----------
+          BASE_KCFLAGS="-O2 -pipe -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option"
+          # 添加 EXTRA_CFLAGS（由 Prepare CPU Optimizations 设置）
+          KCFLAGS="$BASE_KCFLAGS ${EXTRA_CFLAGS:-}"
+
+          # ---------- 3. 编译 defconfig ----------
+          make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+            CC="ccache clang" LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" \
+            O=/dev/shm/kout \
+            KCFLAGS="$KCFLAGS" \
+            gki_defconfig
+
+          # ---------- 4. 编译内核 Image ----------
+          make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+            CC="ccache clang" LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" \
+            O=/dev/shm/kout \
+            KCFLAGS="$KCFLAGS" \
+            Image
+
+          # ---------- 5. 复制产物到 out/ ----------
+          mkdir -p out
+          cp -r /dev/shm/kout/* out/
+
           ccache -s
+          df -h
     
       - name: 打包 AnyKernel3
         shell: bash
