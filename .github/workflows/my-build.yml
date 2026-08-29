@@ -735,22 +735,7 @@ jobs:
          EOF
          echo "✅ Oryon flags prepared."
 
-      - name: F2FS Optimizations
-        working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-        run: |
-          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_F2FS_FS=y
-          CONFIG_F2FS_STAT_FS=y
-          CONFIG_F2FS_FS_XATTR=y
-          CONFIG_F2FS_FS_POSIX_ACL=y
-          CONFIG_F2FS_FS_SECURITY=y
-          CONFIG_F2FS_FS_COMPRESSION=y
-          CONFIG_F2FS_FS_LZO=y
-          CONFIG_F2FS_FS_LZ4=y
-          CONFIG_F2FS_FS_ZSTD=y
-          EOF
-          
-      - name: 强制应用 BBRv3 补丁（直链下载，适配 6.6 内核）
+      - name: 强制应用 BBRv3 补丁（仅补丁）
         shell: bash
         run: |
           set -euo pipefail
@@ -760,8 +745,7 @@ jobs:
 
           cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
 
-          # 1. 使用直链下载补丁
-          PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android15-6.6.patch"
+           PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android15-6.6.patch"
           echo "⏳ 下载补丁: $PATCH_URL"
           curl -fsSL --retry 3 --retry-delay 5 -o bbrv3.patch "$PATCH_URL"
 
@@ -770,7 +754,6 @@ jobs:
             exit 1
           fi
 
-          # 2. 应用补丁
           echo "⏳ 应用补丁..."
           if git apply -p1 < bbrv3.patch 2>/dev/null; then
             echo "✅ BBRv3 git apply 成功"
@@ -778,25 +761,12 @@ jobs:
             echo "✅ BBRv3 patch 成功"
           else
             echo "::error::BBRv3 补丁应用失败，中止构建"
-            exit 1
+           exit 1
           fi
 
-          # 3. 清理旧配置并添加 BBRv3
-          DEFCONFIG="arch/arm64/configs/gki_defconfig"
-          sed -i '/^CONFIG_TCP_CONG_BBR=/d' "$DEFCONFIG"
-          sed -i '/^CONFIG_TCP_CONG_ADVANCED=/d' "$DEFCONFIG"
-          sed -i '/^CONFIG_DEFAULT_TCP_CONG=/d' "$DEFCONFIG"
-          echo "CONFIG_TCP_CONG_BBR3=y" >> "$DEFCONFIG"
-          echo 'CONFIG_DEFAULT_TCP_CONG="bbr"' >> "$DEFCONFIG"
-          echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$DEFCONFIG"
-          echo "CONFIG_NET_SCH_FQ=y" >> "$DEFCONFIG"
-          echo "CONFIG_NET_SCH_FQ_CODEL=y" >> "$DEFCONFIG"
+          echo "✅ BBRv3 补丁应用完成（配置项在 defconfig 步骤中统一添加）"
+          echo "======================================"
 
-          echo "✅ BBRv3 配置已写入 defconfig"
-          echo "======================================"
-          echo "  BBRv3 集成完成"
-          echo "======================================"
-      
       - name: Configure LTO (Thin)
         run: |
           cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
@@ -810,60 +780,203 @@ jobs:
           KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
           DEFCONFIG_PATH="$COMMON_ROOT/arch/arm64/configs/gki_defconfig"
+          kpm_kconfig_status="${ABK_KPM_KCONFIG_STATUS:-unknown}"
+          kpm_kconfig_ready="${ABK_KPM_KCONFIG_READY:-false}"
+          kpm_kconfig_path="${ABK_KPM_KCONFIG_PATH:-}"
           test -f "$DEFCONFIG_PATH"
 
-          # 只做必要的清理，不添加任何额外配置
-          sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
-          echo "✅ defconfig 清理完成（未添加任何自定义配置）"
-    
-      - name: 应用 Networking 增强 (IPSet + IPv6 NAT)
-        working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-        run: |
-          set -euo pipefail
-
-          DEFCONFIG="arch/arm64/configs/gki_defconfig"
-
-          ensure_defconfig_value() {
-           local cfg="$1"
-            local value="$2"
-            local line="${cfg}=${value}"
-
-            if grep -qxF "$line" "$DEFCONFIG"; then
-              return 0
-            fi
-
-            if grep -Eq "^${cfg}=|^# ${cfg} is not set$" "$DEFCONFIG"; then
-              sed -i -E "s|^${cfg}=.*|${line}|; s|^# ${cfg} is not set$|${line}|" "$DEFCONFIG"
+          # ========== 1. KernelSU / SUSFS ==========
+          if [ "$KSU_VARIANT" != "None" ]; then
+            if [ "$EFFECTIVE_ENABLE_SUSFS" = "true" ]; then
+             cat >> "$DEFCONFIG_PATH" <<'EOF'
+          CONFIG_KSU_SUSFS=y
+          CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
+          CONFIG_KSU_SUSFS_SUS_PATH=y
+          CONFIG_KSU_SUSFS_SUS_MOUNT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
+          CONFIG_KSU_SUSFS_SUS_KSTAT=y
+          CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y
+          CONFIG_KSU_SUSFS_TRY_UMOUNT=y
+          CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+          CONFIG_KSU_SUSFS_ENABLE_LOG=y
+          CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
+          CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+          CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
+          CONFIG_KSU_SUSFS_SUS_MAP=y
+          EOF
             else
-              echo "$line" >> "$DEFCONFIG"
+              cat >> "$DEFCONFIG_PATH" <<'EOF'
+          CONFIG_KSU_SUSFS=n
+          CONFIG_KSU_MANUAL_HOOK=y
+          EOF
             fi
-          }
+          fi
 
-          echo "添加 IPSet & IPv6 NAT 支持"
-          ensure_defconfig_value CONFIG_IP_SET y
-          ensure_defconfig_value CONFIG_IP_SET_MAX 65534
-          ensure_defconfig_value CONFIG_IP_SET_BITMAP_IP y
-          ensure_defconfig_value CONFIG_IP_SET_BITMAP_IPMAC y
-          ensure_defconfig_value CONFIG_IP_SET_BITMAP_PORT y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_IP y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_IPMARK y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_IPPORT y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_IPPORTIP y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_IPPORTNET y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_IPMAC y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_MAC y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_NETPORTNET y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_NET y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_NETNET y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_NETPORT y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_NETIFACE y
-          ensure_defconfig_value CONFIG_IP_SET_LIST_SET y
-          ensure_defconfig_value CONFIG_NETFILTER_XT_MATCH_ADDRTYPE y
-          ensure_defconfig_value CONFIG_NETFILTER_XT_SET y
-          ensure_defconfig_value CONFIG_IP6_NF_NAT y
-          ensure_defconfig_value CONFIG_IP6_NF_TARGET_MASQUERADE y
+          # ========== 2. 基础 Android 选项 ==========
+          cat >> "$DEFCONFIG_PATH" <<'EOF'
+          CONFIG_TMPFS_XATTR=y
+          CONFIG_TMPFS_POSIX_ACL=y
+          CONFIG_HEADERS_INSTALL=n
+          EOF
 
-          echo "✓ IPSet & IPv6 NAT 配置完成"
+          # ========== 3. KPM ==========
+          kpm_config_supported="false"
+          if [ "$KSU_VARIANT" = "SukiSU" ] || [ "$KSU_VARIANT" = "ReSukiSU" ]; then
+           if [ "$kpm_kconfig_ready" = "true" ] && [ -f "$kpm_kconfig_path" ]; then
+              kpm_config_supported="true"
+            else
+              for dir in KernelSU/kernel common/drivers/kernelsu drivers/kernelsu kernel; do
+                if [ -f "$KERNEL_ROOT/$dir/Kconfig" ] && rg -n '^[[:space:]]*config[[:space:]]+KPM\b' "$KERNEL_ROOT/$dir/Kconfig" >/dev/null 2>&1; then
+                  kpm_config_supported="true"
+                  break
+                fi
+              done
+            fi
+          fi
+
+          if [ "$EFFECTIVE_KPM" = "true" ] && [ "$kpm_config_supported" = "true" ]; then
+            echo "CONFIG_KPM=y" >> "$DEFCONFIG_PATH"
+            case "$kpm_kconfig_status" in
+              native)
+                echo "检测到原生 KPM Kconfig，已启用 CONFIG_KPM。"
+                ;;
+              injected)
+                echo "源码未暴露 KPM Kconfig，已自动注入并启用 CONFIG_KPM。"
+                ;;
+              *)
+                echo "检测到 KPM Kconfig，已启用 CONFIG_KPM。"
+                ;;
+            esac
+          elif [ "$EFFECTIVE_KPM" = "true" ]; then
+            echo "::error::请求启用 KPM，但当前 $KSU_VARIANT 源码树仍未提供 config KPM。"
+            exit 1
+           elif [ "$KSU_VARIANT" = "SukiSU" ] || [ "$KSU_VARIANT" = "ReSukiSU" ]; then
+            if [ "$kpm_config_supported" = "true" ]; then
+              echo "# CONFIG_KPM is not set" >> "$DEFCONFIG_PATH"
+              echo "检测到 KPM Kconfig，已显式关闭 CONFIG_KPM。"
+            fi
+          fi
+           # ========== 4. BBG ==========
+          if [ "$USE_BBG" = "true" ] && [ "$EFFECTIVE_KPM" = "false" ]; then
+            cat >> "$DEFCONFIG_PATH" <<'EOF'
+          CONFIG_BBG=y
+          CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"
+          EOF
+          fi
+
+          # ========== 5. BBRv3 配置（无条件添加） ==========
+          # 清理可能冲突的旧 BBR 配置
+          sed -i '/^CONFIG_TCP_CONG_BBR=/d' "$DEFCONFIG_PATH"
+          sed -i '/^CONFIG_TCP_CONG_ADVANCED=/d' "$DEFCONFIG_PATH"
+          sed -i '/^CONFIG_DEFAULT_TCP_CONG=/d' "$DEFCONFIG_PATH"
+          cat >> "$DEFCONFIG_PATH" <<'EOF'
+          CONFIG_TCP_CONG_BBR3=y
+          CONFIG_DEFAULT_TCP_CONG="bbr"
+          CONFIG_TCP_CONG_ADVANCED=y
+          CONFIG_NET_SCH_FQ=y
+          CONFIG_NET_SCH_FQ_CODEL=y
+          EOF
+          echo "✅ BBRv3 配置已添加"
+
+          # ========== 6. F2FS 基础配置（无条件添加） ==========
+          cat >> "$DEFCONFIG_PATH" <<'EOF'
+          CONFIG_F2FS_FS=y
+          CONFIG_F2FS_STAT_FS=y
+          CONFIG_F2FS_FS_XATTR=y
+          CONFIG_F2FS_FS_POSIX_ACL=y
+          CONFIG_F2FS_FS_SECURITY=y
+          # 压缩功能可能带来兼容性问题，先注释
+          # CONFIG_F2FS_FS_COMPRESSION=y
+          # CONFIG_F2FS_FS_LZO=y
+          # CONFIG_F2FS_FS_LZ4=y
+          # CONFIG_F2FS_FS_ZSTD=y
+          EOF
+          echo "✅ F2FS 基础配置已添加"
+           # ========== 7. IPSet + IPv6 NAT（无条件添加） ==========
+          cat >> "$DEFCONFIG_PATH" <<'EOF'
+          CONFIG_IP_SET=y
+          CONFIG_IP_SET_MAX=65534
+          CONFIG_IP_SET_BITMAP_IP=y
+          CONFIG_IP_SET_BITMAP_IPMAC=y
+          CONFIG_IP_SET_BITMAP_PORT=y
+          CONFIG_IP_SET_HASH_IP=y
+          CONFIG_IP_SET_HASH_IPMARK=y
+          CONFIG_IP_SET_HASH_IPPORT=y
+          CONFIG_IP_SET_HASH_IPPORTIP=y
+          CONFIG_IP_SET_HASH_IPPORTNET=y
+          CONFIG_IP_SET_HASH_IPMAC=y
+          CONFIG_IP_SET_HASH_MAC=y
+          CONFIG_IP_SET_HASH_NETPORTNET=y
+          CONFIG_IP_SET_HASH_NET=y
+          CONFIG_IP_SET_HASH_NETNET=y
+          CONFIG_IP_SET_HASH_NETPORT=y
+          CONFIG_IP_SET_HASH_NETIFACE=y
+          CONFIG_IP_SET_LIST_SET=y
+          CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
+          CONFIG_NETFILTER_XT_SET=y
+          CONFIG_IP6_NF_NAT=y
+          CONFIG_IP6_NF_TARGET_MASQUERADE=y
+          EOF
+          echo "✅ IPSet & IPv6 NAT 配置已添加"
+
+          # ========== 8. LZ4KD ==========
+          if [ "$EFFECTIVE_USE_LZ4KD" = "true" ]; then
+            cat >> "$DEFCONFIG_PATH" <<'EOF'
+          CONFIG_CRYPTO_LZ4KD=y
+          CONFIG_CRYPTO_LZ4K_OPLUS=y
+          CONFIG_ZRAM_WRITEBACK=y
+          EOF
+          fi
+
+          # ========== 9. 代理优化 ==========
+          if [ "$EFFECTIVE_PROXY_OPTIMIZATION" = "true" ]; then
+            cat >> "$DEFCONFIG_PATH" <<'EOF'
+          CONFIG_BPF_STREAM_PARSER=y
+          CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
+          CONFIG_NETFILTER_XT_SET=y
+          CONFIG_IP_SET=y
+          CONFIG_IP_SET_MAX=65534
+          CONFIG_IP_SET_BITMAP_IP=y
+          CONFIG_IP_SET_BITMAP_IPMAC=y
+          CONFIG_IP_SET_BITMAP_PORT=y
+          CONFIG_IP_SET_HASH_IP=y
+          CONFIG_IP_SET_HASH_IPMARK=y
+          CONFIG_IP_SET_HASH_IPPORT=y
+          CONFIG_IP_SET_HASH_IPPORTIP=y
+          CONFIG_IP_SET_HASH_IPPORTNET=y
+          CONFIG_IP_SET_HASH_IPMAC=y
+          CONFIG_IP_SET_HASH_MAC=y
+          CONFIG_IP_SET_HASH_NETPORTNET=y
+          CONFIG_IP_SET_HASH_NET=y
+          CONFIG_IP_SET_HASH_NETNET=y
+          CONFIG_IP_SET_HASH_NETPORT=y
+          CONFIG_IP_SET_HASH_NETIFACE=y
+          CONFIG_IP_SET_LIST_SET=y
+          CONFIG_IP6_NF_NAT=y
+          CONFIG_IP6_NF_TARGET_MASQUERADE=y
+          EOF
+          fi
+
+           # ========== 10. 5.10/5.15 LTO 配置 ==========
+          if [ "$KERNEL_VERSION" = "5.10" ] || [ "$KERNEL_VERSION" = "5.15" ]; then
+            sed -i 's/^CONFIG_LTO=n/CONFIG_LTO=y/' "$DEFCONFIG_PATH" || true
+            sed -i 's/^CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "$DEFCONFIG_PATH" || true
+            sed -i 's/^CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "$DEFCONFIG_PATH" || true
+            grep -q '^CONFIG_LTO_CLANG_THIN=y' "$DEFCONFIG_PATH" || echo 'CONFIG_LTO_CLANG_THIN=y' >> "$DEFCONFIG_PATH"
+          fi
+ 
+          # ========== 11. CC_OPTIMIZE_FOR_PERFORMANCE ==========
+          if [ "$KERNEL_VERSION" = "6.1" ] || [ "$KERNEL_VERSION" = "6.6" ]; then
+            echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "$DEFCONFIG_PATH"
+          fi
+
+          # ========== 12. 清理 check_defconfig ==========
+          sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
+
+          # ========== 13. 调度与能效配置（已禁用，避免冲突） ==========
+          echo "⚠️ 调度与能效配置已跳过（避免与厂商 oplus_bsp 代码冲突）"
+          echo "✅ defconfig 配置完成"
 
       - name: 缓存 Clang
         id: clang-cache
