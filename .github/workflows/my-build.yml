@@ -725,7 +725,7 @@ jobs:
       - name: Prepare CPU Optimizations (Oryon SM8750)
         run: |
          # 直接设置 Oryon 编译器优化（去除判断条件，固定使用 -mcpu=oryon-1）
-         echo "EXTRA_CFLAGS=mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
+         echo "EXTRA_CFLAGS=-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
          cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
          CONFIG_ARM64_ERRATUM_2658417=y
@@ -933,15 +933,16 @@ jobs:
             grep -q '^CONFIG_LTO_CLANG_THIN=y' "$DEFCONFIG_PATH" || echo 'CONFIG_LTO_CLANG_THIN=y' >> "$DEFCONFIG_PATH"
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
+            
             # ---------- 暂时禁用调度与能效配置（OnePlus 厂商代码可能冲突） ----------
             echo "⚠️ 调度与能效配置已跳过（避免与厂商 oplus_bsp 代码冲突）"
             # 仅保留 CPU 频率调度器（较为安全）
-           if ! grep -qxF "CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y" "$DEFCONFIG_PATH"; then
-             echo "CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y" >> "$DEFCONFIG_PATH"
-           fi
-           # 注意：CONFIG_SCHED_MC、CONFIG_SCHED_CLUSTER、CONFIG_ENERGY_MODEL、CONFIG_ARM64_AMU_EXTN 等已全部禁用
-          done
-          echo "✅ 调度与能效配置添加完成"
+            if ! grep -qxF "CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y" "$DEFCONFIG_PATH"; then
+              echo "CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y" >> "$DEFCONFIG_PATH"
+          fi
+            # 注意：CONFIG_SCHED_MC、CONFIG_SCHED_CLUSTER、CONFIG_ENERGY_MODEL、CONFIG_ARM64_AMU_EXTN 等已全部禁用
+            echo "✅ 调度与能效配置添加完成"
+
 
       - name: Configure LTO (Thin)
         run: |
