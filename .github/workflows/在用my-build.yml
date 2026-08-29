@@ -62,7 +62,7 @@ on:
         description: "自定义构建时间 (可选，N或留空=当前UTC)"
         required: false
         type: string
-        default: "Sun Dec 01 08:10:00 UTC 2024"
+        default: ""
         
 jobs:
   build:
@@ -712,78 +712,65 @@ jobs:
         shell: bash
         run: |
           INPUT_TIME="${{ inputs.build_time }}"
-          if [[ -n "$INPUT_TIME" && "$INPUT_TIME" != "N" && "$INPUT_TIME" != "n" ]]; then
-            DATESTR="$INPUT_TIME"
-          else
+          if [[ -z "$INPUT_TIME" || "$INPUT_TIME" == "N" || "$INPUT_TIME" == "n" ]]; then
             DATESTR="$(TZ='UTC' date +'%a %b %d %T %Z %Y')"
+            echo "使用当前 UTC 时间: $DATESTR"
+          else
+            DATESTR="$INPUT_TIME"
+            echo "使用自定义时间: $DATESTR"
           fi
-
-          echo "使用构建时间: $DATESTR"
           echo "KBUILD_BUILD_TIMESTAMP=$DATESTR" >> "$GITHUB_ENV"
           echo "KBUILD_BUILD_VERSION=1" >> "$GITHUB_ENV"
+     
+      #- name: Prepare CPU Optimizations (Oryon SM8750)
+        #run: |
+         #echo "EXTRA_CFLAGS=-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
+         #cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
+         #cat >> arch/arm64/configs/gki_defconfig << 'EOF'
+         #CONFIG_ARM64_ERRATUM_2658417=y
+         #CONFIG_ARCH_QCOM=y
+         #CONFIG_HZ_300=y
+         #CONFIG_NO_HZ_IDLE=y
+         #EOF
+         #echo "✅ Oryon flags prepared."
 
-          # 统一处理 mkcompile_h 补丁
-          f="$KERNEL_ROOT/common/scripts/mkcompile_h"
-          if [ -f "$f" ]; then
-            if [[ "${{ inputs.kernel_version }}" == "5.10" || "${{ inputs.kernel_version }}" == "5.15" ]]; then
-              echo "应用 5.x 经典时间戳补丁: $f"
-              perl -pi -e "s{UTS_VERSION=\"\\\$\(echo \\\$UTS_VERSION \\\$CONFIG_FLAGS \\\$TIMESTAMP \\| cut -b -\\\$UTS_LEN\)\"}{UTS_VERSION=\"#1 SMP PREEMPT $DATESTR\"}" "$f"
-            else
-              echo "应用 6.x mkcompile_h 补丁: $f"
-              if grep -q 'UTS_VERSION=' "$f"; then
-                perl -pi -e "s{UTS_VERSION=\"\\\$\\\(.*?\\\)\"}{UTS_VERSION=\"#1 SMP PREEMPT $DATESTR\"}" "$f"
-              else
-                perl -0777 -pi -e "s{cat <<EOF}{cat <<EOF\n#undef UTS_VERSION\n#define UTS_VERSION \"#1 SMP PREEMPT $DATESTR\" } unless /UTS_VERSION/" "$f"
-              fi
-            fi
-          fi   
-
-      - name: 强制升级 TCP BBR 至 v3（6.6 内核）
+      - name: 强制应用 BBRv3 补丁（仅补丁）
         shell: bash
         run: |
           set -euo pipefail
-          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
-          COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
-          cd "$COMMON_ROOT"
+          echo "======================================"
+          echo "  应用 BBRv3 补丁"
+          echo "======================================"
 
-          echo "下载 BBRv3 补丁..."
-          curl -L -o /tmp/bbrv3.patch \
-            https://github.com/xkse4/android_kernel_common_oneplus_sm8750/commit/45b3565.patch
+          cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
 
-          echo "应用补丁..."
-          if patch -p1 < /tmp/bbrv3.patch; then
-            echo "✅ BBRv3 补丁应用成功"
-          else
-            echo "⚠️ 补丁部分失败，尝试手动修复 Makefile..."
+           PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android15-6.6.patch"
+          echo "⏳ 下载补丁: $PATCH_URL"
+          curl -fsSL --retry 3 --retry-delay 5 -o bbrv3.patch "$PATCH_URL"
 
-            # 1. 确保 tcp_bbr3.c 存在
-            if [ ! -f net/ipv4/tcp_bbr3.c ]; then
-              curl -o net/ipv4/tcp_bbr3.c \
-                https://raw.githubusercontent.com/xkse4/android_kernel_common_oneplus_sm8750/oneplus/sm8750_b_16.0.0_oneplus_13/net/ipv4/tcp_bbr3.c
-            fi
-
-            # 2. 删除现有的 BBR 构建规则行
-            sed -i '/^obj-\$(CONFIG_TCP_CONG_BBR)/d' net/ipv4/Makefile
-            sed -i '/^tcp_bbr-y/d' net/ipv4/Makefile
-
-            # 3. 添加新的构建规则（直接 echo，避免 heredoc）
-            echo 'obj-$(CONFIG_TCP_CONG_BBR) += tcp_bbr.o' >> net/ipv4/Makefile
-            echo 'tcp_bbr-y := tcp_bbr3.o' >> net/ipv4/Makefile
-
-            # 4. 更新 Kconfig 描述（如未更新）
-            sed -i 's/default "BBR TCP"/default "BBRv3 TCP"/' net/ipv4/Kconfig || true
-
-            echo "✅ BBRv3 Makefile 冲突已手动修复"
-          fi
-
-          # 验证
-          if [ -f net/ipv4/tcp_bbr3.c ]; then
-            echo "✅ BBRv3 源码注入成功"
-          else
-            echo "::error::BBRv3 源码注入失败"
+          if [ ! -s bbrv3.patch ]; then
+            echo "::error::BBRv3 补丁下载失败（文件为空或404）"
             exit 1
           fi
-    
+
+          echo "⏳ 应用补丁..."
+          if git apply -p1 < bbrv3.patch 2>/dev/null; then
+            echo "✅ BBRv3 git apply 成功"
+          elif patch -p1 -F 3 < bbrv3.patch 2>/dev/null; then
+            echo "✅ BBRv3 patch 成功"
+          else
+            echo "::error::BBRv3 补丁应用失败，中止构建"
+           exit 1
+          fi
+
+          echo "✅ BBRv3 补丁应用完成（配置项在 defconfig 步骤中统一添加）"
+          echo "======================================"
+     
+      - name: Configure LTO (Thin)
+        run: |
+          cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
+          echo "CONFIG_LTO_CLANG_THIN=y" >> arch/arm64/configs/gki_defconfig
+      
       - name: 配置 defconfig
         shell: bash
         run: |
@@ -926,139 +913,8 @@ jobs:
             grep -q '^CONFIG_LTO_CLANG_THIN=y' "$DEFCONFIG_PATH" || echo 'CONFIG_LTO_CLANG_THIN=y' >> "$DEFCONFIG_PATH"
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
-      
-      - name: 合入 Oryon 优化补丁（自动）
-        run: |
-          set -euo pipefail
-          cd "${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common"
-          # 1. 添加 Linux 主线上游（仅首次需要）
-          if ! git remote get-url upstream &>/dev/null; then
-            git remote add upstream https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
-            git fetch upstream --tags
-          fi
-          echo "⏳ 从上游查找所有 Oryon 相关补丁..."
-          git fetch upstream master
-          # 2. 查找所有相关的 Oryon 提交（按时间顺序，从旧到新）
-          # 使用多种关键词组合以覆盖所有相关补丁
-          commits=$(git log --reverse --oneline upstream/master \
-              --grep="oryon" --grep="qcom,oryon" --grep="sm8750" --grep="Oryon" \
-              --all-match --format="%H" 2>/dev/null || true)
-          # 如果上面没找到，再尝试更宽泛的（只包含 oryon）
-          if [ -z "$commits" ]; then
-              commits=$(git log --reverse --oneline upstream/master --grep="oryon" --format="%H" 2>/dev/null || true)
-          fi
-          if [ -z "$commits" ]; then
-            echo "::warning::未找到任何 Oryon 相关补丁，跳过合入。"
-          else
-            for commit in $commits; do
-              # 检查该提交是否已存在于当前分支（避免重复合入）
-              if git branch --contains "$commit" --format="%(refname:short)" 2>/dev/null | grep -q "."; then
-                echo "✅ 提交 $commit 已存在于当前分支，跳过"
-                continue
-              fi
-             echo "正在尝试合入 $commit ..."
-              # 尝试 cherry-pick，如果失败则检查是否因“已存在”或“空”导致
-              if ! git cherry-pick --no-commit "$commit" 2>cherry_error.log; then
-                if grep -q "empty\|already" cherry_error.log; then
-                  echo "✅ 提交 $commit 已应用或为空，跳过"
-                  git cherry-pick --abort 2>/dev/null || true
-                else
-                  echo "::warning::合入 $commit 产生冲突，尝试跳过..."
-                  git cherry-pick --abort || true
-                fi
-              else
-                git commit -m "自动合入 Oryon 补丁: $commit"
-                echo "✅ 成功合入 $commit"
-              fi
-              rm -f cherry_error.log
-            done
-          fi
-          # 3. 追加调度集群、能效模型和 AMU 优化配置（使用 echo 避免 EOF 缩进问题）
-          echo "正在添加 Oryon 调度与能效优化配置..."
-          echo "CONFIG_SCHED_MC=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_SCHED_SMT=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_SCHED_CLUSTER=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_CPUFREQ_DT=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_ARM64_AMU_EXTN=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_ENERGY_MODEL=y" >> arch/arm64/configs/gki_defconfig
-          echo "✅ Oryon 优化准备完成"
 
-      - name: 应用 Networking 增强 (IPSet + BBR)
-        working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
-        run: |
-          set -euo pipefail
-
-          # 定义 defconfig 路径（基于当前工作目录）
-          DEFCONFIG="arch/arm64/configs/gki_defconfig"
-
-          ensure_defconfig_value() {
-            local cfg="$1"
-            local value="$2"
-            local line="${cfg}=${value}"
-
-            if grep -qxF "$line" "$DEFCONFIG"; then
-              return 0
-            fi
-
-            if grep -Eq "^${cfg}=|^# ${cfg} is not set$" "$DEFCONFIG"; then
-              sed -i -E "s|^${cfg}=.*|${line}|; s|^# ${cfg} is not set$|${line}|" "$DEFCONFIG"
-            else
-              echo "$line" >> "$DEFCONFIG"
-            fi
-          }
-
-          echo " 添加 IPSet & IPv6 NAT 支持"
-          ensure_defconfig_value CONFIG_IP_SET y
-          ensure_defconfig_value CONFIG_IP_SET_MAX 65534
-          ensure_defconfig_value CONFIG_IP_SET_BITMAP_IP y
-          ensure_defconfig_value CONFIG_IP_SET_BITMAP_IPMAC y
-          ensure_defconfig_value CONFIG_IP_SET_BITMAP_PORT y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_IP y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_IPMARK y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_IPPORT y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_IPPORTIP y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_IPPORTNET y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_IPMAC y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_MAC y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_NETPORTNET y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_NET y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_NETNET y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_NETPORT y
-          ensure_defconfig_value CONFIG_IP_SET_HASH_NETIFACE y
-          ensure_defconfig_value CONFIG_IP_SET_LIST_SET y
-          ensure_defconfig_value CONFIG_NETFILTER_XT_MATCH_ADDRTYPE y
-          ensure_defconfig_value CONFIG_NETFILTER_XT_SET y
-          ensure_defconfig_value CONFIG_IP6_NF_NAT y
-          ensure_defconfig_value CONFIG_IP6_NF_TARGET_MASQUERADE y
-
-          # （可选）5.10 内核特殊处理，你的 6.6 无需此段
-          # if [ "${{ inputs.kernel_version }}" = "5.10" ]; then
-          #   echo "应用 5.10 特殊配置"
-          #   sed -i 's/CONFIG_IP_SET_MAX/65534/g' net/netfilter/ipset/ip_set_core.c
-          # fi
-
-          echo " 添加 TCP 拥塞控制 (BBR) 支持"
-          # 如果希望应用 BBRv3 补丁，可以在此处添加逻辑（但当前不启用）
-          # 目前使用内核自带的 BBRv1
-
-          ensure_defconfig_value CONFIG_TCP_CONG_ADVANCED y
-          # 如果 BIC 可用则启用（可选）
-          if [ -f net/ipv4/Kconfig ] && grep -q '^config TCP_CONG_BIC$' net/ipv4/Kconfig; then
-            ensure_defconfig_value CONFIG_TCP_CONG_BIC y
-          fi
-          ensure_defconfig_value CONFIG_TCP_CONG_BBR y
-          ensure_defconfig_value CONFIG_TCP_CONG_CUBIC y
-          ensure_defconfig_value CONFIG_TCP_CONG_WESTWOOD y
-          ensure_defconfig_value CONFIG_TCP_CONG_HTCP y
-          # 移除错误的 CONFIG_DEFAULT_BBR
-          # ensure_defconfig_value CONFIG_DEFAULT_BBR y  # ❌ 删除这行
-          ensure_defconfig_value CONFIG_DEFAULT_TCP_CONG '"bbr"'
-          ensure_defconfig_value CONFIG_NET_SCH_FQ y
-          ensure_defconfig_value CONFIG_NET_SCH_FQ_CODEL y
-          echo "✓ Networking 配置完成"
-    
-      - name: 编译内核
+      - name: 编译内核（添加 RAM Disk + LTO 缓存）
         shell: bash
         run: |
           set -euo pipefail
@@ -1066,15 +922,30 @@ jobs:
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
           cd "$COMMON_ROOT"
 
+          # ---------- 新增：准备 RAM Disk 和 LTO 缓存 ----------
+          mkdir -p /dev/shm/kout
+          mkdir -p /dev/shm/ldcache
+
+          # 创建 ld-wrapper（使用 RAM Disk 作为 LTO 缓存）
+          echo '#!/bin/bash' > ld-wrapper
+          echo 'ld.lld "$@" --thinlto-cache-dir=/dev/shm/ldcache --thinlto-jobs=$(($(nproc --all) / 2))' >> ld-wrapper
+          chmod +x ld-wrapper
+
+          # ---------- 保留原有环境变量 ----------
           export PATH="/usr/lib/ccache:$PATH"
           export KBUILD_BUILD_USER="abk"
           export KBUILD_BUILD_HOST="abk"
           export KBUILD_BUILD_VERSION=1
 
-          MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all)
+          # ---------- 新增：自定义构建时间 ----------
+          export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
+
+          # ---------- 原公共编译参数（修改输出目录和链接器） ----------
+          MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" O=/dev/shm/kout gki_defconfig all)
+
+          # ---------- 原分支逻辑（保持不变） ----------
           case "$KERNEL_VERSION" in
             6.1)
-              export KBUILD_BUILD_TIMESTAMP="Tue Mar 10 03:53:33 UTC 2026"
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
               "${MAKE_COMMON[@]}" KCFLAGS+=-O2
               ;;
@@ -1088,11 +959,17 @@ jobs:
               ;;
             5.10)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
-              make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all
+              make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" O=/dev/shm/kout gki_defconfig all
               ;;
           esac
-          ccache -s
 
+          # ---------- 新增：复制产物到常规 out/ 目录（供打包步骤使用） ----------
+          mkdir -p out
+          cp -r /dev/shm/kout/* out/
+
+          ccache -s
+          df -h
+    
       - name: 打包 AnyKernel3
         shell: bash
         run: |
