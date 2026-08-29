@@ -733,7 +733,23 @@ jobs:
          CONFIG_NO_HZ_IDLE=y
          EOF
          echo "✅ Oryon flags prepared."
-
+     
+      - name: F2FS Optimizations
+        working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
+        run: |
+          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_F2FS_FS=y
+          CONFIG_F2FS_STAT_FS=y
+          CONFIG_F2FS_FS_XATTR=y
+          CONFIG_F2FS_FS_POSIX_ACL=y
+          CONFIG_F2FS_FS_SECURITY=y
+          CONFIG_F2FS_FS_COMPRESSION=y
+          CONFIG_F2FS_FS_LZO=y
+          CONFIG_F2FS_FS_LZ4=y
+          CONFIG_F2FS_FS_ZSTD=y
+          EOF
+          echo "✅ f2fs优化添加成功."
+          
       - name: Configure LTO (Thin)
         run: |
           cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
@@ -881,6 +897,21 @@ jobs:
             grep -q '^CONFIG_LTO_CLANG_THIN=y' "$DEFCONFIG_PATH" || echo 'CONFIG_LTO_CLANG_THIN=y' >> "$DEFCONFIG_PATH"
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
+          # ---------- 全版本添加调度、能效和 AMU 配置 ----------
+          echo "正在添加调度、能效模型和 AMU 优化配置（所有版本）..."
+          for opt in \
+            CONFIG_SCHED_MC=y \
+            CONFIG_SCHED_SMT=y \
+            CONFIG_SCHED_CLUSTER=y \
+            CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y \
+            CONFIG_CPUFREQ_DT=y \
+            CONFIG_ARM64_AMU_EXTN=y \
+            CONFIG_ENERGY_MODEL=y; do
+            if ! grep -qxF "$opt" "$DEFCONFIG_PATH"; then
+              echo "$opt" >> "$DEFCONFIG_PATH"
+           fi
+          done
+          echo "✅ 调度与能效配置添加完成"
 
       - name: 缓存 Clang
         id: clang-cache
