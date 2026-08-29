@@ -802,7 +802,19 @@ jobs:
           cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
           echo "CONFIG_LTO_CLANG_THIN=y" >> arch/arm64/configs/gki_defconfig
     
-      
+      - name: 配置 defconfig
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
+          KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
+          COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
+          DEFCONFIG_PATH="$COMMON_ROOT/arch/arm64/configs/gki_defconfig"
+          test -f "$DEFCONFIG_PATH"
+
+          # 只做必要的清理，不添加任何额外配置
+          sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
+          echo "✅ defconfig 清理完成（未添加任何自定义配置）"
     
       - name: 应用 Networking 增强 (IPSet + IPv6 NAT)
         working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
