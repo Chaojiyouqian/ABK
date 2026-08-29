@@ -749,7 +749,40 @@ jobs:
           CONFIG_F2FS_FS_ZSTD=y
           EOF
           echo "✅ f2fs优化添加成功."
-          
+
+      - name: Apply BBRv3 Patch
+        run: |
+          cd kernel_workspace/common
+
+          # 1. 下载 BBRv3 补丁（来自 WildKernels 仓库，适配 android15-6.6）
+          curl -fsSL --retry 3 --retry-delay 5 -o bbrv3.patch \
+            "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android15-6.6.patch"
+
+          # 2. 应用补丁（先尝试 git apply，失败则回退到 patch）
+          if git apply -p1 < bbrv3.patch 2>/dev/null; then
+            echo "✅ BBRv3 git apply 成功"
+          elif patch -p1 -F 3 < bbrv3.patch 2>/dev/null; then
+            echo "✅ BBRv3 patch 成功"
+          else
+            echo "❌ BBRv3 补丁应用失败，请检查内核版本是否匹配 (需要 android15-6.6)"
+            exit 1
+          fi
+
+          # 3. 启用 BBRv3 并设为默认（修改 gki_defconfig）
+          DEFCONFIG="arch/arm64/configs/gki_defconfig"
+          if [ -f "$DEFCONFIG" ]; then
+            echo "CONFIG_TCP_CONG_BBR3=y" >> "$DEFCONFIG"
+            echo "CONFIG_DEFAULT_BBR3=y" >> "$DEFCONFIG"
+            echo "✅ 已添加 CONFIG_TCP_CONG_BBR3 和 CONFIG_DEFAULT_BBR3"
+          else
+            echo "⚠️ 未找到 $DEFCONFIG，请手动添加以下两行到你的 defconfig："
+            echo "CONFIG_TCP_CONG_BBR3=y"
+            echo "CONFIG_DEFAULT_BBR3=y"
+          fi
+
+          # 4. 清理临时补丁文件
+          rm -f bbrv3.patch
+    
       - name: Configure LTO (Thin)
         run: |
           cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
