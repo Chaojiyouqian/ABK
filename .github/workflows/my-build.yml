@@ -725,7 +725,7 @@ jobs:
       - name: Prepare CPU Optimizations (Oryon SM8750)
         run: |
          # 直接设置 Oryon 编译器优化（去除判断条件，固定使用 -mcpu=oryon-1）
-         echo "EXTRA_CFLAGS= -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
+         echo "EXTRA_CFLAGS=-march=armv8.2-a+crypto+dotprod -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
          cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
          CONFIG_ARM64_ERRATUM_2658417=y
@@ -1003,48 +1003,7 @@ jobs:
 
           echo "✓ IPSet & IPv6 NAT 配置完成"
 
-      - name: 缓存 Clang
-        id: clang-cache
-        uses: actions/cache@v4
-        with:
-          path: oneplus_workspace/kernel_workspace/clang-r563880c
-          key: Linux-aosp-clang-clang-r563880c
-          
-      - name: 下载并设置最新 Clang（使用缓存 + aria2c）
-        shell: bash
-        run: |
-          set -euo pipefail
-          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace"
-          mkdir -p "$WORKSPACE"
-          cd "$WORKSPACE"
-
-          CLANG_VERSION="clang-r563880c"
-          CLANG_DIR="$WORKSPACE/$CLANG_VERSION"
-
-          # 如果已存在，直接设置环境变量并跳过
-          if [ -d "$CLANG_DIR" ]; then
-           echo "✅ Clang $CLANG_VERSION 已存在，跳过下载"
-            echo "NEW_CLANG_PATH=$CLANG_DIR/bin" >> $GITHUB_ENV
-            exit 0
-          fi
-
-          echo "⏳ 下载 Clang $CLANG_VERSION ..."
-          # 安装 aria2（如果未安装）
-          sudo apt-get update && sudo apt-get install -y aria2
-
-          # 多线程下载
-          aria2c -x16 -s16 -k1M -j16 --retry-wait=5 --max-tries=10 \
-            -d /dev/shm -o clang.tar.gz \
-            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android16-qpr2-release/${CLANG_VERSION}.tar.gz"
-
-          mkdir -p "$CLANG_VERSION"
-          tar -C "$CLANG_VERSION" -zxf /dev/shm/clang.tar.gz
-          rm -f /dev/shm/clang.tar.gz
-
-          echo "NEW_CLANG_PATH=$CLANG_DIR/bin" >> $GITHUB_ENV
-          echo "✅ Clang $CLANG_VERSION 下载完成"
-          echo "Clang version:"
-          $CLANG_DIR/bin/clang --version | head -1
+      
               
       - name: 编译内核（RAM Disk + LTO 缓存 + Oryon 强制优化）
         shell: bash
