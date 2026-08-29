@@ -933,19 +933,13 @@ jobs:
             grep -q '^CONFIG_LTO_CLANG_THIN=y' "$DEFCONFIG_PATH" || echo 'CONFIG_LTO_CLANG_THIN=y' >> "$DEFCONFIG_PATH"
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
-            # ---------- 全版本添加调度、能效和 AMU 配置 ----------
-          echo "正在添加调度、能效模型和 AMU 优化配置（所有版本）..."
-          for opt in \
-            CONFIG_SCHED_MC=y \
-            CONFIG_SCHED_SMT=y \
-            CONFIG_SCHED_CLUSTER=y \
-            CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y \
-            CONFIG_CPUFREQ_DT=y \
-            CONFIG_ARM64_AMU_EXTN=y \
-            CONFIG_ENERGY_MODEL=y; do
-            if ! grep -qxF "$opt" "$DEFCONFIG_PATH"; then
-              echo "$opt" >> "$DEFCONFIG_PATH"
+            # ---------- 暂时禁用调度与能效配置（OnePlus 厂商代码可能冲突） ----------
+            echo "⚠️ 调度与能效配置已跳过（避免与厂商 oplus_bsp 代码冲突）"
+            # 仅保留 CPU 频率调度器（较为安全）
+           if ! grep -qxF "CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y" "$DEFCONFIG_PATH"; then
+             echo "CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y" >> "$DEFCONFIG_PATH"
            fi
+           # 注意：CONFIG_SCHED_MC、CONFIG_SCHED_CLUSTER、CONFIG_ENERGY_MODEL、CONFIG_ARM64_AMU_EXTN 等已全部禁用
           done
           echo "✅ 调度与能效配置添加完成"
 
