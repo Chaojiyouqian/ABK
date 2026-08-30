@@ -1004,25 +1004,6 @@ jobs:
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
 
-      - name: 挂载 RAM disk 加速编译
-        shell: bash
-        run: |
-          set -euo pipefail
-          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
-          COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
-    
-          # 创建 8GB tmpfs 挂载点
-          sudo mkdir -p /mnt/ramdisk
-          sudo mount -t tmpfs -o size=8G,mode=1777 tmpfs /mnt/ramdisk
-    
-          # 将 common/out 软链接到内存盘
-          rm -rf "$COMMON_ROOT/out"
-          mkdir -p /mnt/ramdisk/out
-          ln -s /mnt/ramdisk/out "$COMMON_ROOT/out"
-    
-          echo "✅ 编译输出目录已迁移到 tmpfs (8GB)"
-          df -h /mnt/ramdisk
-    
       - name: 编译内核
         shell: bash
         run: |
@@ -1032,17 +1013,29 @@ jobs:
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
           cd "$COMMON_ROOT"
 
+          # ---------- 准备 RAM Disk (tmpfs) 和 LTO 缓存 ----------
+          mkdir -p /dev/shm/kout
+          mkdir -p /dev/shm/ldcache
+
+          # 创建 ld-wrapper，使用 LTO 缓存并限制并发数（避免内存爆炸）
+          cat > ld-wrapper <<'EOF'
+          #!/bin/bash
+          ld.lld "$@" --thinlto-cache-dir=/dev/shm/ldcache --thinlto-jobs=$(($(nproc --all) / 2))
+          EOF
+          chmod +x ld-wrapper
+
+          # ---------- 设置环境变量 ----------
           export PATH="/usr/lib/ccache:$PATH"
           export KBUILD_BUILD_USER="abk"
           export KBUILD_BUILD_HOST="abk"
           export KBUILD_BUILD_VERSION=1
-
-          # 自定义构建时间（保留原逻辑）
           export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
-    
-          # 统一优化参数（Oryon ARMv9 + 通用稳定 + 管道加速）
+
+          # ---------- 针对骁龙 8E (Oryon) 的硬编码优化 ----------
           ORYON_CFLAGS="-O2 -pipe -march=armv9-a+crypto+dotprod -fno-strict-aliasing -fno-delete-null-pointer-checks"
-    
+          export KCFLAGS="$ORYON_CFLAGS"
+
+          # ---------- KSU 额外头文件（保留原逻辑） ----------
           KSU_KCFLAGS=()
           if [ "$KSU_VARIANT" = "Official" ] && [ -d "$KERNEL_ROOT/KernelSU/uapi" ]; then
             KSU_KCFLAGS=(
@@ -1050,40 +1043,64 @@ jobs:
               "KCFLAGS+=-I$KERNEL_ROOT/KernelSU/kernel"
               "KCFLAGS+=-I$KERNEL_ROOT/KernelSU/kernel/include"
             )
-          fi
-    
-          # 构建通用 make 前缀（不含 KCFLAGS，因为每个版本可能追加）
-          MAKE_BASE=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out)
+           fi
 
+          # ---------- 根据内核版本设置 Clang 路径（固定为原始默认路径） ----------
           case "$KERNEL_VERSION" in
             6.1)
-              export KBUILD_BUILD_TIMESTAMP="Tue Mar 10 03:53:33 UTC 2026"
+              export KBUILD_BUILD_TIMESTAMP="Tue Mar 10 03:53:33 UTC 2026"  # 原脚本强制覆盖
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
-              "${MAKE_BASE[@]}" "${KSU_KCFLAGS[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+="$ORYON_CFLAGS" gki_defconfig all
+              RUSTC_PATH="../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc"
               ;;
             6.6)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
-              "${MAKE_BASE[@]}" "${KSU_KCFLAGS[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+="$ORYON_CFLAGS" gki_defconfig all
+              RUSTC_PATH="../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc"
               ;;
             6.12)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r536225/bin:$PATH"
-              "${MAKE_BASE[@]}" "${KSU_KCFLAGS[@]}" \
-                RUSTC=../../prebuilts/rust/linux-x86/1.82.0/bin/rustc \
-                BINDGEN=../../prebuilts/clang-tools/linux-x86/bin/bindgen \
-                KCFLAGS+="$ORYON_CFLAGS" \
-                gki_defconfig all
+              RUSTC_PATH="../../prebuilts/rust/linux-x86/1.82.0/bin/rustc"
+              BINDGEN_PATH="../../prebuilts/clang-tools/linux-x86/bin/bindgen"
               ;;
             5.15)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
-              "${MAKE_BASE[@]}" "${KSU_KCFLAGS[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+="$ORYON_CFLAGS" gki_defconfig all
+              RUSTC_PATH="../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc"
               ;;
             5.10)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
-              # 5.10 不使用 MAKE_BASE 因为需要额外 LLVM_IAS=1
-              make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out "${KSU_KCFLAGS[@]}" KCFLAGS+="$ORYON_CFLAGS" gki_defconfig all
+              RUSTC_PATH="../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc"
               ;;
           esac
+
+          # ---------- 构建通用 make 参数（输出到 RAM Disk） ----------
+          MAKE_BASE=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" O=/dev/shm/kout)
+
+          # ---------- 执行编译（各版本特殊参数） ----------
+          case "$KERNEL_VERSION" in
+            6.1|6.6|5.15)
+              "${MAKE_BASE[@]}" "${KSU_KCFLAGS[@]}" RUSTC="$RUSTC_PATH" gki_defconfig all
+              ;;
+            6.12)
+              "${MAKE_BASE[@]}" "${KSU_KCFLAGS[@]}" RUSTC="$RUSTC_PATH" BINDGEN="$BINDGEN_PATH" gki_defconfig all
+              ;;
+            5.10)
+              # 5.10 需要 LLVM_IAS=1，不使用 MAKE_BASE（因为参数不同）
+              make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC="$RUSTC_PATH" PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" O=/dev/shm/kout "${KSU_KCFLAGS[@]}" gki_defconfig all
+              ;;
+          esac
+
+          # ---------- 将 RAM Disk 中的产物复制回 common/out ----------
+          mkdir -p out
+          cp -r /dev/shm/kout/* out/
+
+          # ---------- 显示 ccache 统计和磁盘使用 ----------
           ccache -s
+          df -h /dev/shm
+
+          # 检查 Image 是否生成（避免后续报错）
+          if [ ! -f out/arch/arm64/boot/Image ]; then
+            echo "::error::Image 未生成，请检查编译日志"
+            exit 1
+          fi
 
       - name: 打包 AnyKernel3
         shell: bash
