@@ -895,7 +895,6 @@ jobs:
           mkdir -p /dev/shm/kout
           mkdir -p /dev/shm/ldcache
 
-          # 创建 ld-wrapper（使用 RAM Disk 作为 LTO 缓存）
           echo '#!/bin/bash' > ld-wrapper
           echo 'ld.lld "$@" --thinlto-cache-dir=/dev/shm/ldcache --thinlto-jobs=$(($(nproc --all) / 2))' >> ld-wrapper
           chmod +x ld-wrapper
@@ -907,7 +906,7 @@ jobs:
           export KBUILD_BUILD_HOST="abk"
           export KBUILD_BUILD_VERSION=1
 
-          # ---------- 设置 Clang 路径（固定为原始默认路径，不引入新 Clang） ----------
+          # ---------- 设置 Clang 路径（固定为原始默认路径） ----------
           DEFAULT_CLANG_PATH=""
           case "$KERNEL_VERSION" in
             6.1) DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin" ;;
@@ -918,27 +917,29 @@ jobs:
           export PATH="$DEFAULT_CLANG_PATH:$PATH"
           echo "使用 Clang: $(clang --version | head -1)"
 
-          # ---------- 编译命令（使用 ld-wrapper 和 /dev/shm/kout） ----------
+          # ---------- 导出 KCFLAGS，包含 -O2 和 CPU 优化参数 ----------
+          export KCFLAGS="-O2 $EXTRA_CFLAGS"
+
+          # ---------- 编译命令（不再单独指定 KCFLAGS） ----------
           MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" O=/dev/shm/kout gki_defconfig all)
 
           case "$KERNEL_VERSION" in
             6.1)
               export KBUILD_BUILD_TIMESTAMP="Tue Mar 10 03:53:33 UTC 2026"
-              "${MAKE_COMMON[@]}" KCFLAGS+=-O2
+              "${MAKE_COMMON[@]}"
               ;;
             6.6)
-              "${MAKE_COMMON[@]}" KCFLAGS+=-O2
+              "${MAKE_COMMON[@]}"
               ;;
             5.15)
               "${MAKE_COMMON[@]}"
               ;;
             5.10)
-             # 5.10 不兼容 LLVM=1 统一参数，单独写
               make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" O=/dev/shm/kout gki_defconfig all
               ;;
           esac
 
-          # ---------- 将产物复制回 common/out（供后续打包使用） ----------
+          # ---------- 将产物复制回 common/out ----------
           mkdir -p out
           cp -r /dev/shm/kout/* out/
 
