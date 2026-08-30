@@ -257,7 +257,7 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
             python3 git curl ccache libelf-dev build-essential flex bison libssl-dev \
             libncurses-dev liblz4-tool zlib1g-dev libxml2-utils rsync unzip gawk \
-            dos2unix zip gcc-aarch64-linux-gnu
+            dos2unix zip gcc-aarch64-linux-gnu aria2 
           if ! command -v repo >/dev/null 2>&1; then
             curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o repo
             chmod a+x repo
@@ -734,6 +734,45 @@ jobs:
          #EOF
          #echo "✅ Oryon flags prepared."
 
+      - name: 缓存 Clang
+        id: clang-cache
+        uses: actions/cache@v4
+        with:
+          path: oneplus_workspace/kernel_workspace/clang-r563880c
+          key: Linux-aosp-clang-clang-r563880c
+
+      - name: 下载并设置最新 Clang（使用缓存 + aria2c）
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace"
+          mkdir -p "$WORKSPACE"
+          cd "$WORKSPACE"
+
+          CLANG_VERSION="clang-r563880c"
+          CLANG_DIR="$WORKSPACE/$CLANG_VERSION"
+
+          if [ -d "$CLANG_DIR" ]; then
+            echo "✅ Clang $CLANG_VERSION 已存在，跳过下载"
+            echo "NEW_CLANG_PATH=$CLANG_DIR/bin" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          echo "⏳ 下载 Clang $CLANG_VERSION ..."
+          sudo apt-get update && sudo apt-get install -y aria2  # 保险安装
+          aria2c -x16 -s16 -k1M -j16 --retry-wait=5 --max-tries=10 \
+            -d /dev/shm -o clang.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android16-qpr2-release/${CLANG_VERSION}.tar.gz"
+
+          mkdir -p "$CLANG_VERSION"
+          tar -C "$CLANG_VERSION" -zxf /dev/shm/clang.tar.gz
+          rm -f /dev/shm/clang.tar.gz
+
+          echo "NEW_CLANG_PATH=$CLANG_DIR/bin" >> $GITHUB_ENV
+          echo "✅ Clang $CLANG_VERSION 下载完成"
+         
+          $CLANG_DIR/bin/clang --version | head -1
+
       - name: Configure LTO (Thin)
         run: |
           cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
@@ -892,12 +931,33 @@ jobs:
 
           # 自定义构建时间
           export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
-          
+    
           export PATH="/usr/lib/ccache:$PATH"
           export KBUILD_BUILD_USER="abk"
           export KBUILD_BUILD_HOST="abk"
           export KBUILD_BUILD_VERSION=1
 
+          # ---------- 设置默认 Clang 路径（与原来一致） ----------
+          DEFAULT_CLANG_PATH=""
+          case "$KERNEL_VERSION" in
+            6.1) DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin" ;;
+            6.6) DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin" ;;
+            5.15) DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin" ;;
+            5.10) DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin" ;;
+          esac
+
+          # ---------- 优先使用新下载的 Clang ----------
+          if [ -n "${NEW_CLANG_PATH:-}" ] && [ -d "$NEW_CLANG_PATH" ]; then
+            export PATH="$NEW_CLANG_PATH:$DEFAULT_CLANG_PATH:$PATH"
+            echo "✅ 使用新下载的 Clang: $NEW_CLANG_PATH"
+          else
+            export PATH="$DEFAULT_CLANG_PATH:$PATH"
+            echo "⚠️ 未找到新 Clang，使用默认: $DEFAULT_CLANG_PATH"
+          fi
+
+          echo "Clang version: $(clang --version | head -1)"
+
+          # ---------- 原编译命令（完全保留） ----------
           MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all)
           case "$KERNEL_VERSION" in
             6.1)
