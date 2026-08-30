@@ -724,15 +724,15 @@ jobs:
      
       - name: Prepare CPU Optimizations (Oryon SM8750)
         run: |
-         echo "EXTRA_CFLAGS=-mcpu=oryon -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
-         cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
-         cat >> arch/arm64/configs/gki_defconfig << 'EOF'
-         CONFIG_ARM64_ERRATUM_2658417=y
-         CONFIG_ARCH_QCOM=y
-         CONFIG_HZ_300=y
-         CONFIG_NO_HZ_IDLE=y
-         EOF
-         echo "✅ Oryon flags prepared."
+          echo "EXTRA_CFLAGS=-mcpu=oryon -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
+          cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
+          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_ARM64_ERRATUM_2658417=y
+          CONFIG_ARCH_QCOM=y
+          CONFIG_HZ_300=y
+          CONFIG_NO_HZ_IDLE=y
+          EOF
+          echo "✅ Oryon flags prepared (using -mcpu=oryon)."
      
       - name: F2FS Optimizations
         working-directory: ${{ github.workspace }}/oneplus_workspace/kernel_workspace/kernel_platform/common
@@ -1027,7 +1027,6 @@ jobs:
           echo "Clang version:"
           $CLANG_DIR/bin/clang --version | head -1
           
-      
       - name: 编译内核（RAM Disk + LTO 缓存 + 自定义时间）
         shell: bash
         run: |
@@ -1040,7 +1039,7 @@ jobs:
           mkdir -p /dev/shm/kout
           mkdir -p /dev/shm/ldcache
 
-          # 创建 ld-wrapper（使用 RAM Disk 作为 LTO 缓存）
+          # 创建 ld-wrapper
           echo '#!/bin/bash' > ld-wrapper
           echo 'ld.lld "$@" --thinlto-cache-dir=/dev/shm/ldcache --thinlto-jobs=$(($(nproc --all) / 2))' >> ld-wrapper
           chmod +x ld-wrapper
@@ -1055,58 +1054,48 @@ jobs:
           export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
 
           # ---------- 设置 Clang 路径（优先使用新下载的） ----------
+          DEFAULT_CLANG_PATH=""
+          case "$KERNEL_VERSION" in
+            6.1) DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin" ;;
+            6.6) DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin" ;;
+            5.15) DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin" ;;
+            5.10) DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin" ;;
+          esac
+
           if [ -n "${NEW_CLANG_PATH:-}" ] && [ -d "$NEW_CLANG_PATH" ]; then
-            export PATH="$NEW_CLANG_PATH:$PATH"
+            export PATH="$NEW_CLANG_PATH:$DEFAULT_CLANG_PATH:$PATH"
             echo "✅ 使用新下载的 Clang: $NEW_CLANG_PATH"
           else
-            # 未下载时回退到默认预置 Clang
-            case "$KERNEL_VERSION" in
-              6.1)
-                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
-                ;;
-              6.6)
-                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
-                ;;
-              5.15)
-                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
-                ;;
-              5.10)
-                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
-                ;;
-            esac
-            echo "⚠️ 未找到新 Clang，使用默认: $(which clang)"
+            export PATH="$DEFAULT_CLANG_PATH:$PATH"
+            echo "⚠️ 未找到新 Clang，使用默认: $DEFAULT_CLANG_PATH"
           fi
 
           echo "Clang version: $(clang --version | head -1)"
 
-          # ---------- 准备 KCFLAGS（含 EXTRA_CFLAGS） ----------
+          # ---------- 准备 KCFLAGS ----------
           BASE_KCFLAGS="-O2 -pipe -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option"
           KCFLAGS="$BASE_KCFLAGS ${EXTRA_CFLAGS:-}"
 
-          # ---------- 公共编译参数（输出到 RAM Disk，使用 ld-wrapper） ----------
+          # ---------- 公共编译参数 ----------
           MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" O=/dev/shm/kout gki_defconfig all)
 
-          # ---------- 原分支逻辑（保持不变） ----------
+          # ---------- 执行编译 ----------
           case "$KERNEL_VERSION" in
             6.1)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
               "${MAKE_COMMON[@]}" KCFLAGS+=-O2
               ;;
             6.6)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
               "${MAKE_COMMON[@]}" KCFLAGS+=-O2
               ;;
             5.15)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
               "${MAKE_COMMON[@]}"
               ;;
             5.10)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
               make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" O=/dev/shm/kout gki_defconfig all
               ;;
           esac
 
-          # ---------- 复制产物到常规 out/ 目录（供打包步骤使用） ----------
+          # ---------- 复制产物到 out/ ----------
           mkdir -p out
           cp -r /dev/shm/kout/* out/
 
