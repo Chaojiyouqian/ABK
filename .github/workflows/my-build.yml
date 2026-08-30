@@ -754,46 +754,112 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
-          COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
-          cd "$COMMON_ROOT"
 
-          echo "下载 BBRv3 补丁..."
-          curl -L -o /tmp/bbrv3.patch \
-            https://github.com/xkse4/android_kernel_common_oneplus_sm8750/commit/45b3565.patch
+          # ========== 1. 定位内核源码根目录 ==========
+          WORKSPACE="$GITHUB_WORKSPACE"
+          CANDIDATES=(
+            "$WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
+            "$WORKSPACE/kernel_workspace/common"
+            "$WORKSPACE/kernel_workspace/kernel_platform/common"
+            "$WORKSPACE/common"
+          )
 
-          echo "应用补丁..."
-          if patch -p1 < /tmp/bbrv3.patch; then
-            echo "✅ BBRv3 补丁应用成功"
-          else
-            echo "⚠️ 补丁部分失败，尝试手动修复 Makefile..."
-
-            # 1. 确保 tcp_bbr3.c 存在
-            if [ ! -f net/ipv4/tcp_bbr3.c ]; then
-              curl -o net/ipv4/tcp_bbr3.c \
-                https://raw.githubusercontent.com/xkse4/android_kernel_common_oneplus_sm8750/oneplus/sm8750_b_16.0.0_oneplus_13/net/ipv4/tcp_bbr3.c
+          COMMON_ROOT=""
+          for dir in "${CANDIDATES[@]}"; do
+            if [ -d "$dir" ] && [ -f "$dir/Makefile" ] && [ -d "$dir/net/ipv4" ]; then
+              COMMON_ROOT="$dir"
+              echo "✅ 找到内核源码目录: $COMMON_ROOT"
+              break
             fi
+          done
 
-            # 2. 删除现有的 BBR 构建规则行
+          if [ -z "$COMMON_ROOT" ]; then
+            echo "::error::❌ 找不到内核源码根目录（须包含 Makefile 和 net/ipv4）"
+            echo "当前工作目录: $(pwd)"
+            echo "工作空间内容:"
+            ls -la "$WORKSPACE" || true
+             echo "尝试查找 net/ipv4:"
+            find "$WORKSPACE" -type d -name "ipv4" 2>/dev/null | grep -E "net/ipv4$" || echo "未找到 net/ipv4"
+           exit 1
+           fi
+
+          cd "$COMMON_ROOT"
+          echo "当前目录: $(pwd)"
+
+          # ========== 2. 下载并应用 BBRv3 补丁（优先 WildKernels 源） ==========
+          echo "⬇️ 下载 BBRv3 补丁（来自 WildKernels）..."
+          curl -L -o /tmp/bbrv3.patch \
+            "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android15-6.6.patch" || {
+            echo "::error::BBRv3 补丁下载失败"
+            exit 1
+          }
+
+          echo "🔧 应用补丁..."
+          if git apply -p1 < /tmp/bbrv3.patch 2>/dev/null; then
+            echo "✅ git apply 成功"
+          elif patch -p1 -F 3 < /tmp/bbrv3.patch 2>/dev/null; then
+            echo "✅ patch 成功"
+          else
+            echo "⚠️ 补丁应用失败，尝试手动注入关键文件..."
+            # 直接下载 tcp_bbr3.c
+            curl -o net/ipv4/tcp_bbr3.c \
+              "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/net/ipv4/tcp_bbr3.c" || {
+              echo "::error::tcp_bbr3.c 下载失败"
+              exit 1
+            }
+
+            # 清理旧的 BBR 规则
             sed -i '/^obj-\$(CONFIG_TCP_CONG_BBR)/d' net/ipv4/Makefile
             sed -i '/^tcp_bbr-y/d' net/ipv4/Makefile
-
-            # 3. 添加新的构建规则（直接 echo，避免 heredoc）
+            # 添加新规则
             echo 'obj-$(CONFIG_TCP_CONG_BBR) += tcp_bbr.o' >> net/ipv4/Makefile
             echo 'tcp_bbr-y := tcp_bbr3.o' >> net/ipv4/Makefile
 
-            # 4. 更新 Kconfig 描述（如未更新）
-            sed -i 's/default "BBR TCP"/default "BBRv3 TCP"/' net/ipv4/Kconfig || true
+            # 确保 Kconfig 中有 BBRv3 选项（如无则添加）
+            if ! grep -q "config TCP_CONG_BBR3" net/ipv4/Kconfig; then
+              cat >> net/ipv4/Kconfig << 'EOF'
 
-            echo "✅ BBRv3 Makefile 冲突已手动修复"
-          fi
-          # 验证
-          if [ -f net/ipv4/tcp_bbr3.c ]; then
-            echo "✅ BBRv3 源码注入成功"
-          else
-            echo "::error::BBRv3 源码注入失败"
-            exit 1
-          fi
+            config TCP_CONG_BBR3
+              tristate "BBRv3 TCP"
+              default y
+              help
+                BBRv3 TCP congestion control (backported from upstream).
+            EOF
+            fi
+            echo "✅ 手动注入完成"
+            fi
+
+            # ========== 3. 验证 ==========
+            if [ -f net/ipv4/tcp_bbr3.c ]; then
+              echo "✅ BBRv3 源码注入成功"
+            else
+              echo "::error::BBRv3 源码注入失败"
+              exit 1
+            fi
+
+            # ========== 4. 启用 BBRv3 并设为默认（修改 defconfig） ==========
+            DEFCONFIG="arch/arm64/configs/gki_defconfig"
+            if [ -f "$DEFCONFIG" ]; then
+              # 添加 CONFIG_TCP_CONG_BBR3（若未添加）
+              if ! grep -q "^CONFIG_TCP_CONG_BBR3=y" "$DEFCONFIG"; then
+                echo "CONFIG_TCP_CONG_BBR3=y" >> "$DEFCONFIG"
+                echo "✅ 已添加 CONFIG_TCP_CONG_BBR3=y"
+              fi
+              # 将默认算法设为 bbr3（若存在 CONFIG_DEFAULT_TCP_CONG）
+              if grep -q "^CONFIG_DEFAULT_TCP_CONG=" "$DEFCONFIG"; then
+                sed -i 's/^CONFIG_DEFAULT_TCP_CONG=.*/CONFIG_DEFAULT_TCP_CONG="bbr3"/' "$DEFCONFIG"
+               else
+                echo 'CONFIG_DEFAULT_TCP_CONG="bbr3"' >> "$DEFCONFIG"
+              fi
+              echo "✅ 默认 TCP 算法已设为 bbr3"
+            else
+              echo "⚠️ 未找到 $DEFCONFIG，请手动启用 CONFIG_TCP_CONG_BBR3 并设置默认"
+             fi
+
+            # 清理临时文件
+            rm -f /tmp/bbrv3.patch
+            echo "🎉 BBRv3 补丁应用完成！"
+          
           
       - name: 配置 defconfig
         shell: bash
