@@ -983,6 +983,12 @@ jobs:
            fi
           done
           echo "✅ 调度与能效配置添加完成"
+           # ---------- 添加 LLVM Polly 优化（无条件） ----------
+          echo "CONFIG_LLVM_POLLY=y" >> "$DEFCONFIG_PATH"
+          echo "✅ LLVM Polly 优化已启用"
+
+          # ---------- 清理 check_defconfig ----------
+          sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
 
       - name: 缓存 Clang
         id: clang-cache
