@@ -202,6 +202,30 @@ jobs:
           echo "Unicode 绕过  : $USE_UNICODE_BYPASS"
           echo "========================================"
 
+      - name: 启用 Oryon CPU 优化 + LTO（无条件）
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "EXTRA_CFLAGS=-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
+          echo "CLANG_PATH=/opt/clang-r563880c/bin" >> $GITHUB_ENV
+
+          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
+          KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
+          COMMON_ROOT="$KERNEL_ROOT/common"
+          DEFCONFIG="$COMMON_ROOT/arch/arm64/configs/gki_defconfig"
+          mkdir -p "$(dirname "$DEFCONFIG")"
+
+          cat >> "$DEFCONFIG" << 'EOF'
+          CONFIG_ARM64_ERRATUM_2658417=y
+          CONFIG_ARCH_QCOM=y
+          CONFIG_HZ_300=y
+          CONFIG_PREEMPT=y
+          CONFIG_NO_HZ_IDLE=y
+          CONFIG_LTO_CLANG_THIN=y
+          EOF
+
+          echo "✅ Oryon flags and LTO configs applied."
+    
       - name: 校验 OnePlus 输入
         shell: bash
         run: |
@@ -262,13 +286,31 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
             python3 git curl ccache libelf-dev libdw-dev build-essential flex bison libssl-dev \
             libncurses-dev liblz4-tool zlib1g-dev libxml2-utils rsync unzip gawk \
-            dos2unix zip gcc-aarch64-linux-gnu
+            dos2unix zip gcc-aarch64-linux-gnu aria2
           if ! command -v repo >/dev/null 2>&1; then
             curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o repo
             chmod a+x repo
             sudo mv repo /usr/local/bin/repo
           fi
 
+      - name: 缓存 AOSP Clang r563880c
+        id: clang-cache
+        uses: actions/cache@v5
+        with:
+          path: /opt/clang-r563880c
+          key: clang-r563880c-${{ runner.os }}
+
+      - name: 下载 Clang r563880c（缓存未命中时）
+        if: steps.clang-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+         mkdir -p /opt/clang-r563880c
+          aria2c -x16 -s16 -k1M -j16 --retry-wait=5 --max-tries=10 \
+            -d /dev/shm -o clang-r563880c.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android16-qpr2-release/clang-r563880c.tar.gz"
+          tar -C /opt/clang-r563880c -zxf /dev/shm/clang-r563880c.tar.gz
+          rm -f /dev/shm/clang-r563880c.tar.gz
+    
       - name: 配置 ccache
         shell: bash
         run: |
@@ -825,11 +867,6 @@ jobs:
           echo "KBUILD_BUILD_TIMESTAMP=$DATESTR" >> "$GITHUB_ENV"
           echo "KBUILD_BUILD_VERSION=1" >> "$GITHUB_ENV"
 
-      - name: Configure LTO (Thin)
-        run: |
-          cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
-          echo "CONFIG_LTO_CLANG_THIN=y" >> arch/arm64/configs/gki_defconfig
-
       - name: 应用 BBRv3 补丁
         shell: bash
         run: |
@@ -1004,7 +1041,7 @@ jobs:
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
 
-      - name: 编译内核
+      - name: 编译内核（含 RAM disk 加速）
         shell: bash
         run: |
           set -euo pipefail
@@ -1013,14 +1050,26 @@ jobs:
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
           cd "$COMMON_ROOT"
 
-          export PATH="/usr/lib/ccache:$PATH"
+          # ---------- RAM disk 准备 ----------
+          RAM_OUT="/dev/shm/kout"
+          RAM_LTO="/dev/shm/ldcache_${KERNEL_VERSION}"
+          mkdir -p "$RAM_OUT" "$RAM_LTO"
+
+          # 创建 LLD wrapper 以使用 RAM disk 作为 LTO 缓存
+          cat > ld-wrapper << 'EOF'
+          #!/bin/bash
+          ld.lld "$@" --thinlto-cache-dir=/dev/shm/ldcache_${KERNEL_VERSION} --thinlto-jobs=$(($(nproc --all) / 2))
+          EOF
+          chmod +x ld-wrapper
+
+          # ---------- 环境变量 ----------
+          export PATH="$CLANG_PATH:/usr/lib/ccache:$PATH"
           export KBUILD_BUILD_USER="abk"
           export KBUILD_BUILD_HOST="abk"
           export KBUILD_BUILD_VERSION=1
-
-          # 自定义构建时间
           export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
-          
+
+          # KernelSU 头文件（仅 Official 需要）
           KSU_KCFLAGS=()
           if [ "$KSU_VARIANT" = "Official" ] && [ -d "$KERNEL_ROOT/KernelSU/uapi" ]; then
             KSU_KCFLAGS=(
@@ -1029,35 +1078,47 @@ jobs:
               "KCFLAGS+=-I$KERNEL_ROOT/KernelSU/kernel/include"
             )
           fi
-          MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out "${KSU_KCFLAGS[@]}")
+
+          BASE_KCFLAGS="-O2 ${EXTRA_CFLAGS:-}"
+
+          # 通用 make 参数（输出到 RAM，使用 ld-wrapper）
+          MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="./ld-wrapper" HOSTLD="./ld-wrapper" O="$RAM_OUT" "${KSU_KCFLAGS[@]}")
+
+          # ---------- 按内核版本构建 ----------
           case "$KERNEL_VERSION" in
             6.1)
-              export KBUILD_BUILD_TIMESTAMP="Tue Mar 10 03:53:33 UTC 2026"
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
-              "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+=-O2 gki_defconfig all
+              "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS="$BASE_KCFLAGS" gki_defconfig all
               ;;
             6.6)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
-              "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+=-O2 gki_defconfig all
+              "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS="$BASE_KCFLAGS" gki_defconfig all
               ;;
             6.12)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r536225/bin:$PATH"
               "${MAKE_COMMON[@]}" \
                 RUSTC=../../prebuilts/rust/linux-x86/1.82.0/bin/rustc \
                 BINDGEN=../../prebuilts/clang-tools/linux-x86/bin/bindgen \
-                KCFLAGS+=-O2 \
+                KCFLAGS="$BASE_KCFLAGS" \
                 gki_defconfig all
               ;;
             5.15)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
-              "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc gki_defconfig all
+              "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS="$BASE_KCFLAGS" gki_defconfig all
               ;;
             5.10)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
-              make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out "${KSU_KCFLAGS[@]}" gki_defconfig all
+              # 5.10 单独处理，同样使用 RAM 输出和 ld-wrapper
+              make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" \
+                RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
+                PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
+                LD="./ld-wrapper" HOSTLD="./ld-wrapper" \
+                O="$RAM_OUT" "${KSU_KCFLAGS[@]}" \
+                KCFLAGS="$BASE_KCFLAGS" gki_defconfig all
               ;;
           esac
+
+          # ---------- 将内核镜像复制到标准输出目录（供后续打包使用） ----------
+          mkdir -p "$COMMON_ROOT/out/arch/arm64/boot"
+          cp "$RAM_OUT/arch/arm64/boot/Image" "$COMMON_ROOT/out/arch/arm64/boot/Image"
+
           ccache -s
+          echo "✅ Kernel built with RAM disk acceleration."
 
       - name: 打包 AnyKernel3
         shell: bash
