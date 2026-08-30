@@ -205,9 +205,9 @@ jobs:
       - name: 设置 Oryon 编译环境变量
         shell: bash
         run: |
-          echo "EXTRA_CFLAGS=-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
+          echo "EXTRA_CFLAGS=-march=armv9-a+crypto+dotprod -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
           echo "CLANG_PATH=/opt/clang-r563880c/bin" >> $GITHUB_ENV
-          echo "✅ Oryon flags environment variables set."
+          echo "✅ Oryon flags environment variables set (using -march for compatibility)."
     
       - name: 校验 OnePlus 输入
         shell: bash
