@@ -1055,6 +1055,7 @@ jobs:
           ld.lld "\$@" --thinlto-cache-dir=/dev/shm/ldcache_${KERNEL_VERSION} --thinlto-jobs=\$((\$(nproc --all) / 2))
           EOF
           chmod +x ld-wrapper
+          LD_WRAPPER="$(pwd)/ld-wrapper"
 
           # ---------- 环境变量 ----------
           export PATH="$CLANG_PATH:/usr/lib/ccache:$PATH"
@@ -1075,8 +1076,8 @@ jobs:
 
           BASE_KCFLAGS="-O2 ${EXTRA_CFLAGS:-}"
 
-          # 通用 make 参数（输出到 RAM，使用 ld-wrapper）
-          MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="./ld-wrapper" HOSTLD="./ld-wrapper" O="$RAM_OUT" "${KSU_KCFLAGS[@]}")
+          # 通用 make 参数（输出到 RAM，使用 ld-wrapper 绝对路径）
+          MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="$LD_WRAPPER" HOSTLD="$LD_WRAPPER" O="$RAM_OUT" "${KSU_KCFLAGS[@]}")
 
           # ---------- 按内核版本构建 ----------
           case "$KERNEL_VERSION" in
@@ -1097,11 +1098,11 @@ jobs:
               "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS="$BASE_KCFLAGS" gki_defconfig all
               ;;
             5.10)
-              # 5.10 单独处理，同样使用 RAM 输出和 ld-wrapper
+              # 5.10 单独处理，同样使用 RAM 输出和 ld-wrapper 绝对路径
               make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" \
                 RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
                 PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
-                LD="./ld-wrapper" HOSTLD="./ld-wrapper" \
+                LD="$LD_WRAPPER" HOSTLD="$LD_WRAPPER" \
                 O="$RAM_OUT" "${KSU_KCFLAGS[@]}" \
                 KCFLAGS="$BASE_KCFLAGS" gki_defconfig all
               ;;
@@ -1113,6 +1114,7 @@ jobs:
 
           ccache -s
           echo "✅ Kernel built with RAM disk acceleration."
+        
 
       - name: 打包 AnyKernel3
         shell: bash
