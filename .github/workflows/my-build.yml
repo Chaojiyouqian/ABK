@@ -50,6 +50,19 @@ on:
         required: false
         type: boolean
         default: false
+      use_ddk:
+        required: false
+        type: boolean
+        default: false
+      use_ntsync:
+        required: false
+        type: boolean
+        default: false
+      build_time:
+        description: "自定义构建时间 (可选，N或留空=当前UTC)"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   build:
@@ -797,7 +810,26 @@ jobs:
               handle.write("ABK_KPM_KCONFIG_READY=true\n")
           print(f"已注入 {path} 的 KPM Kconfig 符号")
           PY
+    
+      - name: 设置自定义构建时间
+        shell: bash
+        run: |
+          INPUT_TIME="${{ inputs.build_time }}"
+          if [[ -z "$INPUT_TIME" || "$INPUT_TIME" == "N" || "$INPUT_TIME" == "n" ]]; then
+            DATESTR="$(TZ='UTC' date +'%a %b %d %T %Z %Y')"
+            echo "使用当前 UTC 时间: $DATESTR"
+          else
+            DATESTR="$INPUT_TIME"
+            echo "使用自定义时间: $DATESTR"
+          fi
+          echo "KBUILD_BUILD_TIMESTAMP=$DATESTR" >> "$GITHUB_ENV"
+          echo "KBUILD_BUILD_VERSION=1" >> "$GITHUB_ENV"
 
+      - name: Configure LTO (Thin)
+        run: |
+          cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
+          echo "CONFIG_LTO_CLANG_THIN=y" >> arch/arm64/configs/gki_defconfig
+      
       - name: 配置 defconfig
         shell: bash
         run: |
@@ -955,6 +987,9 @@ jobs:
           export KBUILD_BUILD_HOST="abk"
           export KBUILD_BUILD_VERSION=1
 
+          # 自定义构建时间
+          export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
+          
           KSU_KCFLAGS=()
           if [ "$KSU_VARIANT" = "Official" ] && [ -d "$KERNEL_ROOT/KernelSU/uapi" ]; then
             KSU_KCFLAGS=(
