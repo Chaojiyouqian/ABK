@@ -754,111 +754,76 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          # ========== 1. 定位内核源码根目录 ==========
           WORKSPACE="$GITHUB_WORKSPACE"
-          CANDIDATES=(
-            "$WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
-            "$WORKSPACE/kernel_workspace/common"
-            "$WORKSPACE/kernel_workspace/kernel_platform/common"
-            "$WORKSPACE/common"
-          )
-
-          COMMON_ROOT=""
-          for dir in "${CANDIDATES[@]}"; do
-            if [ -d "$dir" ] && [ -f "$dir/Makefile" ] && [ -d "$dir/net/ipv4" ]; then
-              COMMON_ROOT="$dir"
-              echo "✅ 找到内核源码目录: $COMMON_ROOT"
-              break
-            fi
-          done
-
-          if [ -z "$COMMON_ROOT" ]; then
-            echo "::error::❌ 找不到内核源码根目录（须包含 Makefile 和 net/ipv4）"
-            echo "当前工作目录: $(pwd)"
-            echo "工作空间内容:"
-            ls -la "$WORKSPACE" || true
-             echo "尝试查找 net/ipv4:"
-            find "$WORKSPACE" -type d -name "ipv4" 2>/dev/null | grep -E "net/ipv4$" || echo "未找到 net/ipv4"
-           exit 1
+          COMMON_ROOT="$WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
+          if [ ! -d "$COMMON_ROOT/net/ipv4" ]; then
+            echo "::error::找不到内核源码目录（须包含 net/ipv4）"
+            exit 1
            fi
-
           cd "$COMMON_ROOT"
           echo "当前目录: $(pwd)"
 
-          # ========== 2. 下载并应用 BBRv3 补丁（优先 WildKernels 源） ==========
-          echo "⬇️ 下载 BBRv3 补丁（来自 WildKernels）..."
-          curl -L -o /tmp/bbrv3.patch \
+          # 1. 下载补丁
+          echo "⏳ 下载 BBRv3 补丁（来自 WildKernels）..."
+          curl -fsSL -o bbrv3.patch \
             "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android15-6.6.patch" || {
             echo "::error::BBRv3 补丁下载失败"
             exit 1
           }
 
+          # 2. 应用补丁
           echo "🔧 应用补丁..."
-          if git apply -p1 < /tmp/bbrv3.patch 2>/dev/null; then
+          if git apply -p1 < bbrv3.patch 2>/dev/null; then
             echo "✅ git apply 成功"
-          elif patch -p1 -F 3 < /tmp/bbrv3.patch 2>/dev/null; then
+          elif patch -p1 -F 3 < bbrv3.patch 2>/dev/null; then
             echo "✅ patch 成功"
           else
-            echo "⚠️ 补丁应用失败，尝试手动注入关键文件..."
-            # 直接下载 tcp_bbr3.c
-            curl -o net/ipv4/tcp_bbr3.c \
+            echo "⚠️ 补丁应用失败，尝试手动注入..."
+            curl -fsSL -o net/ipv4/tcp_bbr3.c \
               "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/net/ipv4/tcp_bbr3.c" || {
               echo "::error::tcp_bbr3.c 下载失败"
               exit 1
             }
-
-            # 清理旧的 BBR 规则
             sed -i '/^obj-\$(CONFIG_TCP_CONG_BBR)/d' net/ipv4/Makefile
             sed -i '/^tcp_bbr-y/d' net/ipv4/Makefile
-            # 添加新规则
             echo 'obj-$(CONFIG_TCP_CONG_BBR) += tcp_bbr.o' >> net/ipv4/Makefile
             echo 'tcp_bbr-y := tcp_bbr3.o' >> net/ipv4/Makefile
-
-            # 确保 Kconfig 中有 BBRv3 选项（如无则添加）
+            # 使用 echo 追加 Kconfig，避免 heredoc 问题
             if ! grep -q "config TCP_CONG_BBR3" net/ipv4/Kconfig; then
-              cat >> net/ipv4/Kconfig << 'EOF'
-
-            config TCP_CONG_BBR3
-              tristate "BBRv3 TCP"
-              default y
-              help
-                BBRv3 TCP congestion control (backported from upstream).
-            EOF
+              echo "" >> net/ipv4/Kconfig
+              echo "config TCP_CONG_BBR3" >> net/ipv4/Kconfig
+              echo '  tristate "BBRv3 TCP"' >> net/ipv4/Kconfig
+              echo "  default y" >> net/ipv4/Kconfig
+              echo "  help" >> net/ipv4/Kconfig
+              echo "    BBRv3 TCP congestion control (backported from upstream)." >> net/ipv4/Kconfig
             fi
             echo "✅ 手动注入完成"
+          fi
+
+          # 3. 验证
+          if [ -f net/ipv4/tcp_bbr3.c ]; then
+            echo "✅ BBRv3 源码注入成功"
+          else
+            echo "::error::BBRv3 源码注入失败"
+            exit 1
+          fi
+
+          # 4. 修改 defconfig（若存在）
+          DEFCONFIG="arch/arm64/configs/gki_defconfig"
+          if [ -f "$DEFCONFIG" ]; then
+            if ! grep -q "^CONFIG_TCP_CONG_BBR3=y" "$DEFCONFIG"; then
+              echo "CONFIG_TCP_CONG_BBR3=y" >> "$DEFCONFIG"
             fi
-
-            # ========== 3. 验证 ==========
-            if [ -f net/ipv4/tcp_bbr3.c ]; then
-              echo "✅ BBRv3 源码注入成功"
+            if grep -q "^CONFIG_DEFAULT_TCP_CONG=" "$DEFCONFIG"; then
+              sed -i 's/^CONFIG_DEFAULT_TCP_CONG=.*/CONFIG_DEFAULT_TCP_CONG="bbr3"/' "$DEFCONFIG"
             else
-              echo "::error::BBRv3 源码注入失败"
-              exit 1
+              echo 'CONFIG_DEFAULT_TCP_CONG="bbr3"' >> "$DEFCONFIG"
             fi
+            echo "✅ defconfig 已更新"
+          fi
 
-            # ========== 4. 启用 BBRv3 并设为默认（修改 defconfig） ==========
-            DEFCONFIG="arch/arm64/configs/gki_defconfig"
-            if [ -f "$DEFCONFIG" ]; then
-              # 添加 CONFIG_TCP_CONG_BBR3（若未添加）
-              if ! grep -q "^CONFIG_TCP_CONG_BBR3=y" "$DEFCONFIG"; then
-                echo "CONFIG_TCP_CONG_BBR3=y" >> "$DEFCONFIG"
-                echo "✅ 已添加 CONFIG_TCP_CONG_BBR3=y"
-              fi
-              # 将默认算法设为 bbr3（若存在 CONFIG_DEFAULT_TCP_CONG）
-              if grep -q "^CONFIG_DEFAULT_TCP_CONG=" "$DEFCONFIG"; then
-                sed -i 's/^CONFIG_DEFAULT_TCP_CONG=.*/CONFIG_DEFAULT_TCP_CONG="bbr3"/' "$DEFCONFIG"
-               else
-                echo 'CONFIG_DEFAULT_TCP_CONG="bbr3"' >> "$DEFCONFIG"
-              fi
-              echo "✅ 默认 TCP 算法已设为 bbr3"
-            else
-              echo "⚠️ 未找到 $DEFCONFIG，请手动启用 CONFIG_TCP_CONG_BBR3 并设置默认"
-             fi
-
-            # 清理临时文件
-            rm -f /tmp/bbrv3.patch
-            echo "🎉 BBRv3 补丁应用完成！"
+          rm -f bbrv3.patch
+          echo "🎉 BBRv3 补丁应用完成！"
           
           
       - name: 配置 defconfig
@@ -1062,7 +1027,8 @@ jobs:
           echo "Clang version:"
           $CLANG_DIR/bin/clang --version | head -1
           
-      - name: 编译内核（RAM Disk + LTO 缓存 + Oryon 强制优化）
+      
+      - name: 编译内核（RAM Disk + LTO 缓存 + 自定义时间）
         shell: bash
         run: |
           set -euo pipefail
@@ -1070,7 +1036,7 @@ jobs:
           COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
           cd "$COMMON_ROOT"
 
-          # ---------- 0. 准备 RAM Disk 和 LTO 缓存 ----------
+          # ---------- 准备 RAM Disk 和 LTO 缓存 ----------
           mkdir -p /dev/shm/kout
           mkdir -p /dev/shm/ldcache
 
@@ -1079,20 +1045,21 @@ jobs:
           echo 'ld.lld "$@" --thinlto-cache-dir=/dev/shm/ldcache --thinlto-jobs=$(($(nproc --all) / 2))' >> ld-wrapper
           chmod +x ld-wrapper
 
+          # ---------- 基础环境变量 ----------
           export PATH="/usr/lib/ccache:$PATH"
           export KBUILD_BUILD_USER="abk"
           export KBUILD_BUILD_HOST="abk"
           export KBUILD_BUILD_VERSION=1
 
-          # 自定义构建时间
+          # ---------- 自定义构建时间 ----------
           export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
 
-          # ---------- 1. 设置 Clang 路径（优先使用新下载的） ----------
+          # ---------- 设置 Clang 路径（优先使用新下载的） ----------
           if [ -n "${NEW_CLANG_PATH:-}" ] && [ -d "$NEW_CLANG_PATH" ]; then
             export PATH="$NEW_CLANG_PATH:$PATH"
             echo "✅ 使用新下载的 Clang: $NEW_CLANG_PATH"
           else
-            # 如果未下载，回退到默认预置 Clang
+            # 未下载时回退到默认预置 Clang
             case "$KERNEL_VERSION" in
               6.1)
                 export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
@@ -1105,33 +1072,41 @@ jobs:
                 ;;
               5.10)
                 export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
-                 ;;
+                ;;
             esac
             echo "⚠️ 未找到新 Clang，使用默认: $(which clang)"
           fi
 
           echo "Clang version: $(clang --version | head -1)"
 
-          # ---------- 2. 准备 KCFLAGS ----------
+          # ---------- 准备 KCFLAGS（含 EXTRA_CFLAGS） ----------
           BASE_KCFLAGS="-O2 -pipe -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option"
-          # 添加 EXTRA_CFLAGS（由 Prepare CPU Optimizations 设置）
           KCFLAGS="$BASE_KCFLAGS ${EXTRA_CFLAGS:-}"
 
-          # ---------- 3. 编译 defconfig ----------
-          make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
-            CC="ccache clang" LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" \
-            O=/dev/shm/kout \
-            KCFLAGS="$KCFLAGS" \
-            gki_defconfig
+          # ---------- 公共编译参数（输出到 RAM Disk，使用 ld-wrapper） ----------
+          MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" O=/dev/shm/kout gki_defconfig all)
 
-          # ---------- 4. 编译内核 Image ----------
-          make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
-            CC="ccache clang" LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" \
-            O=/dev/shm/kout \
-            KCFLAGS="$KCFLAGS" \
-            Image
+          # ---------- 原分支逻辑（保持不变） ----------
+          case "$KERNEL_VERSION" in
+            6.1)
+              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
+              "${MAKE_COMMON[@]}" KCFLAGS+=-O2
+              ;;
+            6.6)
+              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
+              "${MAKE_COMMON[@]}" KCFLAGS+=-O2
+              ;;
+            5.15)
+              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
+              "${MAKE_COMMON[@]}"
+              ;;
+            5.10)
+              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
+              make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" O=/dev/shm/kout gki_defconfig all
+              ;;
+          esac
 
-          # ---------- 5. 复制产物到 out/ ----------
+          # ---------- 复制产物到常规 out/ 目录（供打包步骤使用） ----------
           mkdir -p out
           cp -r /dev/shm/kout/* out/
 
