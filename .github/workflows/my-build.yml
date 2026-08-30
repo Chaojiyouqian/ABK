@@ -724,7 +724,7 @@ jobs:
      
       - name: Prepare CPU Optimizations (Oryon SM8750)
         run: |
-          echo "EXTRA_CFLAGS=-mcpu=oryon -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
+          echo "EXTRA_CFLAGS=-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
           cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
           cat >> arch/arm64/configs/gki_defconfig << 'EOF'
           CONFIG_ARM64_ERRATUM_2658417=y
@@ -1059,7 +1059,8 @@ jobs:
           # ---------- 自定义构建时间 ----------
           export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
 
-          # ---------- 设置 Clang 路径（优先使用新下载的） ----------
+          # ---------- 设置 Clang 路径（强制优先使用新版） ----------
+          # 先确定默认路径（备用）
           DEFAULT_CLANG_PATH=""
           case "$KERNEL_VERSION" in
             6.1) DEFAULT_CLANG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin" ;;
@@ -1085,7 +1086,7 @@ jobs:
           # ---------- 公共编译参数 ----------
           MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD="$(pwd)/ld-wrapper" HOSTLD="$(pwd)/ld-wrapper" O=/dev/shm/kout gki_defconfig all)
 
-          # ---------- 执行编译 ----------
+          # ---------- 执行编译（不再设置 PATH） ----------
           case "$KERNEL_VERSION" in
             6.1)
               "${MAKE_COMMON[@]}" KCFLAGS+=-O2
@@ -1107,6 +1108,7 @@ jobs:
 
           ccache -s
           df -h
+      
     
       - name: 打包 AnyKernel3
         shell: bash
