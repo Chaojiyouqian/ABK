@@ -724,7 +724,7 @@ jobs:
      
       - name: Prepare CPU Optimizations (Oryon SM8750)
         run: |
-         echo "EXTRA_CFLAGS=-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
+         echo "EXTRA_CFLAGS=-mcpu=oryon -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
          cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
          CONFIG_ARM64_ERRATUM_2658417=y
