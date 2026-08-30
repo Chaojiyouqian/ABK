@@ -1004,6 +1004,25 @@ jobs:
           fi
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
 
+      - name: 挂载 RAM disk 加速编译
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
+          COMMON_ROOT="$WORKSPACE/kernel_workspace/kernel_platform/common"
+    
+          # 创建 8GB tmpfs 挂载点
+          sudo mkdir -p /mnt/ramdisk
+          sudo mount -t tmpfs -o size=8G,mode=1777 tmpfs /mnt/ramdisk
+    
+          # 将 common/out 软链接到内存盘
+          rm -rf "$COMMON_ROOT/out"
+          mkdir -p /mnt/ramdisk/out
+          ln -s /mnt/ramdisk/out "$COMMON_ROOT/out"
+    
+          echo "✅ 编译输出目录已迁移到 tmpfs (8GB)"
+          df -h /mnt/ramdisk
+    
       - name: 编译内核
         shell: bash
         run: |
@@ -1018,9 +1037,12 @@ jobs:
           export KBUILD_BUILD_HOST="abk"
           export KBUILD_BUILD_VERSION=1
 
-          # 自定义构建时间
+          # 自定义构建时间（保留原逻辑）
           export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
-          
+    
+          # 统一优化参数（Oryon ARMv9 + 通用稳定 + 管道加速）
+          ORYON_CFLAGS="-O2 -pipe -march=armv9-a+crypto+dotprod -fno-strict-aliasing -fno-delete-null-pointer-checks"
+    
           KSU_KCFLAGS=()
           if [ "$KSU_VARIANT" = "Official" ] && [ -d "$KERNEL_ROOT/KernelSU/uapi" ]; then
             KSU_KCFLAGS=(
@@ -1029,32 +1051,36 @@ jobs:
               "KCFLAGS+=-I$KERNEL_ROOT/KernelSU/kernel/include"
             )
           fi
-          MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out "${KSU_KCFLAGS[@]}")
+    
+          # 构建通用 make 前缀（不含 KCFLAGS，因为每个版本可能追加）
+          MAKE_BASE=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out)
+
           case "$KERNEL_VERSION" in
             6.1)
               export KBUILD_BUILD_TIMESTAMP="Tue Mar 10 03:53:33 UTC 2026"
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
-              "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+=-O2 gki_defconfig all
+              "${MAKE_BASE[@]}" "${KSU_KCFLAGS[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+="$ORYON_CFLAGS" gki_defconfig all
               ;;
             6.6)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
-              "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+=-O2 gki_defconfig all
+              "${MAKE_BASE[@]}" "${KSU_KCFLAGS[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+="$ORYON_CFLAGS" gki_defconfig all
               ;;
             6.12)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r536225/bin:$PATH"
-              "${MAKE_COMMON[@]}" \
+              "${MAKE_BASE[@]}" "${KSU_KCFLAGS[@]}" \
                 RUSTC=../../prebuilts/rust/linux-x86/1.82.0/bin/rustc \
                 BINDGEN=../../prebuilts/clang-tools/linux-x86/bin/bindgen \
-                KCFLAGS+=-O2 \
+                KCFLAGS+="$ORYON_CFLAGS" \
                 gki_defconfig all
               ;;
             5.15)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
-              "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc gki_defconfig all
+              "${MAKE_BASE[@]}" "${KSU_KCFLAGS[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+="$ORYON_CFLAGS" gki_defconfig all
               ;;
             5.10)
               export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
-              make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out "${KSU_KCFLAGS[@]}" gki_defconfig all
+              # 5.10 不使用 MAKE_BASE 因为需要额外 LLVM_IAS=1
+              make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out "${KSU_KCFLAGS[@]}" KCFLAGS+="$ORYON_CFLAGS" gki_defconfig all
               ;;
           esac
           ccache -s
