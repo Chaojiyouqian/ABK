@@ -212,7 +212,6 @@ jobs:
           echo "自定义注入    : 无"
           echo "Stock Config  : OnePlus manifest"
           echo "Unicode 绕过  : $USE_UNICODE_BYPASS"
-          echo "Unicode 绕过  : $USE_UNICODE_BYPASS"
           echo "上游补丁      : $APPLY_UPSTREAM_PATCHES"
           echo "zyc Clang 19  : $USE_ZYC_CLANG19"
           echo "========================================"
@@ -298,7 +297,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.ccache_${{ inputs.device_manifest }}_${{ inputs.ksu_variant }}
-          key: oneplus-ccache-${{ runner.os }}-${{ inputs.device_manifest }}-${{ inputs.ksu_variant }}-${{ inputs.enable_susfs }}
+          key: oneplus-ccache-${{ runner.os }}-${{ inputs.device_manifest }}-${{ inputs.ksu_variant }}-${{ inputs.enable_susfs }}-${{ inputs.use_zyc_clang19 }}
           restore-keys: |
             oneplus-ccache-${{ runner.os }}-${{ inputs.device_manifest }}-${{ inputs.ksu_variant }}-
             oneplus-ccache-${{ runner.os }}-
@@ -1142,8 +1141,10 @@ jobs:
             )
           fi
 
-          # 直接添加骁龙8 Elite Oryon 核心优化（需配合 zyc Clang 19 使用）
-          export KCFLAGS="$KCFLAGS -mcpu=oryon"
+          # 直接添加骁龙8 Elite Oryon 核心优化（仅在 zyc Clang 19 下可用）
+          if [ "$USE_ZYC_CLANG19" = "true" ]; then
+            export KCFLAGS="$KCFLAGS -mcpu=oryon"
+          fi
 
           MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out "${KSU_KCFLAGS[@]}")
           case "$KERNEL_VERSION" in
@@ -1227,6 +1228,8 @@ jobs:
           artifact_name="${DEVICE_ARTIFACT_ID}_${variant_label}_${algo_label}_AnyKernel3"
           if [ "$EFFECTIVE_ENABLE_SUSFS" = "true" ]; then
             artifact_name="${artifact_name}_with-SUSFS"
+          if [[ "$USE_ZYC_CLANG19" == "true" ]]; then
+          artifact_name="${artifact_name}_zyc-clang19"
           fi
           image_artifact_name="${DEVICE_ARTIFACT_ID}_${variant_label}_${algo_label}_raw-image-debug"
           cd AnyKernel3
