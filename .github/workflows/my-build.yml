@@ -326,7 +326,7 @@ jobs:
           esac
           repo sync -c -j"$(nproc --all)" --no-tags --no-clone-bundle --force-sync
 
-      - name: 应用上游稳定补丁和性能优化
+      - name: 合并 AOSP 上游更新
         if: ${{ inputs.apply_upstream_patches == true }}
         shell: bash
         run: |
@@ -336,70 +336,53 @@ jobs:
           COMMON_ROOT="$KERNEL_ROOT/common"
           cd "$COMMON_ROOT"
 
-          # 缓存 WildKernels 补丁仓库
+          # 拉取 AOSP 最新标签（参考 init_env.sh）
+          LATEST_AOSP_TAG="android15-6.6"
+          echo "[INFO] 拉取 AOSP 标签: $LATEST_AOSP_TAG"
+
+          FETCH_OK=0
+          for i in 1 2 3; do
+            if git fetch --depth=1 --no-tags https://android.googlesource.com/kernel/common "$LATEST_AOSP_TAG"; then
+              FETCH_OK=1
+              break
+            fi
+            echo "[WARN] AOSP fetch 失败(第${i}次)，5秒后重试..."
+            sleep 5
+          done
+
+          if [[ "$FETCH_OK" -eq 1 ]]; then
+            if git merge FETCH_HEAD --no-edit -X ours --allow-unrelated-histories; then
+              echo "[INFO] AOSP 上游合并成功"
+            else
+              echo "[WARN] 存在冲突，自动保留 OEM 版本..."
+              git diff --name-only --diff-filter=U | xargs -r git checkout --ours --
+              git add -A
+              git commit -m "Merge AOSP $LATEST_AOSP_TAG, keep OEM" || true
+            fi
+          else
+            echo "::error::AOSP fetch 失败（3次均不可达），跳过合并"
+          fi
+
+          # 可选：应用 WildKernels 额外优化补丁（保留原有性能补丁）
           WILD_DIR="$HOME/.cache_patches/wild_patches"
           mkdir -p "$HOME/.cache_patches"
           if [ -d "$WILD_DIR/.git" ]; then
-            echo "[INFO] 本地 WildKernels 补丁仓已存在，增量更新..."
             git -C "$WILD_DIR" fetch --depth=1 origin main || true
             git -C "$WILD_DIR" reset --hard FETCH_HEAD || true
           else
-            echo "[INFO] 首次克隆 WildKernels 补丁仓..."
-           git clone --depth=1 https://github.com/WildKernels/kernel_patches.git "$WILD_DIR"
+            git clone --depth=1 https://github.com/WildKernels/kernel_patches.git "$WILD_DIR"
           fi
 
-          # 应用内存与 cache 加速补丁（忽略错误，允许继续）
-          for p in optimized_mem_operations file_struct_8bytes_align mem_opt_prefetch optimise_memcmp \
-                    reduce_cache_pressure f2fs_reduce_congestion f2fs_enlarge_min_fsync_blocks \
-                    increase_ext4_default_commit_age int_sqrt reduce_gc_thread_sleep_time \
-                    increase_sk_mem_packets disable_cache_hot_buddy force_tcp_nodelay \
-                    minimise_wakeup_time reduce_freeze_timeout silence_irq_cpu_logspam \
-                    silence_system_logspam; do
+          # 应用内存/cache 加速补丁（失败忽略）
+          for p in optimized_mem_operations file_struct_8bytes_align mem_opt_prefetch \
+                   optimise_memcmp reduce_cache_pressure f2fs_reduce_congestion \
+                   f2fs_enlarge_min_fsync_blocks increase_ext4_default_commit_age; do
             patchfile="$WILD_DIR/common/${p}.patch"
-            if [ -f "$patchfile" ]; then
-              echo "[INFO] 应用 $p.patch"
-              patch -p1 -F 3 -f < "$patchfile" 2>/dev/null || echo "[WARN] $p.patch 应用失败，继续"
-            else
-              echo "[WARN] $p.patch 不存在，跳过"
-            fi
+            [ -f "$patchfile" ] && patch -p1 -F 3 -f < "$patchfile" 2>/dev/null || true
           done
 
-          # 如有 EnablePOLLY.patch
-          POLLY_PATCH="$HOME/.cache_patches/EnablePOLLY.patch"
-          if [ ! -f "$POLLY_PATCH" ]; then
-            curl -fsSL --retry 3 --retry-delay 5 \
-              "https://raw.githubusercontent.com/mrcxlinux/kernel_patches/main/common/EnablePOLLY.patch" \
-              -o "$POLLY_PATCH" || echo "[WARN] EnablePOLLY.patch 下载失败"
-          fi
-          [ -f "$POLLY_PATCH" ] && patch -p1 -F 3 -f < "$POLLY_PATCH" 2>/dev/null || true
-
-          # 应用 AOSP 上游补丁（来自 aosp-mirror）
-          mkdir -p "$HOME/.cache_patches/aosp"
-          for hash in 47f80469849a 5fddd8e6a0a7 0a9eef42768c 71bd6942e33f ef0123e95425 \
-                        7abe312b37cf 6a42fccfc2bc d43ee181a478 5c8ecdcfbfb0 c5d6863c9aba \
-                        9eecad532ad3 c7a8aea27b87; do
-            if [ ! -s "$HOME/.cache_patches/aosp/$hash.patch" ]; then
-              curl -fsSL --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 30 \
-                -o "$HOME/.cache_patches/aosp/$hash.patch" \
-                "https://github.com/aosp-mirror/kernel_common/commit/$hash.patch" 2>/dev/null || rm -f "$HOME/.cache_patches/aosp/$hash.patch"
-            fi
-            [ -s "$HOME/.cache_patches/aosp/$hash.patch" ] && patch -p1 -F 3 -f < "$HOME/.cache_patches/aosp/$hash.patch" 2>/dev/null || true
-          done
-
-          # 应用 palazik 补丁
-          mkdir -p "$HOME/.cache_patches/palazik"
-          for hash in e8400a0 a09e19e; do
-            if [ ! -s "$HOME/.cache_patches/palazik/$hash.patch" ]; then
-              curl -fsSL --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 30 \
-                -o "$HOME/.cache_patches/palazik/$hash.patch" \
-                "https://github.com/palazik/android_kernel_common_oneplus_sm8750/commit/$hash.patch" 2>/dev/null || rm -f "$HOME/.cache_patches/palazik/$hash.patch"
-            fi
-            [ -s "$HOME/.cache_patches/palazik/$hash.patch" ] && patch -p1 -F 3 -f < "$HOME/.cache_patches/palazik/$hash.patch" 2>/dev/null || true
-          done
-
-          # 清理 .rej 文件（避免干扰后续）
           find . -name "*.rej" -delete 2>/dev/null
-          echo "[INFO] 上游补丁和性能优化应用完成（部分可能因版本偏移失败，已忽略）"
+          echo "[INFO] AOSP 合并及性能补丁完成"
       
       - name: 准备 KernelSU 和补丁
         shell: bash
@@ -942,28 +925,34 @@ jobs:
           echo "BBRv3 补丁应用成功"
           rm -f bbrv3.patch
      
-      - name: 安装 zyc Clang 19 工具链
+      - name: 安装 zyc Clang 19 工具链（ZyCromerZ）
         if: ${{ inputs.use_zyc_clang19 == true }}
         shell: bash
         run: |
           set -euo pipefail
-          LLVM_VERSION="19.1.7"
-          ZYC_DIR="$HOME/zyc-clang-19"
-          mkdir -p "$ZYC_DIR"
-          cd "$ZYC_DIR"
-          if [ -d "clang+llvm-${LLVM_VERSION}-x86_64-linux-gnu-ubuntu-22.04" ]; then
-            echo "[INFO] zyc Clang 19 已存在，跳过下载"
+          CLANG_DIR_NAME="Clang-19.0.0git-20240723"
+          CLANG_URL="https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz"
+          TC_DIR="$HOME/.toolchains/$CLANG_DIR_NAME"
+          mkdir -p "$HOME/.toolchains"
+
+          if [ -d "$TC_DIR/bin" ]; then
+            echo "[INFO] zyc Clang 19 已存在本地缓存，直接复用！"
           else
-            echo "[INFO] 下载 LLVM ${LLVM_VERSION} ..."
-            curl -fsSL -O "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-x86_64-linux-gnu-ubuntu-22.04.tar.xz" || {
-              echo "::error::LLVM ${LLVM_VERSION} 下载失败，尝试备用版本 19.1.0..."
-              curl -fsSL -O "https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.0/clang+llvm-19.1.0-x86_64-linux-gnu-ubuntu-22.04.tar.xz"
-              LLVM_VERSION="19.1.0"
-            }
-            tar -xf clang+llvm-*.tar.xz
-            rm -f clang+llvm-*.tar.xz
+            echo "[INFO] 下载 zyc Clang 19 (ZyCromerZ) ..."
+            rm -rf "$TC_DIR"
+            mkdir -p "$TC_DIR"
+            rm -f clang19.tar.gz*
+            # 使用 aria2 加速下载（若无则 fallback curl）
+            if command -v aria2c >/dev/null 2>&1; then
+              aria2c -s16 -x16 -k1M "$CLANG_URL" -o clang19.tar.gz
+            else
+              curl -fsSL -o clang19.tar.gz "$CLANG_URL"
+            fi
+            tar -xzf clang19.tar.gz -C "$TC_DIR" && rm -f clang19.tar.gz
+            echo "[INFO] zyc Clang 19 下载完成"
           fi
-          ZYC_BIN="$ZYC_DIR/clang+llvm-${LLVM_VERSION}-x86_64-linux-gnu-ubuntu-22.04/bin"
+
+          ZYC_BIN="$TC_DIR/bin"
           echo "ZYC_CLANG_PATH=$ZYC_BIN" >> $GITHUB_ENV
           echo "$ZYC_BIN" >> $GITHUB_PATH
           echo "[INFO] zyc Clang 19 已加入 PATH: $ZYC_BIN"
