@@ -1143,7 +1143,7 @@ jobs:
 
           # 直接添加骁龙8 Elite Oryon 核心优化（仅在 zyc Clang 19 下可用）
           if [ "$USE_ZYC_CLANG19" = "true" ]; then
-          export KCFLAGS="${KCFLAGS:-} -mcpu=oryon"
+          export KCFLAGS="${KCFLAGS:-} -march=armv8.2-a+crypto"
           fi
 
           MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out "${KSU_KCFLAGS[@]}")
