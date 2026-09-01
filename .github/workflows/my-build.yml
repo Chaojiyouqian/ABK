@@ -1107,6 +1107,8 @@ jobs:
             sed -i 's/^CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "$DEFCONFIG_PATH" || true
             grep -q '^CONFIG_LTO_CLANG_THIN=y' "$DEFCONFIG_PATH" || echo 'CONFIG_LTO_CLANG_THIN=y' >> "$DEFCONFIG_PATH"
           fi
+          # 禁用 BTF 以避免 resolve_btfids 编译错误
+          echo "CONFIG_DEBUG_INFO_BTF=n" >> "$DEFCONFIG_PATH"
           sed -i 's/check_defconfig//' "$COMMON_ROOT/build.config.gki" || true
 
       - name: 编译内核
