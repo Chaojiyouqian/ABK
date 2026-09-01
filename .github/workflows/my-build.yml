@@ -960,6 +960,10 @@ jobs:
           echo "ZYC_CLANG_PATH=$ZYC_BIN" >> $GITHUB_ENV
           echo "$ZYC_BIN" >> $GITHUB_PATH
           echo "[INFO] zyc Clang 19 已加入 PATH: $ZYC_BIN"
+          echo "[INFO] 测试 -march=armv8.2-a+crypto 是否支持..."
+          clang -march=armv8.2-a+crypto -E - < /dev/null > /dev/null 2>&1 && \
+            echo "支持该选项" || \
+            echo "不支持，请改用 -march=armv8.2-a 或移除优化"
           clang --version
       
       - name: 配置 defconfig
@@ -1131,7 +1135,8 @@ jobs:
 
           # 自定义构建时间
           export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
-    
+
+          # 初始化 KSU_KCFLAGS 数组（必须使用数组语法）
           KSU_KCFLAGS=()
           if [ "$KSU_VARIANT" = "Official" ] && [ -d "$KERNEL_ROOT/KernelSU/uapi" ]; then
             KSU_KCFLAGS=(
@@ -1141,12 +1146,15 @@ jobs:
             )
           fi
 
-          # 直接添加骁龙8 Elite Oryon 核心优化（仅在 zyc Clang 19 下可用）
+          # 使用 ARMv8.2-A + 加密扩展优化（仅当启用 zyc Clang 19 时）
           if [ "$USE_ZYC_CLANG19" = "true" ]; then
-          export KCFLAGS="${KCFLAGS:-} -march=armv8.2-a+crypto"
+            # 正确语法：变量默认值 + 字符串拼接
+            export KCFLAGS="${KCFLAGS:-} -march=armv8.2-a+crypto"
           fi
 
+          # 构建 make 命令（注意 ${KSU_KCFLAGS[@]} 展开）
           MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out "${KSU_KCFLAGS[@]}")
+
           case "$KERNEL_VERSION" in
             6.1)
               export KBUILD_BUILD_TIMESTAMP="Tue Mar 10 03:53:33 UTC 2026"
@@ -1185,6 +1193,7 @@ jobs:
               ;;
           esac
           ccache -s
+
 
       - name: 打包 AnyKernel3
         shell: bash
@@ -1227,10 +1236,10 @@ jobs:
           fi
           artifact_name="${DEVICE_ARTIFACT_ID}_${variant_label}_${algo_label}_AnyKernel3"
           if [ "$EFFECTIVE_ENABLE_SUSFS" = "true" ]; then
-          artifact_name="${artifact_name}_with-SUSFS"
+            artifact_name="${artifact_name}_with-SUSFS"
           fi
           if [[ "$USE_ZYC_CLANG19" == "true" ]]; then
-          artifact_name="${artifact_name}_zyc-clang19"
+            artifact_name="${artifact_name}_zyc-clang19"
           fi
           image_artifact_name="${DEVICE_ARTIFACT_ID}_${variant_label}_${algo_label}_raw-image-debug"
           cd AnyKernel3
