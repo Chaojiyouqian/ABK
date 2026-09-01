@@ -1227,7 +1227,8 @@ jobs:
           fi
           artifact_name="${DEVICE_ARTIFACT_ID}_${variant_label}_${algo_label}_AnyKernel3"
           if [ "$EFFECTIVE_ENABLE_SUSFS" = "true" ]; then
-            artifact_name="${artifact_name}_with-SUSFS"
+          artifact_name="${artifact_name}_with-SUSFS"
+          fi
           if [[ "$USE_ZYC_CLANG19" == "true" ]]; then
           artifact_name="${artifact_name}_zyc-clang19"
           fi
