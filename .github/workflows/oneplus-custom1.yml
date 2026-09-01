@@ -134,6 +134,16 @@ on:
         required: false
         type: string
         default: "Sun Dec 01 08:10:00 UTC 2024"
+      apply_upstream_patches:
+        description: "应用上游稳定补丁（AOSP/palazik）"
+        required: false
+        type: boolean
+        default: true
+      use_zyc_clang19:
+        description: "使用 zyc Clang 19 编译器"
+        required: false
+        type: boolean
+        default: true
         
 jobs:
   get-manager:
@@ -161,3 +171,6 @@ jobs:
       use_bbr: ${{ inputs.use_bbr }}
       use_proxy_optimization: ${{ inputs.use_proxy_optimization }}
       use_unicode_bypass: ${{ inputs.use_unicode_bypass }}
+      build_time: ${{ inputs.build_time }}
+      apply_upstream_patches: ${{ inputs.apply_upstream_patches }}
+      use_zyc_clang19: ${{ inputs.use_zyc_clang19 }}
