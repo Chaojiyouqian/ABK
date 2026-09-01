@@ -63,6 +63,16 @@ on:
         required: false
         type: string
         default: ""
+      apply_upstream_patches:
+        description: "应用来自 AOSP/palazik 的上游稳定补丁"
+        required: false
+        type: boolean
+        default: true
+      use_zyc_clang19:
+        description: "使用 zyc Clang 19 编译器"
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   build:
@@ -83,6 +93,8 @@ jobs:
       USE_BBR: ${{ inputs.use_bbr }}
       USE_PROXY_OPTIMIZATION: ${{ inputs.use_proxy_optimization }}
       USE_UNICODE_BYPASS: ${{ inputs.use_unicode_bypass }}
+      APPLY_UPSTREAM_PATCHES: ${{ inputs.apply_upstream_patches }}
+      USE_ZYC_CLANG19: ${{ inputs.use_zyc_clang19 }}
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
@@ -200,6 +212,9 @@ jobs:
           echo "自定义注入    : 无"
           echo "Stock Config  : OnePlus manifest"
           echo "Unicode 绕过  : $USE_UNICODE_BYPASS"
+          echo "Unicode 绕过  : $USE_UNICODE_BYPASS"
+          echo "上游补丁      : $APPLY_UPSTREAM_PATCHES"
+          echo "zyc Clang 19  : $USE_ZYC_CLANG19"
           echo "========================================"
 
       - name: 校验 OnePlus 输入
@@ -260,9 +275,9 @@ jobs:
 
           apt_update_retry
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
-            python3 git curl ccache libelf-dev libdw-dev build-essential flex bison libssl-dev \
-            libncurses-dev liblz4-tool zlib1g-dev libxml2-utils rsync unzip gawk \
-            dos2unix zip gcc-aarch64-linux-gnu
+          python3 git curl ccache libelf-dev libdw-dev build-essential flex bison libssl-dev \
+          libncurses-dev liblz4-tool zlib1g-dev libxml2-utils rsync unzip gawk \
+          dos2unix zip gcc-aarch64-linux-gnu xz-utils
           if ! command -v repo >/dev/null 2>&1; then
             curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o repo
             chmod a+x repo
@@ -312,6 +327,81 @@ jobs:
           esac
           repo sync -c -j"$(nproc --all)" --no-tags --no-clone-bundle --force-sync
 
+      - name: 应用上游稳定补丁和性能优化
+        if: ${{ inputs.apply_upstream_patches == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
+          KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
+          COMMON_ROOT="$KERNEL_ROOT/common"
+          cd "$COMMON_ROOT"
+
+          # 缓存 WildKernels 补丁仓库
+          WILD_DIR="$HOME/.cache_patches/wild_patches"
+          mkdir -p "$HOME/.cache_patches"
+          if [ -d "$WILD_DIR/.git" ]; then
+            echo "[INFO] 本地 WildKernels 补丁仓已存在，增量更新..."
+            git -C "$WILD_DIR" fetch --depth=1 origin main || true
+            git -C "$WILD_DIR" reset --hard FETCH_HEAD || true
+          else
+            echo "[INFO] 首次克隆 WildKernels 补丁仓..."
+           git clone --depth=1 https://github.com/WildKernels/kernel_patches.git "$WILD_DIR"
+          fi
+
+          # 应用内存与 cache 加速补丁（忽略错误，允许继续）
+          for p in optimized_mem_operations file_struct_8bytes_align mem_opt_prefetch optimise_memcmp \
+                    reduce_cache_pressure f2fs_reduce_congestion f2fs_enlarge_min_fsync_blocks \
+                    increase_ext4_default_commit_age int_sqrt reduce_gc_thread_sleep_time \
+                    increase_sk_mem_packets disable_cache_hot_buddy force_tcp_nodelay \
+                    minimise_wakeup_time reduce_freeze_timeout silence_irq_cpu_logspam \
+                    silence_system_logspam; do
+            patchfile="$WILD_DIR/common/${p}.patch"
+            if [ -f "$patchfile" ]; then
+              echo "[INFO] 应用 $p.patch"
+              patch -p1 -F 3 -f < "$patchfile" 2>/dev/null || echo "[WARN] $p.patch 应用失败，继续"
+            else
+              echo "[WARN] $p.patch 不存在，跳过"
+            fi
+          done
+
+          # 如有 EnablePOLLY.patch
+          POLLY_PATCH="$HOME/.cache_patches/EnablePOLLY.patch"
+          if [ ! -f "$POLLY_PATCH" ]; then
+            curl -fsSL --retry 3 --retry-delay 5 \
+              "https://raw.githubusercontent.com/mrcxlinux/kernel_patches/main/common/EnablePOLLY.patch" \
+              -o "$POLLY_PATCH" || echo "[WARN] EnablePOLLY.patch 下载失败"
+          fi
+          [ -f "$POLLY_PATCH" ] && patch -p1 -F 3 -f < "$POLLY_PATCH" 2>/dev/null || true
+
+          # 应用 AOSP 上游补丁（来自 aosp-mirror）
+          mkdir -p "$HOME/.cache_patches/aosp"
+          for hash in 47f80469849a 5fddd8e6a0a7 0a9eef42768c 71bd6942e33f ef0123e95425 \
+                        7abe312b37cf 6a42fccfc2bc d43ee181a478 5c8ecdcfbfb0 c5d6863c9aba \
+                        9eecad532ad3 c7a8aea27b87; do
+            if [ ! -s "$HOME/.cache_patches/aosp/$hash.patch" ]; then
+              curl -fsSL --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 30 \
+                -o "$HOME/.cache_patches/aosp/$hash.patch" \
+                "https://github.com/aosp-mirror/kernel_common/commit/$hash.patch" 2>/dev/null || rm -f "$HOME/.cache_patches/aosp/$hash.patch"
+            fi
+            [ -s "$HOME/.cache_patches/aosp/$hash.patch" ] && patch -p1 -F 3 -f < "$HOME/.cache_patches/aosp/$hash.patch" 2>/dev/null || true
+          done
+
+          # 应用 palazik 补丁
+          mkdir -p "$HOME/.cache_patches/palazik"
+          for hash in e8400a0 a09e19e; do
+            if [ ! -s "$HOME/.cache_patches/palazik/$hash.patch" ]; then
+              curl -fsSL --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 30 \
+                -o "$HOME/.cache_patches/palazik/$hash.patch" \
+                "https://github.com/palazik/android_kernel_common_oneplus_sm8750/commit/$hash.patch" 2>/dev/null || rm -f "$HOME/.cache_patches/palazik/$hash.patch"
+            fi
+            [ -s "$HOME/.cache_patches/palazik/$hash.patch" ] && patch -p1 -F 3 -f < "$HOME/.cache_patches/palazik/$hash.patch" 2>/dev/null || true
+          done
+
+          # 清理 .rej 文件（避免干扰后续）
+          find . -name "*.rej" -delete 2>/dev/null
+          echo "[INFO] 上游补丁和性能优化应用完成（部分可能因版本偏移失败，已忽略）"
+      
       - name: 准备 KernelSU 和补丁
         shell: bash
         run: |
@@ -852,7 +942,29 @@ jobs:
           }
           echo "BBRv3 补丁应用成功"
           rm -f bbrv3.patch
-    
+     
+      - name: 安装 zyc Clang 19 工具链
+        if: ${{ inputs.use_zyc_clang19 == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZYC_DIR="$HOME/zyc-clang-19"
+          mkdir -p "$ZYC_DIR"
+          cd "$ZYC_DIR"
+          if [ -d "clang+llvm-19.1.0-x86_64-linux-gnu-ubuntu-22.04" ]; then
+            echo "[INFO] zyc Clang 19 已存在，跳过下载"
+          else
+            echo "[INFO] 下载 LLVM 19.1.0 (zyc Clang 19) ..."
+            curl -fsSL -O https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.0/clang+llvm-19.1.0-x86_64-linux-gnu-ubuntu-22.04.tar.xz
+            tar -xf clang+llvm-*.tar.xz
+            rm -f clang+llvm-*.tar.xz
+          fi
+          ZYC_BIN="$ZYC_DIR/clang+llvm-19.1.0-x86_64-linux-gnu-ubuntu-22.04/bin"
+          echo "ZYC_CLANG_PATH=$ZYC_BIN" >> $GITHUB_ENV
+          echo "$ZYC_BIN" >> $GITHUB_PATH
+          echo "[INFO] zyc Clang 19 已加入 PATH: $ZYC_BIN"
+          clang --version
+      
       - name: 配置 defconfig
         shell: bash
         run: |
@@ -1020,7 +1132,7 @@ jobs:
 
           # 自定义构建时间
           export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-$(TZ='UTC' date +'%a %b %d %T %Z %Y')}"
-          
+    
           KSU_KCFLAGS=()
           if [ "$KSU_VARIANT" = "Official" ] && [ -d "$KERNEL_ROOT/KernelSU/uapi" ]; then
             KSU_KCFLAGS=(
@@ -1029,19 +1141,29 @@ jobs:
               "KCFLAGS+=-I$KERNEL_ROOT/KernelSU/kernel/include"
             )
           fi
+
+          # 直接添加骁龙8 Elite Oryon 核心优化（需配合 zyc Clang 19 使用）
+          export KCFLAGS="$KCFLAGS -mcpu=oryon"
+
           MAKE_COMMON=(make -j"$(nproc --all)" LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out "${KSU_KCFLAGS[@]}")
           case "$KERNEL_VERSION" in
             6.1)
               export KBUILD_BUILD_TIMESTAMP="Tue Mar 10 03:53:33 UTC 2026"
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
+              if [ "$USE_ZYC_CLANG19" != "true" ]; then
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
+              fi
               "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+=-O2 gki_defconfig all
               ;;
             6.6)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
+              if [ "$USE_ZYC_CLANG19" != "true" ]; then
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
+              fi
               "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+=-O2 gki_defconfig all
               ;;
             6.12)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r536225/bin:$PATH"
+              if [ "$USE_ZYC_CLANG19" != "true" ]; then
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r536225/bin:$PATH"
+              fi
               "${MAKE_COMMON[@]}" \
                 RUSTC=../../prebuilts/rust/linux-x86/1.82.0/bin/rustc \
                 BINDGEN=../../prebuilts/clang-tools/linux-x86/bin/bindgen \
@@ -1049,11 +1171,15 @@ jobs:
                 gki_defconfig all
               ;;
             5.15)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
+              if [ "$USE_ZYC_CLANG19" != "true" ]; then
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
+              fi
               "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc gki_defconfig all
               ;;
             5.10)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
+              if [ "$USE_ZYC_CLANG19" != "true" ]; then
+                export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
+              fi
               make -j"$(nproc --all)" LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out "${KSU_KCFLAGS[@]}" gki_defconfig all
               ;;
           esac
