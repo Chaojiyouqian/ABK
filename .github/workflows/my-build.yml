@@ -906,6 +906,14 @@ jobs:
           cd "$GITHUB_WORKSPACE/oneplus_workspace/kernel_workspace/kernel_platform/common"
           echo "CONFIG_LTO_CLANG_THIN=y" >> arch/arm64/configs/gki_defconfig
 
+      - name: 缓存 BBRv3 补丁
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache_patches/bbrv3
+          key: bbrv3-patch-cache
+          restore-keys: |
+            bbrv3-patch-cache
+      
       - name: 应用 BBRv3 补丁
         shell: bash
         run: |
@@ -915,19 +923,66 @@ jobs:
           COMMON_ROOT="$KERNEL_ROOT/common"
           cd "$COMMON_ROOT"
 
-          echo "正在下载 BBRv3 补丁..."
-          curl -fsSL -o bbrv3.patch \
-            "https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android15-6.6.patch" || {
-              echo "::error::BBRv3 补丁下载失败"
+          # ========== 配置 ==========
+          # 补丁原始下载地址（WildKernels 的 raw 文件）
+          PATCH_URL="https://raw.githubusercontent.com/WildKernels/kernel_patches/main/common/bbrv3/0001-net-tcp-backport-BBRv3-to-android15-6.6.patch"
+          # 本地缓存目录（可跨构建复用，建议用 actions/cache 持久化）
+          CACHE_DIR="$HOME/.cache_patches/bbrv3"
+          CACHE_FILE="$CACHE_DIR/bbrv3.patch"
+          # ===========================
+
+          mkdir -p "$CACHE_DIR"
+
+          # 下载当前远程补丁到临时文件
+          TEMP_PATCH="/tmp/bbrv3_latest.patch"
+          echo "正在从 $PATCH_URL 下载最新补丁..."
+          if ! curl -fsSL -o "$TEMP_PATCH" "$PATCH_URL"; then
+            echo "::warning::下载最新补丁失败，将尝试使用本地缓存（如果存在）"
+          fi
+
+          # 判断是否需要更新缓存
+          NEED_UPDATE=0
+          if [ ! -f "$CACHE_FILE" ]; then
+            NEED_UPDATE=1
+          echo "本地缓存不存在，将创建"
+          elif [ -f "$TEMP_PATCH" ] && ! cmp -s "$TEMP_PATCH" "$CACHE_FILE"; then
+            NEED_UPDATE=1
+            echo "检测到远程补丁有更新，将更新本地缓存"
+          else
+            echo "本地缓存已是最新，直接使用"
+          fi
+
+          # 如果需要更新，则覆盖缓存文件（并可选记录 Git 历史）
+          if [ "$NEED_UPDATE" -eq 1 ] && [ -f "$TEMP_PATCH" ]; then
+            cp "$TEMP_PATCH" "$CACHE_FILE"
+            echo "已更新本地缓存: $CACHE_FILE"
+
+            # 可选：将缓存目录初始化为 Git 仓库，并提交每次更新（便于查看历史）
+            if [ ! -d "$CACHE_DIR/.git" ]; then
+              git -C "$CACHE_DIR" init
+              git -C "$CACHE_DIR" config user.email "builder@local"
+              git -C "$CACHE_DIR" config user.name "Builder"
+            fi
+            git -C "$CACHE_DIR" add bbrv3.patch
+            git -C "$CACHE_DIR" commit -m "Update BBRv3 patch from $PATCH_URL" --allow-empty-message -m "" || true
+          fi
+
+          # 应用补丁
+          if [ -f "$CACHE_FILE" ]; then
+            echo "应用 BBRv3 补丁..."
+            patch -p1 -F 3 < "$CACHE_FILE" || {
+              echo "::error::BBRv3 补丁应用失败"
               exit 1
             }
-          echo "正在应用 BBRv3 补丁..."
-          patch -p1 -F 3 < bbrv3.patch || {
-            echo "::error::BBRv3 补丁应用失败"
+            echo "BBRv3 补丁应用成功"
+          else
+            echo "::error::没有可用的补丁文件，下载也失败，无法继续"
             exit 1
-          }
-          echo "BBRv3 补丁应用成功"
-          rm -f bbrv3.patch
+          fi
+
+          # 清理临时文件
+          rm -f "$TEMP_PATCH"
+          
     
       - name: 配置 defconfig
         shell: bash
