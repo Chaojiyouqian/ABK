@@ -319,41 +319,41 @@ jobs:
           esac
           repo sync -c -j"$(nproc --all)" --no-tags --no-clone-bundle --force-sync
 
-      - name: 缓存 Clang 20
+      - name: 缓存 Clang r563880c
         uses: actions/cache@v5
         with:
-          path: oneplus_workspace/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r536225
-          key: clang-20-${{ runner.os }}-r536225
+          path: oneplus_workspace/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r563880c
+          key: clang-r563880c-${{ runner.os }}
           restore-keys: |
-            clang-20-${{ runner.os }}-
+            clang-r563880c-${{ runner.os }}-
 
-      - name: 下载并安装 Clang 20
+      - name: 下载并安装 Clang 21
         shell: bash
         run: |
           set -euo pipefail
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
     
-          CLANG_VERSION="clang-r536225"
+          CLANG_VERSION="clang-r563880c"
           CLANG_DIR="$KERNEL_ROOT/prebuilts/clang/host/linux-x86/$CLANG_VERSION"
     
           # 检查是否已存在
           if [ -d "$CLANG_DIR" ] && [ -f "$CLANG_DIR/bin/clang" ]; then
-            echo "✅ Clang 20 已存在: $CLANG_DIR"
+            echo "✅ Clang 21 已存在: $CLANG_DIR"
             $CLANG_DIR/bin/clang --version | head -1
             exit 0
           fi
     
           echo "========================================"
-          echo " 下载 AOSP Clang 20 ($CLANG_VERSION)"
+          echo " 下载 AOSP Clang 21 ($CLANG_VERSION)"
           echo "========================================"
     
           # 创建目录
           mkdir -p "$(dirname "$CLANG_DIR")"
           cd "$(dirname "$CLANG_DIR")"
     
-          # 直接下载 clang-r536225 子目录的 archive
-          echo "正在从 AOSP 下载 Clang 20..."
+          # 直接下载 clang-r563880c 子目录的 archive
+          echo "正在从 AOSP 下载 Clang 21..."
           curl -fsSL \
             "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/$CLANG_VERSION.tar.gz" \
             -o "$CLANG_VERSION.tar.gz"
@@ -362,22 +362,22 @@ jobs:
             mkdir -p "$CLANG_VERSION"
             tar -xzf "$CLANG_VERSION.tar.gz" -C "$CLANG_VERSION"
             rm -f "$CLANG_VERSION.tar.gz"
-            echo "✅ Clang 20 下载并解压成功"
+            echo "✅ Clang 21 下载并解压成功"
           else
-            echo "::error::Clang 20 下载失败"
+            echo "::error::Clang 21 下载失败"
             exit 1
           fi
     
           # 验证安装
           if [ -f "$CLANG_DIR/bin/clang" ]; then
             echo "========================================"
-            echo " Clang 20 安装验证"
+            echo " Clang 21 安装验证"
             echo "========================================"
             $CLANG_DIR/bin/clang --version | head -3
             echo "========================================"
-            echo "✅ Clang 20 安装完成"
+            echo "✅ Clang 21 安装完成"
           else
-            echo "::error::Clang 20 安装失败，未找到 clang 二进制文件"
+            echo "::error::Clang 21 安装失败，未找到 clang 二进制文件"
             echo "检查目录内容:"
             ls -la "$CLANG_DIR/" || true
             ls -la "$CLANG_DIR/bin/" 2>/dev/null || true
@@ -985,9 +985,19 @@ jobs:
            echo "========================================"
     
            # ========== 1. 编译器优化 ==========
-           # 使用 armv8.7-a（兼容所有 Clang 版本）
-          MARCH="-march=armv8.7-a+crypto+dotprod"
-          echo "✅ 使用 $MARCH"
+          # Clang r563880c 原生支持 -mcpu=oryon-1
+          CLANG_BIN="$KERNEL_ROOT/prebuilts/clang/host/linux-x86/clang-r563880c/bin/clang"
+          [ -f "$CLANG_BIN" ] || CLANG_BIN="clang"
+    
+          CLANG_VER=$($CLANG_BIN --version 2>/dev/null | head -1 | grep -Eo '[0-9]+' | head -1 || echo "19")
+    
+          if [ "$CLANG_VER" -ge 19 ]; then
+            MARCH="-mcpu=oryon-1"
+            echo "✅ 使用 -mcpu=oryon-1 (Clang $CLANG_VER)"
+          else
+            MARCH="-march=armv8.7-a+crypto+dotprod"
+             echo "⚠️  Clang $CLANG_VER 不支持 oryon-1，降级为 armv8.7-a"
+          fi
     
           echo "EXTRA_CFLAGS=$MARCH -fno-strict-aliasing -fno-delete-null-pointer-checks" >> "$GITHUB_ENV"
     
@@ -1273,7 +1283,7 @@ jobs:
               "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+=-O2 gki_defconfig all
               ;;
             6.6)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r536225/bin:$PATH"
+              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r563880c/bin:$PATH"
               "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+=-O2 gki_defconfig all
               ;;
             6.12)
