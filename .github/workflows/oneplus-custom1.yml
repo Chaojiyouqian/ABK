@@ -130,10 +130,10 @@ on:
         type: boolean
         default: false
       apply_upstream_patches:
-        description: "应用上游稳定补丁（AOSP/palazik）"
+        description: "是否合并 AOSP 上游 (android15-6.6) 补丁"
         required: false
         type: boolean
-        default: true
+        default: false
       build_time:
         description: "自定义构建时间 (可选，N或留空=当前UTC)"
         required: false
