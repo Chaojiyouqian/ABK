@@ -972,7 +972,6 @@ jobs:
           echo "CONFIG_LTO_CLANG_THIN=y" >> arch/arm64/configs/gki_defconfig
 
       - name: 骁龙8 Elite (Oryon) CPU 优化
-        if: ${{ inputs.cpu == 'sm8750' || inputs.cpu == 'sm8735' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -981,24 +980,14 @@ jobs:
           COMMON_ROOT="$KERNEL_ROOT/common"
           DEFCONFIG_PATH="$COMMON_ROOT/arch/arm64/configs/gki_defconfig"
     
-          echo "========================================"
-          echo " 骁龙8 Elite (Oryon) CPU 优化"
-          echo "========================================"
+           echo "========================================"
+           echo " 骁龙8 Elite (Oryon) CPU 优化"
+           echo "========================================"
     
-          # ========== 1. 编译器优化 ==========
-          CLANG_BIN="$KERNEL_ROOT/prebuilts/clang/host/linux-x86/clang-r536225/bin/clang"
-          [ -f "$CLANG_BIN" ] || CLANG_BIN="clang"
-    
-          # 用 -Eo 替代 -oP，兼容性更好
-          CLANG_VER=$($CLANG_BIN --version 2>/dev/null | head -1 | grep -Eo '[0-9]+' | head -1 || echo "18")
-    
-          if [ "$CLANG_VER" -ge 19 ]; then
-            MARCH="-mcpu=oryon-1"
-            echo "✅ 使用 -mcpu=oryon-1 (Clang $CLANG_VER)"
-          else
-            MARCH="-march=armv8.7-a+crypto+dotprod"
-            echo "⚠️  Clang $CLANG_VER 不支持 oryon-1，降级为 armv8.7-a"
-          fi
+           # ========== 1. 编译器优化 ==========
+           # 使用 armv8.7-a（兼容所有 Clang 版本）
+          MARCH="-march=armv8.7-a+crypto+dotprod"
+          echo "✅ 使用 $MARCH"
     
           echo "EXTRA_CFLAGS=$MARCH -fno-strict-aliasing -fno-delete-null-pointer-checks" >> "$GITHUB_ENV"
     
@@ -1017,7 +1006,7 @@ jobs:
     
           # 省电优化
           CONFIG_NO_HZ_IDLE=y
-          EOF
+           EOF
     
           echo "✅ 核心配置已添加"
           echo "========================================"
