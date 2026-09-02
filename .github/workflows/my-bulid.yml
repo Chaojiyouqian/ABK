@@ -83,6 +83,7 @@ jobs:
       USE_BBR: ${{ inputs.use_bbr }}
       USE_PROXY_OPTIMIZATION: ${{ inputs.use_proxy_optimization }}
       USE_UNICODE_BYPASS: ${{ inputs.use_unicode_bypass }}
+      APPLY_UPSTREAM_PATCHES: ${{ inputs.apply_upstream_patches }}
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
@@ -200,6 +201,7 @@ jobs:
           echo "自定义注入    : 无"
           echo "Stock Config  : OnePlus manifest"
           echo "Unicode 绕过  : $USE_UNICODE_BYPASS"
+          echo "上游补丁      : $APPLY_UPSTREAM_PATCHES"
           echo "========================================"
 
       - name: 校验 OnePlus 输入
@@ -262,7 +264,7 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
             python3 git curl ccache libelf-dev libdw-dev build-essential flex bison libssl-dev \
             libncurses-dev liblz4-tool zlib1g-dev libxml2-utils rsync unzip gawk \
-            dos2unix zip gcc-aarch64-linux-gnu
+            dos2unix zip gcc-aarch64-linux-gnu xz-utils
           if ! command -v repo >/dev/null 2>&1; then
             curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o repo
             chmod a+x repo
@@ -312,6 +314,75 @@ jobs:
           esac
           repo sync -c -j"$(nproc --all)" --no-tags --no-clone-bundle --force-sync
 
+      - name: 合并 AOSP 上游更新
+        if: ${{ inputs.apply_upstream_patches == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
+          KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
+          COMMON_ROOT="$KERNEL_ROOT/common"
+          cd "$COMMON_ROOT"
+
+          # 拉取 AOSP 最新标签（参考 init_env.sh）
+          LATEST_AOSP_TAG="android15-6.6"
+          echo "[INFO] 拉取 AOSP 标签: $LATEST_AOSP_TAG"
+
+          FETCH_OK=0
+          for i in 1 2 3; do
+            if git fetch --depth=1 --no-tags https://android.googlesource.com/kernel/common "$LATEST_AOSP_TAG"; then
+              FETCH_OK=1
+              break
+            fi
+            echo "[WARN] AOSP fetch 失败(第${i}次)，5秒后重试..."
+            sleep 5
+          done
+
+          if [[ "$FETCH_OK" -eq 1 ]]; then
+            if git merge FETCH_HEAD --no-edit -X ours --allow-unrelated-histories; then
+              echo "[INFO] AOSP 上游合并成功"
+            else
+              echo "[WARN] 存在冲突，自动保留 OEM 版本..."
+              git diff --name-only --diff-filter=U | xargs -r git checkout --ours --
+              git add -A
+              git commit -m "Merge AOSP $LATEST_AOSP_TAG, keep OEM" || true
+            fi
+          else
+            echo "::error::AOSP fetch 失败（3次均不可达），跳过合并"
+          fi
+
+          # 可选：应用 WildKernels 额外优化补丁（保留原有性能补丁）
+          WILD_DIR="$HOME/.cache_patches/wild_patches"
+          mkdir -p "$HOME/.cache_patches"
+          if [ -d "$WILD_DIR/.git" ]; then
+            git -C "$WILD_DIR" fetch --depth=1 origin main || true
+            git -C "$WILD_DIR" reset --hard FETCH_HEAD || true
+          else
+            git clone --depth=1 https://github.com/WildKernels/kernel_patches.git "$WILD_DIR"
+          fi
+
+          # 应用内存/cache 加速补丁（带预检和警告）
+          for p in optimized_mem_operations file_struct_8bytes_align mem_opt_prefetch \
+                   optimise_memcmp reduce_cache_pressure f2fs_reduce_congestion \
+                   f2fs_enlarge_min_fsync_blocks increase_ext4_default_commit_age; do
+            patchfile="$WILD_DIR/common/${p}.patch"
+            if [ -f "$patchfile" ]; then
+              if patch -p1 -F 3 -f --dry-run < "$patchfile" 2>/dev/null; then
+                patch -p1 -F 3 -f < "$patchfile" 2>/dev/null
+                echo "[INFO] ✅ 补丁 $p 应用成功"
+              else
+                echo "::warning::补丁 $p 可能失效（上下文偏移超限），请手动检查 $COMMON_ROOT/*.rej"
+              fi
+            fi
+          done
+
+          # 清理可能导致 BTF 错误的导出符号
+          rm -f android/abi_gki_protected_exports_* 2>/dev/null || true
+          sed -i 's/protected_modules = \[.*\]/protected_modules = []/' modules.bzl 2>/dev/null || true
+
+          find . -name "*.rej" -delete 2>/dev/null
+          echo "[INFO] AOSP 合并及性能补丁完成"
+    
       - name: 准备 KernelSU 和补丁
         shell: bash
         run: |
