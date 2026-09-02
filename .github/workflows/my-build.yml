@@ -334,7 +334,6 @@ jobs:
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
     
-          # Clang 19 版本号
           CLANG_VERSION="clang-r522817"
           CLANG_DIR="$KERNEL_ROOT/prebuilts/clang/host/linux-x86/$CLANG_VERSION"
     
@@ -353,23 +352,20 @@ jobs:
           mkdir -p "$(dirname "$CLANG_DIR")"
           cd "$(dirname "$CLANG_DIR")"
     
-          # 使用 git clone 下载 Clang 19（只拉取最新提交，节省空间）
+          # 直接下载 clang-r522817 子目录的 archive
           echo "正在从 AOSP 下载 Clang 19..."
-          if git clone --depth=1 \
-            https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
-            -b master \
-            "$CLANG_VERSION" 2>/dev/null; then
-            echo "✅ Clang 19 下载成功"
-          else
-            # 如果 git clone 失败，尝试使用 archive 方式下载
-            echo "git clone 失败，尝试使用 archive 下载..."
-            curl -fsSL \
-              "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/$CLANG_VERSION.tar.gz" \
-              -o "$CLANG_VERSION.tar.gz"
+          curl -fsSL \
+            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/$CLANG_VERSION.tar.gz" \
+            -o "$CLANG_VERSION.tar.gz"
+    
+          if [ -f "$CLANG_VERSION.tar.gz" ]; then
             mkdir -p "$CLANG_VERSION"
             tar -xzf "$CLANG_VERSION.tar.gz" -C "$CLANG_VERSION"
             rm -f "$CLANG_VERSION.tar.gz"
             echo "✅ Clang 19 下载并解压成功"
+          else
+            echo "::error::Clang 19 下载失败"
+            exit 1
           fi
     
           # 验证安装
@@ -382,6 +378,9 @@ jobs:
             echo "✅ Clang 19 安装完成"
           else
             echo "::error::Clang 19 安装失败，未找到 clang 二进制文件"
+            echo "检查目录内容:"
+            ls -la "$CLANG_DIR/" || true
+            ls -la "$CLANG_DIR/bin/" 2>/dev/null || true
             exit 1
           fi
     
