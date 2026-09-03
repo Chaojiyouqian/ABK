@@ -319,11 +319,11 @@ jobs:
           esac
           repo sync -c -j"$(nproc --all)" --no-tags --no-clone-bundle --force-sync
 
-      - name: 缓存 Clang 22 
+      - name: 缓存 Clang 22 (r584948b)
         uses: actions/cache@v5
         with:
-          path: oneplus_workspace/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r584948
-          key: clang-22-${{ runner.os }}-clang-r584948
+          path: oneplus_workspace/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r584948b
+          key: clang-22-${{ runner.os }}-r584948b
           restore-keys: |
             clang-22-${{ runner.os }}-
 
@@ -335,7 +335,7 @@ jobs:
           KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
     
           # Clang 22，支持 -mcpu=oryon-1
-          CLANG_VERSION="clang-r584948"
+          CLANG_VERSION="clang-r584948b"
           CLANG_DIR="$KERNEL_ROOT/prebuilts/clang/host/linux-x86/$CLANG_VERSION"
     
           # 检查是否已存在
@@ -986,7 +986,7 @@ jobs:
     
            # ========== 1. 编译器优化 ==========
           # Clang r563880c 原生支持 -mcpu=oryon-1
-          CLANG_BIN="$KERNEL_ROOT/prebuilts/clang/host/linux-x86/clang-r584948/bin/clang"
+          CLANG_BIN="$KERNEL_ROOT/prebuilts/clang/host/linux-x86/clang-r584948b/bin/clang"
           [ -f "$CLANG_BIN" ] || CLANG_BIN="clang"
     
           CLANG_VER=$($CLANG_BIN --version 2>/dev/null | head -1 | grep -Eo '[0-9]+' | head -1 || echo "19")
@@ -1283,7 +1283,7 @@ jobs:
               "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+=-O2 gki_defconfig all
               ;;
             6.6)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r584948/bin:$PATH"
+              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r584948b/bin:$PATH"
               "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+=-O2 gki_defconfig all
               ;;
             6.12)
