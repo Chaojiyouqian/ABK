@@ -319,34 +319,34 @@ jobs:
           esac
           repo sync -c -j"$(nproc --all)" --no-tags --no-clone-bundle --force-sync
 
-      - name: 缓存 Clang 21 (r563880c)
+      - name: 缓存 Clang 21 (r563880b)
         uses: actions/cache@v5
         with:
-          path: oneplus_workspace/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r563880c
-          key: clang-21-${{ runner.os }}-r563880c
+          path: oneplus_workspace/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r563880b
+          key: clang-21-${{ runner.os }}-r563880b
           restore-keys: |
             clang-21-${{ runner.os }}-
 
-      - name: 下载并安装 Clang 21 (r563880c)
+      - name: 下载并安装 Clang 21 (r563880b)
         shell: bash
         run: |
           set -euo pipefail
           WORKSPACE="$GITHUB_WORKSPACE/oneplus_workspace"
           KERNEL_ROOT="$WORKSPACE/kernel_workspace/kernel_platform"
     
-          # Clang 21 (r563880c)，支持 -mcpu=oryon-1
-          CLANG_VERSION="clang-r563880c"
+          # Clang 21 (r563880b)，支持 -mcpu=oryon-1
+          CLANG_VERSION="clang-r563880b"
           CLANG_DIR="$KERNEL_ROOT/prebuilts/clang/host/linux-x86/$CLANG_VERSION"
     
           # 检查是否已存在
           if [ -d "$CLANG_DIR" ] && [ -f "$CLANG_DIR/bin/clang" ]; then
-            echo "✅ Clang 21 (r563880c) 已存在: $CLANG_DIR"
+            echo "✅ Clang 21 (r563880b) 已存在: $CLANG_DIR"
             $CLANG_DIR/bin/clang --version | head -1
             exit 0
           fi
     
           echo "========================================"
-          echo " 下载 AOSP Clang 21 (r563880c)"
+          echo " 下载 AOSP Clang 21 (r563880b)"
           echo "========================================"
     
           # 创建目录
@@ -354,7 +354,7 @@ jobs:
           cd "$(dirname "$CLANG_DIR")"
     
           # 从 AOSP 官方源下载
-          echo "正在从 AOSP 下载 Clang 21 (r563880c)..."
+          echo "正在从 AOSP 下载 Clang 21 (r563880b)..."
           curl -fsSL \
             "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/$CLANG_VERSION.tar.gz" \
             -o "$CLANG_VERSION.tar.gz"
@@ -363,22 +363,22 @@ jobs:
             mkdir -p "$CLANG_VERSION"
             tar -xzf "$CLANG_VERSION.tar.gz" -C "$CLANG_VERSION"
             rm -f "$CLANG_VERSION.tar.gz"
-            echo "✅ Clang 21 (r563880c) 下载并解压成功"
+            echo "✅ Clang 21 (r563880b) 下载并解压成功"
           else
-            echo "::error::Clang 21 (r563880c) 下载失败"
+            echo "::error::Clang 21 (r563880b) 下载失败"
             exit 1
           fi
     
           # 验证安装
           if [ -f "$CLANG_DIR/bin/clang" ]; then
             echo "========================================"
-            echo " Clang 21 (r563880c) 安装验证"
+            echo " Clang 21 (r563880b) 安装验证"
             echo "========================================"
             $CLANG_DIR/bin/clang --version | head -3
             echo "========================================"
-            echo "✅ Clang 21 (r563880c) 安装完成"
+            echo "✅ Clang 21 (r563880b) 安装完成"
           else
-            echo "::error::Clang 21 (r563880c) 安装失败，未找到 clang 二进制文件"
+            echo "::error::Clang 21 (r563880b) 安装失败，未找到 clang 二进制文件"
             ls -la "$CLANG_DIR/" || true
             ls -la "$CLANG_DIR/bin/" 2>/dev/null || true
             exit 1
@@ -986,7 +986,7 @@ jobs:
     
            # ========== 1. 编译器优化 ==========
           # Clang r563880c 原生支持 -mcpu=oryon-1
-          CLANG_BIN="$KERNEL_ROOT/prebuilts/clang/host/linux-x86/clang-r563880c/bin/clang"
+          CLANG_BIN="$KERNEL_ROOT/prebuilts/clang/host/linux-x86/clang-r563880b/bin/clang"
           [ -f "$CLANG_BIN" ] || CLANG_BIN="clang"
     
           CLANG_VER=$($CLANG_BIN --version 2>/dev/null | head -1 | grep -Eo '[0-9]+' | head -1 || echo "19")
@@ -1283,7 +1283,7 @@ jobs:
               "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+=-O2 gki_defconfig all
               ;;
             6.6)
-              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r563880c/bin:$PATH"
+              export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r563880b/bin:$PATH"
               "${MAKE_COMMON[@]}" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc KCFLAGS+=-O2 gki_defconfig all
               ;;
             6.12)
