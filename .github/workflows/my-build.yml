@@ -979,46 +979,53 @@ jobs:
           COMMON_ROOT="$KERNEL_ROOT/common"
           DEFCONFIG_PATH="$COMMON_ROOT/arch/arm64/configs/gki_defconfig"
     
-           echo "========================================"
-           echo " 骁龙8 Elite (Oryon) CPU 优化"
-           echo "========================================"
+          echo "========================================"
+          echo " 骁龙8 Elite (Oryon) CPU 优化"
+          echo "========================================"
+    
+          # ========== 只需修改这里 ==========
+          # 可选值: "oryon" 或 "generic"oryon开启优化，generic通用
+          OPTIMIZATION_MODE="oryon"
+          # =================================
     
            # ========== 1. 编译器优化 ==========
-          # Clang r563880c 原生支持 -mcpu=oryon-1
-          CLANG_BIN="$KERNEL_ROOT/prebuilts/clang/host/linux-x86/clang-r563880c/bin/clang"
-          [ -f "$CLANG_BIN" ] || CLANG_BIN="clang"
+           case "$OPTIMIZATION_MODE" in
+             "oryon")
+               MARCH="-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks"
+               echo "✅ 使用 -mcpu=oryon-1 (Oryon 核心精准优化)"
+               ;;
+             "generic")
+               MARCH="-march=armv8.7-a+crypto+dotprod -fno-strict-aliasing -fno-delete-null-pointer-checks"
+               echo "✅ 使用 -march=armv8.7-a (通用兼容模式)"
+               ;;
+             *)
+               echo "::error::未知优化模式: $OPTIMIZATION_MODE (可选: oryon, generic)"
+               exit 1
+               ;;
+           esac
     
-          CLANG_VER=$($CLANG_BIN --version 2>/dev/null | head -1 | grep -Eo '[0-9]+' | head -1 || echo "19")
+           echo "EXTRA_CFLAGS=$MARCH" >> "$GITHUB_ENV"
     
-          if [ "$CLANG_VER" -ge 19 ]; then
-            MARCH="-mcpu=oryon-1"
-            echo "✅ 使用 -mcpu=oryon-1 (Clang $CLANG_VER)"
-          else
-            MARCH="-march=armv8.7-a+crypto+dotprod"
-             echo "⚠️  Clang $CLANG_VER 不支持 oryon-1，降级为 armv8.7-a"
-          fi
+           # ========== 2. 内核配置 ==========
+           cat >> "$DEFCONFIG_PATH" << 'EOF'
+           # Oryon 核心配置
+           CONFIG_ARCH_QCOM=y
+           CONFIG_QCOM_CPUFREQ_HW=y
+           CONFIG_QCOM_CPUFREQ_HW_V2=y
     
-          echo "EXTRA_CFLAGS=$MARCH -fno-strict-aliasing -fno-delete-null-pointer-checks" >> "$GITHUB_ENV"
+           # 调度优化
+           CONFIG_HZ_300=y
+           CONFIG_PREEMPT=y
+           CONFIG_ENERGY_MODEL=y
+           CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y
     
-          # ========== 2. 内核配置 ==========
-          cat >> "$DEFCONFIG_PATH" << 'EOF'
-          # Oryon 核心配置
-          CONFIG_ARCH_QCOM=y
-          CONFIG_QCOM_CPUFREQ_HW=y
-          CONFIG_QCOM_CPUFREQ_HW_V2=y
-    
-          # 调度优化
-          CONFIG_HZ_300=y
-          CONFIG_PREEMPT=y
-          CONFIG_ENERGY_MODEL=y
-          CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y
-    
-          # 省电优化
-          CONFIG_NO_HZ_IDLE=y
+           # 省电优化
+           CONFIG_NO_HZ_IDLE=y
            EOF
     
-          echo "✅ 核心配置已添加"
-          echo "========================================"
+           echo "✅ 核心配置已添加"
+           echo "优化模式: $OPTIMIZATION_MODE"
+           echo "========================================"
     
       - name: 缓存 BBRv3 补丁
         uses: actions/cache@v5
