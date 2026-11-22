@@ -18,11 +18,44 @@ interface GitHubApiService {
         @Path("repo") repo: String
     ): Response<GitHubRepo>
 
+    // 拉取任意仓库单个文件原始内容（用于从 LOS 源码 Makefile 推断内核版本）
+    @GET("repos/{owner}/{repo}/contents/{path}")
+    suspend fun getFileRaw(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path(value = "path", encoded = true) path: String,
+        @Query("ref") ref: String,
+        @Header("Accept") accept: String = "application/vnd.github.raw"
+    ): Response<ResponseBody>
+
     @GET("repos/{owner}/{repo}/actions/secrets/public-key")
     suspend fun getRepositorySecretPublicKey(
         @Path("owner") owner: String,
         @Path("repo") repo: String
     ): Response<GitHubSecretPublicKey>
+
+    @GET("repos/{owner}/{repo}/actions/variables")
+    suspend fun listRepositoryVariables(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("per_page") perPage: Int = 30,
+        @Query("page") page: Int = 1
+    ): Response<GitHubRepositoryVariablesResponse>
+
+    @POST("repos/{owner}/{repo}/actions/variables")
+    suspend fun createRepositoryVariable(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Body body: RepositoryVariableRequest
+    ): Response<Unit>
+
+    @PATCH("repos/{owner}/{repo}/actions/variables/{name}")
+    suspend fun updateRepositoryVariable(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("name") name: String,
+        @Body body: RepositoryVariableRequest
+    ): Response<Unit>
 
     @GET("repos/{owner}/{repo}/actions/secrets")
     suspend fun listRepositorySecrets(

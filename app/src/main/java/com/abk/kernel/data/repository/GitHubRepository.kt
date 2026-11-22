@@ -22,12 +22,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 
-sealed class Result<out T> {
-    data class Success<T>(val data: T) : Result<T>()
-    data class Error(val message: String, val code: Int = -1) : Result<Nothing>()
-    object Loading : Result<Nothing>()
-}
-
 open class GitHubRepository(
     private val authService: GitHubAuthService = NetworkClient.createAuthService(),
     private var apiService: GitHubApiService = NetworkClient.createApiService()
@@ -237,6 +231,22 @@ open class GitHubRepository(
     }
 
     // ── Fork ──────────────────────────────────────────────────────────────
+
+    open suspend fun readKernelRunnerSettings(
+        owner: String,
+        repo: String,
+        ref: String? = null
+    ): Result<KernelRunnerSettings> = KernelRunnerSettingsStore(apiService).read(owner, repo, ref)
+
+    open suspend fun saveKernelRunnerSettings(
+        owner: String,
+        repo: String,
+        target: KernelRunnerTarget,
+        labels: String,
+        enabled: Boolean,
+        ref: String? = null
+    ): Result<KernelRunnerConfig> =
+        KernelRunnerSettingsStore(apiService).save(owner, repo, target, labels, enabled, ref)
 
     open suspend fun getUserFork(sourceOwner: String, sourceRepo: String, username: String): Result<GitHubRepo?> {
         val api = apiService
@@ -750,6 +760,48 @@ open class GitHubRepository(
         return GithubRepositoryParts(owner, repo, branch)
     }
 
+    /**
+     * 从 LOS 源码仓库根 Makefile 解析内核版本（VERSION.PATCHLEVEL.SUBLEVEL）。
+     * 仅支持 github.com 源码；非 github 或解析失败返回 Result.Error，UI 据此提示手动填写。
+     */
+    suspend fun fetchSourceMakefileVersion(
+        sourceUrl: String,
+        ref: String
+    ): Result<DetectedKernelVersion> = withContext(Dispatchers.IO) {
+        val parts = parseGithubRepository(sourceUrl)
+            ?: return@withContext Result.Error("NON_GITHUB")
+        val resolvedRef = ref.trim().ifBlank { parts.branch.orEmpty() }
+        if (resolvedRef.isBlank()) {
+            return@withContext Result.Error("源码 ref 为空")
+        }
+        val api = apiService
+        val response = runCatching {
+            api.getFileRaw(parts.owner, parts.repo, "Makefile", resolvedRef)
+        }.getOrElse { return@withContext Result.Error(it.message ?: "网络请求失败") }
+        if (!response.isSuccessful) {
+            return@withContext Result.Error("HTTP ${response.code()}", response.code())
+        }
+        val body = response.body()?.string().orEmpty()
+        parseMakefileKernelVersion(body)
+            ?.let { Result.Success(it) }
+            ?: Result.Error("无法从 Makefile 解析内核版本")
+    }
+
+    internal fun parseMakefileKernelVersion(makefile: String): DetectedKernelVersion? {
+        // 只取内核根 Makefile 头部的 VERSION/PATCHLEVEL/SUBLEVEL 数字赋值；忽略 EXTRAVERSION 与注释。
+        val fields = mutableMapOf<String, Int>()
+        val pattern = Regex("""^\s*(VERSION|PATCHLEVEL|SUBLEVEL)\s*=\s*(\d+)\s*$""")
+        for (line in makefile.lineSequence().take(40)) {
+            val match = pattern.find(line) ?: continue
+            fields[match.groupValues[1]] = match.groupValues[2].toInt()
+            if (fields.size == 3) break
+        }
+        val major = fields["VERSION"] ?: return null
+        val patchlevel = fields["PATCHLEVEL"] ?: return null
+        val sublevel = fields["SUBLEVEL"] ?: return null
+        return DetectedKernelVersion(major, patchlevel, sublevel)
+    }
+
     internal fun parseModuleCatalogDocument(body: String, repositoryUrl: String): ParsedModuleCatalogDocument {
         val root = JsonParser.parseString(body)
         val document = root.asJsonObjectOrNull() ?: error(tr(R.string.gh_root_must_be_object))
@@ -1130,6 +1182,14 @@ internal data class GithubRepositoryParts(
     val repo: String,
     val branch: String?
 )
+
+data class DetectedKernelVersion(
+    val major: Int,
+    val patchlevel: Int,
+    val sublevel: Int
+) {
+    fun toVersionString(): String = "$major.$patchlevel.$sublevel"
+}
 
 internal data class ParsedModuleCatalogDocument(
     val name: String,
