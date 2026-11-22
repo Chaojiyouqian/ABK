@@ -233,7 +233,7 @@ jobs:
           fi
 
       - name: 最大化构建空间
-        if: ${{ inputs.kernel_version == '5.10' || inputs.kernel_version == '5.15' || inputs.kernel_version == '6.12' }}
+        if: ${{ runner.environment == 'github-hosted' && (inputs.kernel_version == '5.10' || inputs.kernel_version == '5.15' || inputs.kernel_version == '6.12') }}
         uses: easimon/maximize-build-space@master
         with:
           root-reserve-mb: 8192
@@ -245,68 +245,53 @@ jobs:
 
       - name: 检出 ABK 补丁仓库
         uses: actions/checkout@v6
-        
+
       - name: 安装依赖
-         if ! command -v repo >/dev/null 2>&1; then
-         curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o repo
-         chmod a+x repo
-         sudo mv repo /usr/local/bin/repo
-           fi
-
-      - name: 配置 ccache
         shell: bash
         run: |
           set -euo pipefail
-          export CCACHE_DIR="$HOME/.ccache_${DEVICE_MANIFEST}_${KSU_VARIANT}"
-          echo "CCACHE_DIR=$CCACHE_DIR" >> "$GITHUB_ENV"
-          mkdir -p "$CCACHE_DIR"
-          ccache -M "$CCACHE_MAXSIZE"
-          ccache -z
+          disable_broken_chrome_source() {
+            if [ "${{ runner.environment }}" != "github-hosted" ]; then
+              echo "保留自托管 Runner 的 Chrome APT 源"
+              return 0
+            fi
+            local source
+            while IFS= read -r source; do
+              echo "::warning::禁用与构建无关的 Chrome APT 源: $source"
+              sudo rm -f "$source"
+            done < <(sudo grep -RIl 'dl.google.com/linux/chrome' /etc/apt/sources.list.d 2>/dev/null || true)
+          }
 
-      - name: 恢复 ccache
-        uses: actions/cache@v5
-        with:
-          path: ~/.ccache_${{ inputs.device_manifest }}_${{ inputs.ksu_variant }}
-          key: oneplus-ccache-${{ runner.os }}-${{ inputs.device_manifest }}-${{ inputs.ksu_variant }}-${{ inputs.enable_susfs }}
-          restore-keys: |
-            oneplus-ccache-${{ runner.os }}-${{ inputs.device_manifest }}-${{ inputs.ksu_variant }}-
-            oneplus-ccache-${{ runner.os }}-
-
-      - name: 同步 OnePlus 内核源码
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config --global user.name "abk-builder"
-          git config --global user.email "abk-builder@users.noreply.github.com"
-          rm -rf oneplus_workspace
-          mkdir -p oneplus_workspace/kernel_workspace
-          cd oneplus_workspace/kernel_workspace
-          repo init -u https://github.com/Xiaomichael/kernel_manifest.git \
-            -b "refs/heads/oneplus/${CPU}" \
-            -m "${DEVICE_MANIFEST}.xml" \
-            --depth=1
-          case "$DEVICE_MANIFEST" in
-            oneplus_15|oneplus_15t)
-              manifest_path=".repo/manifests/${DEVICE_MANIFEST}.xml"
-              if [ ! -f "$manifest_path" ]; then
-                manifest_path=".repo/manifest.xml"
-              fi
-              python3 "$GITHUB_WORKSPACE/.github/scripts/sanitize-oneplus-manifest.py" "$manifest_path"
-              ;;
-          esac
-          repo_sync_retry() {
+          apt_update_retry() {
             local attempt
             for attempt in 1 2 3; do
-              if repo sync -c -j"$(nproc --all)" --no-tags --no-clone-bundle --force-sync; then
+              if sudo apt-get update; then
                 return 0
               fi
-              echo "::warning::OnePlus repo sync failed (attempt ${attempt}/3); retrying"
-              sleep "$((attempt * 5))"
+              echo "::warning::apt-get update 第 ${attempt} 次失败，清理索引后重试。"
+              sudo apt-get clean || true
+              sudo rm -rf /var/lib/apt/lists/*
+              sleep "$attempt"
             done
-            echo "::error::OnePlus repo sync failed after 3 attempts"
+            echo "::error::apt-get update 连续失败。"
             return 1
           }
-          repo_sync_retry
+
+          disable_broken_chrome_source
+          apt_update_retry
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
+            python3 git curl ccache libelf-dev libdw-dev build-essential flex bison libssl-dev \
+            libncurses-dev liblz4-tool zlib1g-dev libxml2-utils rsync unzip gawk \
+            dos2unix zip gcc-aarch64-linux-gnu
+          if ! command -v repo >/dev/null 2>&1; then
+            curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o repo
+            chmod a+x repo
+            sudo mv repo /usr/local/bin/repo
+          fi
+
+      - name: 配置 ccache
+        shell: bash    
+        repo_sync_retry
 
       - name: 缓存 Clang 20
         uses: actions/cache@v5
